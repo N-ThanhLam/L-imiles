@@ -1,0 +1,3069 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>L-imiles 8×8</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+:root {
+  --bg: #0f1419;
+  --panel: #1a2230;
+  --panel-2: #232c3d;
+  --text: #e6edf3;
+  --text-dim: #8b98a8;
+  --accent: #5ea8ff;
+  --warn: #f5b941;
+  --danger: #ff6b6b;
+  --good: #2ecc71;
+  --border: #2a3a52;
+  --forbidden: #07090c;
+  --board-bg: #161e2c;
+  --p0: #e74c3c;
+  --p1: #3498db;
+  --p2: #2ecc71;
+  --p3: #f1c40f;
+  --cell-size: clamp(36px, 9.5vmin, 64px);
+  --gap: 2px;
+  --radius: 6px;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+html, body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif; overscroll-behavior:none; touch-action:manipulation; }
+#app { width:100%; height:100%; display:flex; flex-direction:column; min-height:0; }
+.hidden { display:none !important; }
+button { font-family:inherit; font-size:14px; padding:8px 14px; border-radius:var(--radius); border:1px solid var(--border); background:var(--panel-2); color:var(--text); cursor:pointer; transition: background 0.12s, transform 0.08s; }
+button:hover:not(:disabled) { background:#2f3b52; }
+button:active:not(:disabled) { transform: scale(0.97); }
+button:disabled { opacity:0.4; cursor:not-allowed; }
+button.primary { background:var(--accent); color:#0a1220; border-color:var(--accent); font-weight:700; }
+button.primary:hover:not(:disabled) { background:#7cb8ff; }
+button.warn { background:var(--warn); color:#3a2a04; border-color:var(--warn); font-weight:700; }
+button.danger { background:var(--danger); color:#3a0d0d; border-color:var(--danger); font-weight:700; }
+input, select, textarea { font-family:inherit; font-size:14px; padding:6px 8px; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:var(--radius); }
+input[type=text] { width:100%; min-width:0; }
+h2 { margin:0 0 12px; font-size:20px; }
+h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
+.screen { flex:1; display:flex; flex-direction:column; min-height:0; }
+
+#screen-title { align-items:center; justify-content:center; gap:24px; padding:24px; }
+.title-logo { font-size:clamp(48px, 11vw, 92px); font-weight:900; letter-spacing:0.06em; background:linear-gradient(135deg,#5ea8ff,#a98cff,#ff8cb8); -webkit-background-clip:text; background-clip:text; color:transparent; line-height:1; }
+.title-sub { color:var(--text-dim); font-size:13px; margin-top:-12px; letter-spacing:0.2em; }
+.title-menu { display:flex; flex-direction:column; gap:10px; width:min(320px, 90vw); }
+.title-menu button { padding:14px; font-size:15px; }
+.title-foot { color:var(--text-dim); font-size:11px; margin-top:8px; }
+
+#screen-setup, #screen-online { align-items:center; padding:16px; overflow-y:auto; }
+.setup-panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:18px; width:min(560px, 100%); margin-bottom:24px; }
+.setup-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+.setup-row > label { min-width:96px; font-size:13px; color:var(--text-dim); }
+.player-row { display:flex; gap:8px; align-items:center; padding:8px; border:1px solid var(--border); border-radius:var(--radius); margin-bottom:6px; flex-wrap:wrap; background:var(--panel-2); }
+.color-dot { width:18px; height:18px; border-radius:50%; flex-shrink:0; display:inline-block; vertical-align:middle; }
+.player-row input[type=text] { flex:1; min-width:80px; width:auto; }
+.player-row label { font-size:12px; display:flex; align-items:center; gap:4px; }
+.actions-bar { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; flex-wrap:wrap; }
+.tab-row { display:flex; gap:0; margin-bottom:14px; border-bottom:1px solid var(--border); }
+.tab-row button { border-radius:0; background:transparent; border:none; border-bottom:2px solid transparent; color:var(--text-dim); padding:10px 18px; font-weight:700; }
+.tab-row button.active { color:var(--accent); border-bottom-color:var(--accent); }
+
+#screen-game { background:var(--bg); }
+.top-bar { background:var(--panel); padding:6px 10px; display:flex; gap:10px; align-items:center; border-bottom:1px solid var(--border); flex-wrap:wrap; font-size:12px; min-height:36px; }
+.turn-info { display:flex; align-items:center; gap:6px; font-weight:600; }
+.player-chip { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:14px; font-size:11px; color:#fff; font-weight:700; }
+.timer { font-weight:700; font-variant-numeric: tabular-nums; padding:3px 8px; border-radius:4px; background:var(--panel-2); min-width:30px; text-align:center; }
+.timer.warn { background:var(--warn); color:#3a2a04; }
+.timer.danger { background:var(--danger); color:#3a0d0d; animation: blink 0.5s infinite alternate; }
+@keyframes blink { from { opacity:0.6; } to { opacity:1; } }
+
+/* ===== 合法手なし — 静かな絶望演出 ===== */
+@keyframes slowBreath {
+  0%   { box-shadow: 0 0 0px 0px rgba(245,185,65,0); transform: scale(1); }
+  50%  { box-shadow: 0 0 10px 3px rgba(245,185,65,0.45); transform: scale(1.03); }
+  100% { box-shadow: 0 0 0px 0px rgba(245,185,65,0); transform: scale(1); }
+}
+@keyframes handDim {
+  0%   { filter: brightness(1); }
+  100% { filter: brightness(0.48) saturate(0.4); }
+}
+.hand-card.no-legal-dim {
+  animation: handDim 0.6s ease-out forwards;
+}
+#btn-exchange.no-legal-breath {
+  animation: slowBreath 1.2s ease-in-out infinite;
+}
+.order-row { display:flex; gap:4px; align-items:center; }
+.order-row .label { font-size:10px; color:var(--text-dim); font-weight:700; letter-spacing:0.1em; }
+.order-row .dot { width:11px; height:11px; border-radius:50%; display:inline-block; }
+.deck-info { font-size:11px; color:var(--text-dim); }
+.menu-btn { padding:4px 10px; font-size:11px; }
+.net-status { font-size:10px; padding:2px 8px; border-radius:10px; font-weight:700; }
+.net-status.ok { background:var(--good); color:#0d2818; }
+.net-status.warn { background:var(--warn); color:#3a2a04; }
+.net-status.bad { background:var(--danger); color:#3a0d0d; }
+
+.main-area { flex:1; display:flex; min-height:0; overflow:hidden; }
+.board-wrap { flex:1; display:flex; align-items:center; justify-content:center; padding:8px; position:relative; min-width:0; min-height:0; overflow:hidden; }
+.board-container { position:relative; }
+.board { display:grid; grid-template-columns:repeat(8, var(--cell-size)); grid-template-rows:repeat(8, var(--cell-size)); gap:var(--gap); background:var(--board-bg); padding:var(--gap); border:2px solid var(--border); border-radius:8px; position:relative; }
+.cell { width:var(--cell-size); height:var(--cell-size); background:#0d141f; border-radius:4px; position:relative; display:flex; align-items:center; justify-content:center; cursor:default; overflow:hidden; }
+.cell.forbidden { background:var(--forbidden); }
+.cell.forbidden::before { content:''; position:absolute; inset:0; background-image: repeating-linear-gradient(45deg, transparent 0, transparent 5px, #1a1c28 5px, #1a1c28 6px); opacity:0.7; }
+.cell.forbidden::after { content:'×'; position:absolute; color:#3a4258; font-size:calc(var(--cell-size) * 0.4); font-weight:900; }
+.cell.legal-normal { box-shadow: inset 0 0 0 2px #5ea8ff; cursor:pointer; background:#142235; }
+.cell.legal-jammer { box-shadow: inset 0 0 0 2px var(--warn); cursor:pointer; background:#2a2210; }
+.cell.preview { box-shadow: inset 0 0 0 3px #fff; }
+.cell.last-placed::before { content:''; position:absolute; inset:-2px; border-radius:4px; box-shadow: 0 0 12px 2px rgba(255,255,255,0.6); pointer-events:none; animation: lastpulse 1s ease-out; }
+@keyframes lastpulse { 0% { opacity:1; } 100% { opacity:0; } }
+
+/* ===== ターン移動演出 ===== */
+.player-chip.turn-arrive {
+  animation: turnArrive 0.25s ease-out;
+}
+@keyframes turnArrive {
+  0%   { transform: scale(0.88); filter: brightness(2.4); }
+  55%  { transform: scale(1.08); filter: brightness(1.3); }
+  100% { transform: scale(1);    filter: brightness(1); }
+}
+.board.turn-flash-ring::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 10px;
+  pointer-events: none;
+  animation: turnRingFade 0.28s ease-out forwards;
+  z-index: 50;
+}
+@keyframes turnRingFade {
+  0%   { box-shadow: inset 0 0 28px 8px var(--turn-color, #fff); opacity: 1; }
+  100% { box-shadow: inset 0 0 0px 0px var(--turn-color, #fff); opacity: 0; }
+}
+
+/* ===== 配置確定 演出 ===== */
+.card.place-pop {
+  animation: placePop 0.18s ease-out forwards;
+}
+@keyframes placePop {
+  0%   { transform: scale(0.82); filter: brightness(2.8); }
+  60%  { transform: scale(1.06); filter: brightness(1.2); }
+  100% { transform: scale(1);    filter: brightness(1); }
+}
+.cell.place-flash::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 5px;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.9), 0 0 18px 4px rgba(255,255,255,0.5);
+  pointer-events: none;
+  animation: cellFlash 0.22s ease-out forwards;
+  z-index: 10;
+}
+@keyframes cellFlash {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* ===== 接続外周縁ライン ===== */
+/* card要素にdata-edge-*属性でon/offを付与し、対応する辺を光らせる */
+/* border は既存の --owner 色を使う。card本来のborder(2px solid var(--owner))を上書きするため */
+/* 方向別: top / right / bottom / left */
+.card[data-edge-top="1"]    { border-top-width:    3px; border-top-color:    var(--edge-color, var(--owner)); }
+.card[data-edge-right="1"]  { border-right-width:  3px; border-right-color:  var(--edge-color, var(--owner)); }
+.card[data-edge-bottom="1"] { border-bottom-width: 3px; border-bottom-color: var(--edge-color, var(--owner)); }
+.card[data-edge-left="1"]   { border-left-width:   3px; border-left-color:   var(--edge-color, var(--owner)); }
+
+/* 外周縁のglow（filter は親セルに適用するとボードがぼける可能性があるのでbox-shadowで）*/
+.card.has-outer-edge {
+  filter: drop-shadow(0 0 2.5px var(--owner));
+}
+/* 13+: 外周縁が呼吸 */
+@keyframes outerEdgePulse {
+  0%   { filter: drop-shadow(0 0 1px var(--owner)); }
+  50%  { filter: drop-shadow(0 0 5px var(--owner)); }
+  100% { filter: drop-shadow(0 0 1px var(--owner)); }
+}
+.card.has-outer-edge.resonance-glow {
+  animation: outerEdgePulse 1.6s ease-in-out infinite;
+}
+
+
+/* 接続線脈動 (13+接続時) */
+@keyframes linePulse {
+  0%   { opacity: 0.55; }
+  50%  { opacity: 1.0; }
+  100% { opacity: 0.55; }
+}
+.conn-line-pulse {
+  animation: linePulse 1.6s ease-in-out infinite;
+}
+
+/* カード縁常時淡発光 (13+接続時) — 外周縁がある場合はouterEdgePulseで上書きされる */
+@keyframes cardEdgeGlow {
+  0%   { filter: drop-shadow(0 0 2px var(--owner)); }
+  50%  { filter: drop-shadow(0 0 8px var(--owner)); }
+  100% { filter: drop-shadow(0 0 2px var(--owner)); }
+}
+.card.resonance-glow:not(.has-outer-edge) {
+  animation: cardEdgeGlow 1.6s ease-in-out infinite;
+}
+
+/* 波紋 ripple — 周辺カードへの伝播 (8〜12接続時) */
+@keyframes cardRipple {
+  0%   { transform: scale(1);    filter: brightness(1.6); }
+  40%  { transform: scale(1.03); filter: brightness(1.25); }
+  100% { transform: scale(1);    filter: brightness(1); }
+}
+.card.resonance-ripple {
+  animation: cardRipple 0.32s ease-out forwards;
+}
+
+/* 接続線ドロップシャドウ (4〜7接続時) */
+.conn-line-warm {
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+/* 接続線スライドイン */
+.conn-line-new {
+  stroke-dasharray: var(--line-len, 200);
+  stroke-dashoffset: var(--line-len, 200);
+  animation: lineSlideIn 0.18s ease-out forwards;
+}
+@keyframes lineSlideIn {
+  to { stroke-dashoffset: 0; }
+}
+
+.card { width:100%; height:100%; background:#f8f9fa; color:#111; border-radius:3px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:800; line-height:1; position:relative; border:2px solid var(--owner, #888); box-shadow: 0 1px 3px rgba(0,0,0,0.5); overflow:hidden; }
+.card .rank { font-size: calc(var(--cell-size) * 0.46); line-height:1; }
+.card .suit-center { font-size: calc(var(--cell-size) * 0.26); margin-top:1px; line-height:1; }
+.card .suit-corner { position:absolute; top:1px; left:2px; font-size: calc(var(--cell-size) * 0.22); line-height:1; }
+.card .badge { position:absolute; bottom:0; right:2px; font-size: calc(var(--cell-size) * 0.24); line-height:1; color:var(--owner); text-shadow: 0 0 2px #fff; }
+.card.suit-H, .card.suit-D { color:#c0392b; }
+.card.suit-S, .card.suit-C { color:#1a1a1a; }
+.card.jammer { background: repeating-linear-gradient(45deg, #2a2a35, #2a2a35 4px, #383848 4px, #383848 8px); color:#fff; }
+.card.jammer .rank, .card.jammer .suit-center, .card.jammer .suit-corner { color:#fff; }
+.card.jammer::after { content:'妨'; position:absolute; top:0; right:1px; font-size: calc(var(--cell-size) * 0.22); color:var(--danger); font-weight:900; text-shadow: 0 0 3px #000; }
+
+#lines-svg { position:absolute; top:0; left:0; pointer-events:none; }
+
+.side-panel { width:240px; background:var(--panel); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+.scores { padding:8px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:3px; font-size:12px; }
+.score-row { display:flex; justify-content:space-between; align-items:center; padding:4px 6px; border-radius:4px; gap:6px; }
+.score-row.active { background:var(--panel-2); box-shadow: inset 0 0 0 1px var(--accent); }
+.score-row.dead { opacity:0.4; }
+.score-row .name { display:flex; align-items:center; gap:6px; font-weight:600; }
+.score-row .stat { font-variant-numeric: tabular-nums; color:var(--text-dim); font-size:11px; }
+.log-panel { flex:1; overflow-y:auto; padding:8px; font-size:11px; color:var(--text-dim); }
+.log-entry { padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
+
+.bottom-bar { background:var(--panel); border-top:1px solid var(--border); padding:8px; display:flex; flex-direction:column; gap:6px; }
+.hand-row { display:flex; gap:6px; overflow-x:auto; padding:4px 2px; min-height:80px; -webkit-overflow-scrolling:touch; align-items:center; }
+.hand-card { flex:0 0 auto; width:54px; height:78px; background:#f8f9fa; color:#111; border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:800; line-height:1; border:3px solid transparent; cursor:pointer; position:relative; transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; box-shadow: 0 2px 4px rgba(0,0,0,0.4); }
+.hand-card.suit-H, .hand-card.suit-D { color:#c0392b; }
+.hand-card .rank { font-size:22px; }
+.hand-card .suit-c { font-size:18px; margin-top:2px; }
+.hand-card .suit-corner { position:absolute; top:2px; left:3px; font-size:11px; line-height:1; }
+.hand-card.legal { border-color:var(--accent); }
+.hand-card.illegal { opacity:0.45; }
+.hand-card.selected { transform: translateY(-8px); border-color:var(--warn) !important; box-shadow:0 6px 16px rgba(245,185,65,0.5); }
+.hand-card.exchange-selected { border-color:var(--danger) !important; transform: translateY(-4px); opacity:1; }
+.card-back { flex:0 0 auto; width:36px; height:54px; background:linear-gradient(135deg,#2a3a52,#1a2230); border:2px solid var(--border); border-radius:5px; display:flex; align-items:center; justify-content:center; color:var(--text-dim); font-size:10px; }
+.hidden-hand { padding:4px 0; color:var(--text-dim); font-size:13px; text-align:center; flex:1; }
+
+.action-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; min-height:38px; }
+.action-row .spacer { flex:1; min-width:8px; }
+#message { font-size:11px; color:var(--text-dim); min-height:14px; }
+
+.overlay { position:fixed; inset:0; background:rgba(0,0,0,0.75); display:flex; align-items:center; justify-content:center; z-index:100; padding:16px; }
+.overlay-content { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px; max-width:480px; width:100%; max-height:90vh; overflow-y:auto; box-shadow: 0 20px 60px rgba(0,0,0,0.7); }
+.handoff { text-align:center; }
+.handoff .player-name { font-size:32px; font-weight:900; margin:14px 0; }
+.confirm-buttons { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+
+.result-list { margin:16px 0; }
+.result-row { display:flex; justify-content:space-between; padding:10px 12px; border-radius:6px; background:var(--panel-2); margin-bottom:6px; align-items:center; }
+.result-row.winner { background:linear-gradient(135deg, var(--warn), #ffce5e); color:#3a2a04; font-weight:800; box-shadow: 0 4px 16px rgba(245,185,65,0.4); }
+
+.lobby-grid { display:flex; flex-direction:column; gap:8px; }
+.lobby-player { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; background:var(--panel-2); border:1px solid var(--border); }
+.lobby-player.me { box-shadow: inset 0 0 0 1px var(--accent); }
+.lobby-player .badge-host { background:var(--accent); color:#0a1220; font-size:10px; padding:2px 6px; border-radius:8px; font-weight:700; }
+.lobby-player .badge-disc { background:var(--danger); color:#3a0d0d; font-size:10px; padding:2px 6px; border-radius:8px; font-weight:700; }
+
+@media (max-width: 760px) {
+  .main-area { flex-direction:column; }
+  .side-panel { width:100%; border-left:none; border-top:1px solid var(--border); max-height:130px; }
+  .scores { flex-direction:row; flex-wrap:wrap; overflow-x:auto; border-bottom:none; }
+  .score-row { font-size:10px; min-width:auto; padding:3px 6px; }
+  .score-row .name { font-size:10px; }
+  .log-panel { display:none; }
+  :root { --cell-size: clamp(34px, 11vw, 56px); }
+}
+@media (max-height: 600px) and (orientation: landscape) {
+  :root { --cell-size: clamp(28px, 7vmin, 48px); }
+  .hand-card { width:44px; height:62px; }
+  .hand-card .rank { font-size:16px; }
+  .hand-card .suit-c { font-size:14px; }
+  .hand-row { min-height:64px; }
+  .side-panel { max-height:none; }
+}
+@media (max-width: 420px) {
+  .top-bar { font-size:11px; gap:6px; padding:5px 6px; }
+  .order-row .dot { width:9px; height:9px; }
+}
+::-webkit-scrollbar { width:8px; height:8px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:#2a3a52; border-radius:4px; }
+::-webkit-scrollbar-thumb:hover { background:#3a4a62; }
+
+/* ===== 配置確定ポップアップ ===== */
+#place-confirm-popup {
+  position: fixed;
+  z-index: 300;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.7);
+  pointer-events: auto;
+  min-width: 80px;
+  animation: popupAppear 0.12s ease-out;
+}
+@keyframes popupAppear {
+  0%   { transform: scale(0.80); opacity: 0; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+#place-confirm-popup .popup-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+#place-confirm-popup .popup-bar-wrap {
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+#popup-timer-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  width: 100%;
+  transform-origin: left center;
+  transition: none;
+}
+#place-confirm-popup .popup-cancel {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: var(--danger);
+  color: #3a0d0d;
+  border-color: var(--danger);
+  font-weight: 700;
+  border-radius: 6px;
+  cursor: pointer;
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="screen-title" class="screen">
+    <div class="title-logo">L-imiles</div>
+    <div class="title-sub">8 × 8  ADJACENCY  STRATEGY</div>
+    <div class="title-menu">
+      <button class="primary" data-action="new-game">ローカル / ホットシート</button>
+      <button data-action="solo-quick">ソロ プレイ (CPU L2)</button>
+      <button data-action="online">オンライン対戦</button>
+      <button data-action="rules">ルール</button>
+    </div>
+    <div class="title-foot">v1.11 · 盤面共鳴 — single-file build</div>
+  </div>
+
+  <div id="screen-setup" class="screen hidden">
+    <div class="setup-panel">
+      <h2>ゲーム設定</h2>
+      <div class="setup-row">
+        <label>プレイヤー数</label>
+        <select id="setup-num-players">
+          <option value="2" selected>2人</option>
+          <option value="3">3人</option>
+          <option value="4">4人</option>
+        </select>
+      </div>
+      <div id="player-rows"></div>
+      <div class="setup-row">
+        <label>シード</label>
+        <input type="text" id="setup-seed" placeholder="(空欄=ランダム)">
+        <button data-action="random-seed" style="padding:6px 10px; font-size:12px;">乱数</button>
+      </div>
+      <div class="setup-row">
+        <label>ターン制限</label>
+        <select id="setup-time">
+          <option value="30" selected>30秒</option>
+          <option value="60">60秒</option>
+          <option value="120">120秒</option>
+          <option value="0">無制限</option>
+        </select>
+      </div>
+      <div class="setup-row">
+        <label>合法手表示</label>
+        <input type="checkbox" id="setup-show-legal" checked>
+        <span style="font-size:11px; color:var(--text-dim);">配置可能マスを枠線でハイライト</span>
+      </div>
+      <div class="setup-row">
+        <label>配置確定待機</label>
+        <input type="number" id="setup-confirm-delay" value="1.5" min="0" max="9.9" step="0.1" style="width:70px;">
+        <span style="font-size:11px; color:var(--text-dim);">秒後に自動確定 (0=即設置)</span>
+      </div>
+      <div class="actions-bar">
+        <button data-action="back-to-title">戻る</button>
+        <button class="primary" data-action="start-game">スタート</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-online" class="screen hidden">
+    <div class="setup-panel">
+      <h2>オンライン対戦 (P2P)</h2>
+      <div class="tab-row">
+        <button id="tab-host-btn" class="active" data-action="online-tab-host">ホスト作成</button>
+        <button id="tab-join-btn" data-action="online-tab-join">隣接参加</button>
+      </div>
+
+      <div id="online-pane-host">
+        <div class="setup-row">
+          <label>合言葉</label>
+          <input type="text" id="online-host-keyword" placeholder="例: hoge42" maxlength="40">
+        </div>
+        <div class="setup-row">
+          <label>あなたの名前</label>
+          <input type="text" id="online-host-name" placeholder="プレイヤー名" maxlength="16" value="Host">
+        </div>
+        <div class="setup-row">
+          <label>プレイヤー数</label>
+          <select id="online-host-num">
+            <option value="2" selected>2人</option>
+            <option value="3">3人</option>
+            <option value="4">4人</option>
+          </select>
+        </div>
+        <div class="setup-row">
+          <label>ターン制限</label>
+          <select id="online-host-time">
+            <option value="30" selected>30秒</option>
+            <option value="60">60秒</option>
+            <option value="120">120秒</option>
+            <option value="0">無制限</option>
+          </select>
+        </div>
+        <div class="actions-bar">
+          <button data-action="back-to-title">戻る</button>
+          <button class="primary" data-action="online-host-create">ルーム作成</button>
+        </div>
+      </div>
+
+      <div id="online-pane-join" class="hidden">
+        <div class="setup-row">
+          <label>合言葉</label>
+          <input type="text" id="online-join-keyword" placeholder="ホストから共有" maxlength="40">
+        </div>
+        <div class="setup-row">
+          <label>あなたの名前</label>
+          <input type="text" id="online-join-name" placeholder="プレイヤー名" maxlength="16" value="Guest">
+        </div>
+        <div class="actions-bar">
+          <button data-action="back-to-title">戻る</button>
+          <button class="primary" data-action="online-join">参加</button>
+        </div>
+      </div>
+
+      <div id="online-pane-lobby" class="hidden" style="margin-top:14px;">
+        <h3>ルーム</h3>
+        <div class="setup-row" style="margin-bottom:6px;">
+          <label>合言葉</label>
+          <span id="lobby-keyword" style="font-family:monospace; background:var(--panel-2); padding:4px 10px; border-radius:4px;"></span>
+        </div>
+        <div class="setup-row" style="margin-bottom:6px;">
+          <label>同期状態</label>
+          <span id="lobby-status" class="net-status warn">…</span>
+          <span id="lobby-status-msg" style="font-size:11px; color:var(--text-dim);"></span>
+        </div>
+        <div class="setup-row" style="margin-bottom:6px;">
+          <label>隣接人数</label>
+          <span id="lobby-count">0 / 0</span>
+        </div>
+        <div class="lobby-grid" id="lobby-players"></div>
+        <div class="actions-bar">
+          <button data-action="online-leave" class="danger">退室</button>
+          <button id="btn-host-start" class="primary hidden" data-action="online-host-start">ゲーム開始</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-game" class="screen hidden">
+    <div class="top-bar">
+      <div class="turn-info">
+        <span>R<span id="round-num">1</span></span>
+        <span class="player-chip" id="turn-player">P1</span>
+        <span class="timer" id="timer">30</span>
+      </div>
+      <div class="order-row"><span class="label">NOW</span><span id="now-order"></span></div>
+      <div class="order-row"><span class="label">NEXT</span><span id="next-order"></span></div>
+      <div class="deck-info">山札 <span id="deck-count">0</span></div>
+      <span id="net-indicator" class="net-status hidden"></span>
+      <div style="flex:1; min-width:8px;"></div>
+      <button id="btn-menu" class="menu-btn">メニュー</button>
+    </div>
+    <div class="main-area">
+      <div class="board-wrap">
+        <div class="board-container">
+          <div class="board" id="board"></div>
+          <svg id="lines-svg"></svg>
+        </div>
+      </div>
+      <div class="side-panel">
+        <div class="scores" id="scores"></div>
+        <div class="log-panel" id="log-panel"></div>
+      </div>
+    </div>
+    <div class="bottom-bar">
+      <div class="hand-row" id="hand-row"></div>
+      <div class="action-row">
+        <button id="btn-confirm" class="primary hidden" data-action="confirm-place">配置確定</button>
+        <button id="btn-cancel" class="hidden" data-action="cancel-place">キャンセル</button>
+        <button id="btn-exchange" data-action="exchange-mode">交換</button>
+        <button id="btn-exchange-confirm" class="warn hidden" data-action="exchange-confirm">交換確定</button>
+        <button id="btn-exchange-cancel" class="hidden" data-action="exchange-cancel">交換キャンセル</button>
+        <button id="btn-giveup" class="danger hidden" data-action="give-up-turn">行動不能</button>
+        <div class="spacer"></div>
+        <span id="message"></span>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-end" class="screen hidden">
+    <div style="padding:24px; max-width:560px; margin:0 auto; width:100%;">
+      <h2>結果</h2>
+      <div class="result-list" id="result-list"></div>
+      <div class="actions-bar">
+        <button data-action="download-replay">リプレイ保存</button>
+        <button data-action="back-to-title">タイトルへ</button>
+        <button class="primary" data-action="rematch">もう一度</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="overlay-handoff" class="overlay hidden">
+    <div class="overlay-content handoff">
+      <div style="font-size:14px; color:var(--text-dim);">次のプレイヤー</div>
+      <div class="player-name" id="handoff-name">P1</div>
+      <div style="font-size:13px; color:var(--text-dim);">他のプレイヤーに見られないように<br>画面を渡してください</div>
+      <button class="primary" style="margin-top:18px; padding:14px 28px; font-size:16px;" data-action="handoff-ready">準備完了</button>
+    </div>
+  </div>
+
+  <div id="overlay-rules" class="overlay hidden">
+    <div class="overlay-content">
+      <h2>ルール</h2>
+      <div style="font-size:13px; line-height:1.7;">
+        <p><b>目的:</b> 行動可能な最後のプレイヤーが勝利。同着時は隣接線数が最多のプレイヤー勝利。</p>
+        <p><b>盤面:</b> 8×8、ランダムで12マスが禁止マス（配置・隣接通過不可）。</p>
+        <p><b>カード:</b> トランプ52枚。A=1, J=11, Q=12, K=13。A-K循環なし。</p>
+        <p><b>隣接成立条件:</b> 自分のカード間で、上下左右いずれかが「同数字」「同スート」「数字±1」を満たすとき。斜め禁止。</p>
+        <p><b>通常配置:</b> 隣接条件を満たす自カードの隣マスのみ。単独配置禁止。</p>
+        <p><b>妨害配置:</b> 相手カードと同数字なら、相手隣に単独配置可。自分の隣接線は生成しない・延長しない・隣接元にもならない。</p>
+        <p><b>強制配置:</b> 1枚でも置けるカードがあれば必ず配置（交換・パス禁止）。</p>
+        <p><b>交換:</b> 全カード置けないときのみ、好きな枚数交換。返却分は山札下へ手札順で戻す（シャッフルなし）。1ターン1回限り。</p>
+        <p><b>行動不能:</b> 交換も不可／交換後も置けないとき。手札を山札下へ順序通り戻す。</p>
+        <p><b>ラウンド順:</b> 各ラウンド終了時、前ラウンドの先頭を最後尾に固定、他はランダム抽選。NEXT順は常時公開。<br><b>2人戦特例:</b> ローテーション規則を無視し、固定交互順 (P0→P1→P0...)。</p>
+        <p><b>初期配置:</b> 各2枚をスネーク順 (A→B→...→B→A) で配置。隣接条件なし。</p>
+        <p><b>ターン制限:</b> 30秒。時間切れで合法手があればランダム配置、なければ行動不能。</p>
+      </div>
+      <div class="confirm-buttons"><button class="primary" data-action="close-rules">閉じる</button></div>
+    </div>
+  </div>
+
+  <div id="overlay-menu" class="overlay hidden">
+    <div class="overlay-content">
+      <h2>メニュー</h2>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <button data-action="resume">再開</button>
+        <button data-action="show-rules">ルール</button>
+        <button data-action="toggle-legal">合法手表示 切替</button>
+        <button data-action="download-replay">リプレイ保存 (JSON)</button>
+        <button class="danger" data-action="abort-game">タイトルへ戻る</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="overlay-online-msg" class="overlay hidden">
+    <div class="overlay-content">
+      <h2 id="om-title">通知</h2>
+      <div id="om-body" style="font-size:13px; line-height:1.6;"></div>
+      <div class="confirm-buttons">
+        <button class="primary" data-action="close-om">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 配置確定ポップアップ -->
+  <div id="place-confirm-popup" class="hidden">
+    <div class="popup-label" id="popup-label">確定まで…</div>
+    <div class="popup-bar-wrap"><div id="popup-timer-fill"></div></div>
+    <button class="popup-cancel" data-action="cancel-place">キャンセル</button>
+  </div>
+
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// ============================== LOCAL STORAGE ==============================
+const LS_KEY = 'limiles_settings';
+function saveSettings() {
+  try {
+    const num = +($('setup-num-players')?.value || 2);
+    const players = [];
+    for (let i = 0; i < 4; i++) {
+      const ni = $('p-name-' + i), ci = $('p-cpu-' + i), li = $('p-lvl-' + i);
+      players.push({
+        name: ni ? ni.value : ('P' + (i + 1)),
+        cpu: ci ? ci.checked : (i > 0),
+        lvl: li ? li.value : '2',
+      });
+    }
+    const settings = {
+      numPlayers: num,
+      players,
+      seed: $('setup-seed')?.value || '',
+      turnTime: $('setup-time')?.value || '30',
+      showLegal: $('setup-show-legal')?.checked ?? true,
+      confirmDelay: $('setup-confirm-delay')?.value || '1.5',
+      // オンライン設定
+      onlineHostKeyword: $('online-host-keyword')?.value || '',
+      onlineHostName: $('online-host-name')?.value || 'Host',
+      onlineHostNum: $('online-host-num')?.value || '2',
+      onlineHostTime: $('online-host-time')?.value || '30',
+      onlineJoinKeyword: $('online-join-keyword')?.value || '',
+      onlineJoinName: $('online-join-name')?.value || 'Guest',
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(settings));
+  } catch (e) {}
+}
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    // プレイヤー数
+    if ($('setup-num-players') && s.numPlayers) {
+      $('setup-num-players').value = s.numPlayers;
+    }
+    // シード・ターン制限・合法手表示・配置確定待機
+    if ($('setup-seed') && s.seed !== undefined) $('setup-seed').value = s.seed;
+    if ($('setup-time') && s.turnTime) $('setup-time').value = s.turnTime;
+    if ($('setup-show-legal') && s.showLegal !== undefined) $('setup-show-legal').checked = s.showLegal;
+    if ($('setup-confirm-delay') && s.confirmDelay !== undefined) $('setup-confirm-delay').value = s.confirmDelay;
+    // オンライン設定
+    if ($('online-host-keyword') && s.onlineHostKeyword) $('online-host-keyword').value = s.onlineHostKeyword;
+    if ($('online-host-name') && s.onlineHostName) $('online-host-name').value = s.onlineHostName;
+    if ($('online-host-num') && s.onlineHostNum) $('online-host-num').value = s.onlineHostNum;
+    if ($('online-host-time') && s.onlineHostTime) $('online-host-time').value = s.onlineHostTime;
+    if ($('online-join-keyword') && s.onlineJoinKeyword) $('online-join-keyword').value = s.onlineJoinKeyword;
+    if ($('online-join-name') && s.onlineJoinName) $('online-join-name').value = s.onlineJoinName;
+    // プレイヤー個別設定（renderSetupが呼ばれた後に適用するため_pendingPlayerSettingsに保持）
+    if (s.players) window._pendingPlayerSettings = { numPlayers: s.numPlayers, players: s.players };
+  } catch (e) {}
+}
+
+function applyPendingPlayerSettings() {
+  const ps = window._pendingPlayerSettings;
+  if (!ps) return;
+  window._pendingPlayerSettings = null;
+  for (let i = 0; i < ps.players.length; i++) {
+    const p = ps.players[i];
+    const ni = $('p-name-' + i), ci = $('p-cpu-' + i), li = $('p-lvl-' + i);
+    if (ni && p.name !== undefined) ni.value = p.name;
+    if (ci && p.cpu !== undefined) ci.checked = p.cpu;
+    if (li && p.lvl !== undefined) li.value = p.lvl;
+  }
+}
+
+// ============================== CONSTANTS ==============================
+const VERSION = '1.11-resonance';
+const SUITS = ['S','H','D','C'];
+const SUIT_GLYPH = {S:'♠',H:'♥',D:'♦',C:'♣'};
+const RANKS = [1,2,3,4,5,6,7,8,9,10,11,12,13];
+const RANK_GLYPH = {1:'A',11:'J',12:'Q',13:'K'};
+const rankStr = r => RANK_GLYPH[r] || String(r);
+const BOARD_SIZE = 8;
+const FORBIDDEN_COUNT = 12;
+const HAND_SIZE = 6;
+const INIT_PLACEMENTS = 2;
+const DEFAULT_TURN_TIME = 30;
+const DIR = [[0,-1],[1,0],[0,1],[-1,0]];
+
+// ============================== SOUND ENGINE ==============================
+const SFX = (() => {
+  let ctx = null;
+  function getCtx() {
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+  // 乾いた「カチッ」— 木製ボードゲーム系
+  function playKachick() {
+    try {
+      const c = getCtx();
+      const t = c.currentTime;
+      // ノイズ bursts × 2 (attack + body)
+      const buf = c.createBuffer(1, c.sampleRate * 0.08, c.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (c.sampleRate * 0.012));
+      const src = c.createBufferSource();
+      src.buffer = buf;
+      // High-pass → 乾いた感
+      const hp = c.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = 2200;
+      const gain = c.createGain();
+      gain.gain.setValueAtTime(0.55, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.075);
+      src.connect(hp); hp.connect(gain); gain.connect(c.destination);
+      src.start(t);
+    } catch(e) {}
+  }
+  // 細い「シュッ」— 接続成立
+  function playShu() {
+    try {
+      const c = getCtx();
+      const t = c.currentTime;
+      const osc = c.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1400, t);
+      osc.frequency.exponentialRampToValueAtTime(800, t + 0.09);
+      const gain = c.createGain();
+      gain.gain.setValueAtTime(0.18, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+      osc.connect(gain); gain.connect(c.destination);
+      osc.start(t); osc.stop(t + 0.09);
+    } catch(e) {}
+  }
+  // 「ス…」— 空気音 (4〜7接続時)
+  function playSu() {
+    try {
+      const c = getCtx();
+      const t = c.currentTime;
+      const buf = c.createBuffer(1, c.sampleRate * 0.12, c.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) {
+        const env = Math.exp(-i / (c.sampleRate * 0.06));
+        d[i] = (Math.random() * 2 - 1) * env * 0.4;
+      }
+      const src = c.createBufferSource();
+      src.buffer = buf;
+      const bp = c.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = 3800; bp.Q.value = 0.5;
+      const gain = c.createGain();
+      gain.gain.setValueAtTime(0.12, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
+      src.connect(bp); bp.connect(gain); gain.connect(c.destination);
+      src.start(t);
+    } catch(e) {}
+  }
+  // 「ズゥン」— 低音共鳴 (8〜12接続時)
+  function playZuun() {
+    try {
+      const c = getCtx();
+      const t = c.currentTime;
+      const osc = c.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(80, t);
+      osc.frequency.exponentialRampToValueAtTime(52, t + 0.28);
+      const gain = c.createGain();
+      gain.gain.setValueAtTime(0.0, t);
+      gain.gain.linearRampToValueAtTime(0.14, t + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+      osc.connect(gain); gain.connect(c.destination);
+      osc.start(t); osc.stop(t + 0.3);
+    } catch(e) {}
+  }
+  // 「ブゥン…」— 深い共鳴 (13+接続時)
+  function playBuun() {
+    try {
+      const c = getCtx();
+      const t = c.currentTime;
+      // サブベース
+      const osc = c.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(55, t);
+      osc.frequency.exponentialRampToValueAtTime(38, t + 0.5);
+      const gain = c.createGain();
+      gain.gain.setValueAtTime(0.0, t);
+      gain.gain.linearRampToValueAtTime(0.18, t + 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.52);
+      // 倍音
+      const osc2 = c.createOscillator();
+      osc2.type = 'sawtooth';
+      osc2.frequency.setValueAtTime(110, t);
+      osc2.frequency.exponentialRampToValueAtTime(75, t + 0.4);
+      const lp = c.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 200;
+      const gain2 = c.createGain();
+      gain2.gain.setValueAtTime(0.04, t);
+      gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+      osc.connect(gain); gain.connect(c.destination);
+      osc2.connect(lp); lp.connect(gain2); gain2.connect(c.destination);
+      osc.start(t); osc.stop(t + 0.52);
+      osc2.start(t); osc2.stop(t + 0.4);
+    } catch(e) {}
+  }
+  return { kachick: playKachick, shu: playShu, su: playSu, zuun: playZuun, buun: playBuun };
+})();
+
+// ===== 合法手なし — 静かなノック音 =====
+function playNoLegalSound() {
+  try {
+    const c = new (window.AudioContext || window.webkitAudioContext)();
+    const t = c.currentTime;
+    // 石を置くような低い小さいノック
+    const buf = c.createBuffer(1, c.sampleRate * 0.06, c.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+      d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (c.sampleRate * 0.018));
+    }
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    const lp = c.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 900;
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.22, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
+    src.connect(lp); lp.connect(gain); gain.connect(c.destination);
+    src.start(t);
+    // 微かな倍音 — 閉じ込め感
+    const osc = c.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(180, t + 0.01);
+    osc.frequency.exponentialRampToValueAtTime(110, t + 0.07);
+    const g2 = c.createGain();
+    g2.gain.setValueAtTime(0.07, t + 0.01);
+    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    osc.connect(g2); g2.connect(c.destination);
+    osc.start(t + 0.01); osc.stop(t + 0.1);
+  } catch(e) {}
+}
+
+// 合法手ゼロ演出: 手札暗転 + 交換ボタン浮上 + 無音の間
+function triggerNoLegalEffect() {
+  // 手札カードをうっすら暗くする
+  const handCards = document.querySelectorAll('.hand-card');
+  handCards.forEach(card => {
+    card.classList.remove('no-legal-dim');
+    void card.offsetWidth;
+    card.classList.add('no-legal-dim');
+  });
+  // 交換ボタンに呼吸アニメ
+  const exBtn = $('btn-exchange');
+  if (exBtn && !exBtn.disabled && !exBtn.classList.contains('hidden')) {
+    exBtn.classList.remove('no-legal-breath');
+    void exBtn.offsetWidth;
+    exBtn.classList.add('no-legal-breath');
+  }
+  // 小さいノック音
+  playNoLegalSound();
+}
+
+const PLAYER_COLORS = [
+  {bg:'#e74c3c', name:'Red',    badge:'●'},
+  {bg:'#3498db', name:'Blue',   badge:'■'},
+  {bg:'#2ecc71', name:'Green',  badge:'▲'},
+  {bg:'#f1c40f', name:'Yellow', badge:'◆'},
+];
+
+// ============================== RNG ==============================
+function mulberry32(seed) {
+  let s = (seed >>> 0) || 1;
+  return () => {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hashSeed(str) {
+  let h = 2166136261 >>> 0;
+  for (let i=0; i<str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function shuffle(arr, rand) {
+  for (let i=arr.length-1; i>0; i--) {
+    const j = Math.floor(rand() * (i+1));
+    [arr[i],arr[j]] = [arr[j],arr[i]];
+  }
+  return arr;
+}
+
+// ============================== CARDS / BOARD ==============================
+function makeDeck() {
+  const cards = [];
+  let id = 0;
+  for (const s of SUITS) for (const r of RANKS) {
+    cards.push({id: id++, suit: s, rank: r, owner: -1, isJammer: false});
+  }
+  return cards;
+}
+function makeBoard() {
+  const b = [];
+  for (let y=0; y<BOARD_SIZE; y++) {
+    const row = [];
+    for (let x=0; x<BOARD_SIZE; x++) row.push({x,y,forbidden:false,card:null});
+    b.push(row);
+  }
+  return b;
+}
+function inBounds(x,y){ return x>=0&&y>=0&&x<BOARD_SIZE&&y<BOARD_SIZE; }
+function generateForbidden(board, rand) {
+  for (let attempt=0; attempt<300; attempt++) {
+    for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) board[y][x].forbidden = false;
+    const allCells = [];
+    for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) allCells.push([x,y]);
+    const copy = [...allCells];
+    shuffle(copy, rand);
+    for (let i=0; i<FORBIDDEN_COUNT; i++) {
+      const [x,y] = copy[i];
+      board[y][x].forbidden = true;
+    }
+    let start = null;
+    for (let y=0;y<BOARD_SIZE && !start;y++) for (let x=0;x<BOARD_SIZE && !start;x++) if (!board[y][x].forbidden) start = [x,y];
+    if (!start) continue;
+    const visited = new Set();
+    const stack = [start];
+    while (stack.length) {
+      const [x,y] = stack.pop();
+      const k = x+','+y;
+      if (visited.has(k)) continue;
+      visited.add(k);
+      for (const [dx,dy] of DIR) {
+        const nx = x+dx, ny = y+dy;
+        if (inBounds(nx,ny) && !board[ny][nx].forbidden && !visited.has(nx+','+ny)) stack.push([nx,ny]);
+      }
+    }
+    if (visited.size === BOARD_SIZE*BOARD_SIZE - FORBIDDEN_COUNT) return true;
+  }
+  return false;
+}
+
+// ============================== ADJACENCY / LEGAL ==============================
+function adjacencyOK(a, b) {
+  if (!a || !b) return false;
+  if (a.isJammer || b.isJammer) return false;
+  if (a.suit === b.suit) return true;
+  if (a.rank === b.rank) return true;
+  if (Math.abs(a.rank - b.rank) === 1) return true;
+  return false;
+}
+function* neighborsOf(board, x, y) {
+  for (const [dx,dy] of DIR) {
+    const nx=x+dx, ny=y+dy;
+    if (inBounds(nx,ny)) yield {x:nx,y:ny,cell:board[ny][nx]};
+  }
+}
+function isLegalNormal(state, card, x, y, playerIdx) {
+  const cell = state.board[y][x];
+  if (cell.forbidden || cell.card) return false;
+  if (state.phase === 'init') return true;
+  for (const n of neighborsOf(state.board, x, y)) {
+    if (n.cell.forbidden) continue;
+    const nc = n.cell.card;
+    if (nc && nc.owner === playerIdx && !nc.isJammer && adjacencyOK(card, nc)) return true;
+  }
+  return false;
+}
+function isLegalJammer(state, card, x, y, playerIdx) {
+  if (state.phase === 'init') return false;
+  const cell = state.board[y][x];
+  if (cell.forbidden || cell.card) return false;
+  for (const n of neighborsOf(state.board, x, y)) {
+    if (n.cell.forbidden) continue;
+    const nc = n.cell.card;
+    if (nc && nc.owner !== playerIdx && !nc.isJammer && nc.rank === card.rank) return true;
+  }
+  return false;
+}
+function findLegalPlacements(state, card, playerIdx) {
+  const out = [];
+  for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) {
+    if (isLegalNormal(state, card, x, y, playerIdx)) out.push({x,y,isJammer:false});
+    else if (isLegalJammer(state, card, x, y, playerIdx)) out.push({x,y,isJammer:true});
+  }
+  return out;
+}
+function anyLegalPlacement(state, playerIdx) {
+  const p = state.players[playerIdx];
+  if (!p || !p.hand) return false;
+  for (const c of p.hand) {
+    if (!c) continue;
+    for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) {
+      if (isLegalNormal(state, c, x, y, playerIdx)) return true;
+      if (isLegalJammer(state, c, x, y, playerIdx)) return true;
+    }
+  }
+  return false;
+}
+function computeConnections(state, playerIdx) {
+  const conn = [];
+  for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) {
+    const c = state.board[y][x].card;
+    if (!c || c.owner !== playerIdx || c.isJammer) continue;
+    for (const [dx,dy] of [[1,0],[0,1]]) {
+      const nx=x+dx, ny=y+dy;
+      if (!inBounds(nx,ny)) continue;
+      const nc = state.board[ny][nx].card;
+      if (nc && nc.owner === playerIdx && !nc.isJammer && adjacencyOK(c, nc)) {
+        conn.push({x1:x,y1:y,x2:nx,y2:ny});
+      }
+    }
+  }
+  return conn;
+}
+function countConnections(state, playerIdx) { return computeConnections(state, playerIdx).length; }
+
+// ============================== GAME STATE ==============================
+let state = null;
+let ui = { selectedCardId: null };
+let timerHandle = null;
+let opts = {};
+let UI_SHOW_LEGAL = true;
+let UI_PENDING = null;
+let UI_EXCHANGE_MODE = false;
+let UI_EXCHANGE_PICKED = new Set();
+let handoffShownFor = -1;
+let cpuPending = false;
+let PLACE_CONFIRM_DELAY = 1.5; // 秒
+let _placeConfirmTimer = null;
+let _placeConfirmStart = null;
+let _placeConfirmRaf = null;
+
+function newGame(config) {
+  let seed = config.seed;
+  if (seed === '' || seed == null) seed = Date.now();
+  if (typeof seed === 'string' && !/^\d+$/.test(seed)) seed = hashSeed(seed);
+  seed = Number(seed) >>> 0;
+  const rand = mulberry32(seed);
+  const board = makeBoard();
+  generateForbidden(board, rand);
+  const deck = shuffle(makeDeck(), rand);
+  const players = config.players.map((pc, i) => ({
+    idx: i,
+    color: PLAYER_COLORS[i].bg,
+    name: pc.name || ('P'+(i+1)),
+    isCPU: !!pc.isCPU,
+    cpuLevel: pc.cpuLevel || 2,
+    hand: [],
+    alive: true,
+  }));
+  for (let r=0; r<HAND_SIZE; r++) for (const p of players) {
+    if (deck.length === 0) break;
+    p.hand.push(deck.shift());
+  }
+  const order = [];
+  for (let i=0; i<players.length; i++) order.push(i);
+  for (let i=players.length-1; i>=0; i--) order.push(i);
+  state = {
+    board, deck, players,
+    seed, seedStr: String(seed),
+    rand,
+    phase: 'init',
+    initOrder: order, initIdx: 0,
+    currentRoundOrder: null,
+    nextRoundOrder: null,
+    currentTurnIdx: 0,
+    round: 0,
+    log: [],
+    lastPlaced: null,
+    turnTime: config.turnTime != null ? config.turnTime : DEFAULT_TURN_TIME,
+    config,
+    winners: null,
+    mode: config.mode || 'local',
+  };
+  return state;
+}
+function logEntry(e) {
+  e.t = state.log.length; e.round = state.round; e.phase = state.phase;
+  state.log.push(e);
+}
+function cardLogId(c) { return c.suit + rankStr(c.rank); }
+function currentPlayerIdx() {
+  if (!state) return -1;
+  if (state.phase === 'init') return state.initOrder[state.initIdx];
+  if (state.phase === 'play' && state.currentRoundOrder) return state.currentRoundOrder[state.currentTurnIdx];
+  return -1;
+}
+function aliveCount() { return state.players.filter(p => p.alive).length; }
+
+function placeCard(card, x, y, isJammer) {
+  const playerIdx = currentPlayerIdx();
+  const player = state.players[playerIdx];
+
+  // 演出用: 配置前の接続数を記録
+  const connsBefore = (state.mode !== 'sim') ? state.players.map(p => computeConnections(state, p.idx).length) : null;
+
+  card.owner = playerIdx;
+  card.isJammer = !!isJammer;
+  state.board[y][x].card = card;
+  const idx = player.hand.findIndex(c => c.id === card.id);
+  if (idx >= 0) player.hand.splice(idx, 1);
+  if (state.deck.length > 0) player.hand.push(state.deck.shift());
+  state.lastPlaced = {x, y, owner: playerIdx};
+  logEntry({type:'place', player:playerIdx, card:cardLogId(card), x, y, isJammer:!!isJammer});
+
+  // 演出: シミュレーション中は再生しない
+  if (connsBefore !== null) {
+    const connsAfter = state.players.map(p => computeConnections(state, p.idx).length);
+    const newConnTotal = connsAfter.reduce((s, v, i) => s + (v - connsBefore[i]), 0);
+    // 非同期で演出キック（renderAll後に要素が存在する）
+    requestAnimationFrame(() => triggerPlaceEffect(x, y, newConnTotal > 0));
+  }
+}
+
+function computeNextRoundOrder(currentOrder) {
+  // 2-player special rule: strict alternation, no rotation
+  if (state.players.length === 2) {
+    const alive = state.players.filter(p => p.alive).map(p => p.idx);
+    if (alive.length < 2) return alive;
+    return [...currentOrder]; // 毎ラウンド同順を維持 → A B A B A B の交互になる（reverse だと A B|B A|A B = ABBA になる）
+  }
+  // 3-4 player: first → last, others random
+  const first = currentOrder[0];
+  const aliveOthers = state.players.filter(p => p.alive && p.idx !== first).map(p => p.idx);
+  const shuffled = shuffle([...aliveOthers], state.rand);
+  if (state.players[first].alive) shuffled.push(first);
+  return shuffled;
+}
+
+function startFirstRound() {
+  let order;
+  if (state.players.length === 2) {
+    // 2-player: fixed [0, 1]
+    order = state.players.filter(p => p.alive).map(p => p.idx);
+  } else {
+    order = shuffle(state.players.filter(p => p.alive).map(p => p.idx), state.rand);
+  }
+  state.currentRoundOrder = order;
+  state.nextRoundOrder = computeNextRoundOrder(state.currentRoundOrder);
+  state.currentTurnIdx = 0;
+  state.round = 1;
+  state.phase = 'play';
+  handoffShownFor = -1; // ラウンド先頭では必ずハンドオフを表示する
+  logEntry({type:'round-start', round:state.round, order:[...state.currentRoundOrder], next:[...state.nextRoundOrder]});
+}
+
+function advanceInit() {
+  state.initIdx++;
+  if (state.initIdx >= state.initOrder.length) startFirstRound();
+}
+
+function advanceTurn() {
+  if (aliveCount() <= 1) { endGame(); return; }
+  let nextIdx = state.currentTurnIdx + 1;
+  while (nextIdx < state.currentRoundOrder.length && !state.players[state.currentRoundOrder[nextIdx]].alive) nextIdx++;
+  if (nextIdx >= state.currentRoundOrder.length) endRound();
+  else state.currentTurnIdx = nextIdx;
+}
+
+function endRound() {
+  if (aliveCount() <= 1) { endGame(); return; }
+  state.currentRoundOrder = (state.nextRoundOrder || []).filter(i => state.players[i].alive);
+  if (state.currentRoundOrder.length === 0) { endGame(); return; }
+  state.nextRoundOrder = computeNextRoundOrder(state.currentRoundOrder);
+  state.round++;
+  state.currentTurnIdx = 0;
+  handoffShownFor = -1; // ラウンド切り替わり時は必ずハンドオフを表示する
+  logEntry({type:'round-start', round:state.round, order:[...state.currentRoundOrder], next:[...state.nextRoundOrder]});
+}
+
+function markActionUnable(playerIdx) {
+  const p = state.players[playerIdx];
+  for (const c of p.hand) state.deck.push(c);
+  p.hand = [];
+  p.alive = false;
+  logEntry({type:'action-unable', player:playerIdx});
+  if (state.nextRoundOrder) state.nextRoundOrder = state.nextRoundOrder.filter(i => i !== playerIdx);
+}
+
+function exchangeCards(playerIdx, cardIds) {
+  const p = state.players[playerIdx];
+  const idSet = new Set(cardIds);
+  const toReturn = [];
+  const kept = [];
+  for (const c of p.hand) {
+    if (idSet.has(c.id)) toReturn.push(c);
+    else kept.push(c);
+  }
+  p.hand = kept;
+  const n = Math.min(toReturn.length, state.deck.length);
+  for (let i=0; i<n; i++) p.hand.push(state.deck.shift());
+  for (const c of toReturn) state.deck.push(c);
+  logEntry({type:'exchange', player:playerIdx, returned:toReturn.map(cardLogId), drawn:n});
+}
+
+function endGame() {
+  state.phase = 'end';
+  const alive = state.players.filter(p => p.alive);
+  let winners;
+  if (alive.length === 1) winners = [alive[0].idx];
+  else if (alive.length > 1) {
+    let best = -1, ws = [];
+    for (const p of alive) {
+      const cn = countConnections(state, p.idx);
+      if (cn > best) { best = cn; ws = [p.idx]; }
+      else if (cn === best) ws.push(p.idx);
+    }
+    winners = ws;
+  } else {
+    let best = -1, ws = [];
+    for (const p of state.players) {
+      const cn = countConnections(state, p.idx);
+      if (cn > best) { best = cn; ws = [p.idx]; }
+      else if (cn === best) ws.push(p.idx);
+    }
+    winners = ws;
+  }
+  state.winners = winners;
+  logEntry({type:'game-end', winners});
+}
+
+// ============================== CPU AI ==============================
+function cloneState(s) {
+  const b = [];
+  for (let y=0; y<BOARD_SIZE; y++) {
+    const row = [];
+    for (let x=0; x<BOARD_SIZE; x++) {
+      const c = s.board[y][x];
+      row.push({x, y, forbidden: c.forbidden, card: c.card ? {...c.card} : null});
+    }
+    b.push(row);
+  }
+  const players = s.players.map(p => ({...p, hand: (p.hand||[]).map(c => c ? {...c} : null)}));
+  return {
+    board: b, deck: [], players,
+    phase: s.phase,
+    initOrder: s.initOrder ? [...s.initOrder] : null,
+    initIdx: s.initIdx,
+    currentRoundOrder: s.currentRoundOrder ? [...s.currentRoundOrder] : null,
+    nextRoundOrder: s.nextRoundOrder ? [...s.nextRoundOrder] : null,
+    currentTurnIdx: s.currentTurnIdx,
+    round: s.round,
+  };
+}
+function evalScore(s, myIdx) {
+  let mine = countConnections(s, myIdx);
+  let bestOpp = 0;
+  for (const p of s.players) if (p.idx !== myIdx) {
+    const cn = countConnections(s, p.idx);
+    if (cn > bestOpp) bestOpp = cn;
+  }
+  return mine * 2 - bestOpp;
+}
+function listAllMoves(s, playerIdx) {
+  const moves = [];
+  const p = s.players[playerIdx];
+  const seen = new Set();
+  for (const c of p.hand) {
+    if (!c) continue;
+    const k = c.suit + c.rank;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    for (const m of findLegalPlacements(s, c, playerIdx)) {
+      moves.push({card:c, x:m.x, y:m.y, isJammer:m.isJammer});
+    }
+  }
+  return moves;
+}
+function simulatePlace(s, move, playerIdx) {
+  const ns = cloneState(s);
+  ns.board[move.y][move.x].card = {...move.card, owner: playerIdx, isJammer: move.isJammer};
+  const p = ns.players[playerIdx];
+  p.hand = p.hand.filter(c => c.id !== move.card.id);
+  return ns;
+}
+function cpuPickMove(s, playerIdx, level) {
+  const moves = listAllMoves(s, playerIdx);
+  if (moves.length === 0) return null;
+  if (level <= 1) return moves[Math.floor(Math.random() * moves.length)];
+  let best = -Infinity, bestMoves = [];
+  for (const m of moves) {
+    const ns = simulatePlace(s, m, playerIdx);
+    let score = evalScore(ns, playerIdx);
+    if (m.isJammer) score -= 0.5;
+    if (level >= 3) {
+      const order = ns.currentRoundOrder || [];
+      let nextIdx = ns.currentTurnIdx + 1;
+      while (nextIdx < order.length && !ns.players[order[nextIdx]].alive) nextIdx++;
+      let oppIdx = -1;
+      if (nextIdx < order.length) oppIdx = order[nextIdx];
+      else if (ns.nextRoundOrder && ns.nextRoundOrder.length > 0) oppIdx = ns.nextRoundOrder[0];
+      if (oppIdx >= 0 && oppIdx !== playerIdx) {
+        const oppMoves = listAllMoves(ns, oppIdx);
+        if (oppMoves.length > 0) {
+          let oppBest = -Infinity;
+          const sample = oppMoves.length > 24 ? oppMoves.slice(0,24) : oppMoves;
+          for (const om of sample) {
+            const nns = simulatePlace(ns, om, oppIdx);
+            const sc = evalScore(nns, playerIdx);
+            if (sc > oppBest) oppBest = sc;
+          }
+          score = (score + oppBest) / 2;
+        }
+      }
+    }
+    if (score > best) { best = score; bestMoves = [m]; }
+    else if (score === best) bestMoves.push(m);
+  }
+  return bestMoves[Math.floor(Math.random() * bestMoves.length)];
+}
+
+// --- CPU init placement heuristic (replaces random) ---
+// Coefficients tuned via CPU-vs-random simulation (see scoreInitPlacement comments)
+function scoreInitPlacement(s, card, x, y, playerIdx, level) {
+  if (s.board[y][x].forbidden || s.board[y][x].card) return -Infinity;
+  let score = 0;
+  // 1. Center bias (Chebyshev distance from 3.5,3.5; max 3.5)
+  const dCheb = Math.max(Math.abs(x - 3.5), Math.abs(y - 3.5));
+  score += (3.5 - dCheb) * 1.2;
+  // 2. Open 4-neighbors (expansion room)
+  let open4 = 0;
+  for (const [dx,dy] of DIR) {
+    const nx=x+dx, ny=y+dy;
+    if (inBounds(nx,ny) && !s.board[ny][nx].forbidden && !s.board[ny][nx].card) open4++;
+  }
+  score += open4 * 1.5;
+  // 3. Open 8-neighbors (looser density)
+  let open8 = 0;
+  for (let dy=-1; dy<=1; dy++) for (let dx=-1; dx<=1; dx++) {
+    if (dx===0 && dy===0) continue;
+    const nx=x+dx, ny=y+dy;
+    if (inBounds(nx,ny) && !s.board[ny][nx].forbidden && !s.board[ny][nx].card) open8++;
+  }
+  score += open8 * 0.35;
+  // 4. Adjacency interactions
+  for (const [dx,dy] of DIR) {
+    const nx=x+dx, ny=y+dy;
+    if (!inBounds(nx,ny)) continue;
+    const nc = s.board[ny][nx].card;
+    if (!nc) continue;
+    if (nc.owner === playerIdx && !nc.isJammer) {
+      // Adjacent to own card. Form early connection if matching → big bonus.
+      if (adjacencyOK(card, nc)) score += 7;
+      else score += 0.8; // cluster
+    } else {
+      score -= 2.0; // avoid enemy proximity (they may jam later)
+    }
+  }
+  // 5. Diagonal own cards (loose cluster bonus)
+  for (const [dx,dy] of [[-1,-1],[1,-1],[-1,1],[1,1]]) {
+    const nx=x+dx, ny=y+dy;
+    if (!inBounds(nx,ny)) continue;
+    const nc = s.board[ny][nx].card;
+    if (nc && nc.owner === playerIdx && !nc.isJammer) score += 0.6;
+  }
+  // 6. Lv3+: count future legal placements for hand
+  if (level >= 3) {
+    const ns = cloneState(s);
+    ns.board[y][x].card = {...card, owner: playerIdx, isJammer: false};
+    ns.players[playerIdx].hand = ns.players[playerIdx].hand.filter(c => c && c.id !== card.id);
+    ns.phase = 'play';
+    let future = 0;
+    const seen = new Set();
+    for (const c of ns.players[playerIdx].hand) {
+      if (!c) continue;
+      const k = c.suit + c.rank;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      future += findLegalPlacements(ns, c, playerIdx).length;
+    }
+    score += future * 0.08;
+  }
+  return score;
+}
+function cpuInitMove(s, playerIdx, level) {
+  const player = s.players[playerIdx];
+  if (!player.hand.length) return null;
+  if (level <= 1) {
+    const card = player.hand[Math.floor(Math.random() * player.hand.length)];
+    const cells = [];
+    for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) {
+      if (!s.board[y][x].forbidden && !s.board[y][x].card) cells.push({x,y});
+    }
+    if (!cells.length) return null;
+    const pick = cells[Math.floor(Math.random() * cells.length)];
+    return {card, x: pick.x, y: pick.y, isJammer: false};
+  }
+  let best = -Infinity, bestList = [];
+  const seenCards = new Set();
+  for (const card of player.hand) {
+    const k = card.suit + card.rank;
+    if (seenCards.has(k)) continue;
+    seenCards.add(k);
+    for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) {
+      if (s.board[y][x].forbidden || s.board[y][x].card) continue;
+      const sc = scoreInitPlacement(s, card, x, y, playerIdx, level);
+      if (sc > best) { best = sc; bestList = [{card, x, y, isJammer:false}]; }
+      else if (sc === best) bestList.push({card, x, y, isJammer:false});
+    }
+  }
+  if (!bestList.length) return null;
+  return bestList[Math.floor(Math.random() * bestList.length)];
+}
+
+// ============================== NETWORK (PeerJS) ==============================
+const Net = {
+  mode: 'none',          // 'none' | 'host' | 'client'
+  peer: null,
+  conns: new Map(),      // host: peerId → DataConnection
+  hostConn: null,        // client: connection to host
+  roomCode: '',
+  roomId: '',
+  myName: '',
+  myPlayerIdx: -1,
+  status: 'disconnected',
+  statusMsg: '',
+  hostPlayers: [],       // host-side authoritative lobby
+  config: null,          // host: {numPlayers, turnTime}
+  ruleHash: '',
+};
+function computeRuleHash(cfg) { return `${VERSION}|p${cfg.numPlayers}|t${cfg.turnTime}`; }
+function setNetStatus(s, msg) { Net.status = s; Net.statusMsg = msg || ''; renderLobby(); renderNetIndicator(); }
+function showOnlineMsg(title, body) {
+  $('om-title').textContent = title;
+  $('om-body').innerHTML = body;
+  $('overlay-online-msg').classList.remove('hidden');
+}
+function roomIdFor(keyword) { return 'limiles-' + hashSeed(keyword.toLowerCase()).toString(16).padStart(8,'0'); }
+
+function netHostCreate({keyword, name, numPlayers, turnTime}) {
+  if (!keyword) { showOnlineMsg('エラー','合言葉を入力してください'); return; }
+  Net.mode = 'host';
+  Net.roomCode = keyword;
+  Net.roomId = roomIdFor(keyword);
+  Net.myName = name || 'Host';
+  Net.myPlayerIdx = 0;
+  Net.config = {numPlayers, turnTime};
+  Net.ruleHash = computeRuleHash(Net.config);
+  Net.hostPlayers = [{idx:0, name: Net.myName, peerId: 'HOST', isHost:true, connected:true}];
+  Net.conns.clear();
+  setNetStatus('creating', 'PeerServerに登録中…');
+
+  try { if (Net.peer) Net.peer.destroy(); } catch(e){}
+  Net.peer = new Peer(Net.roomId, {debug: 0});
+  Net.peer.on('open', id => { setNetStatus('hosting', '待機中。合言葉を共有してください'); });
+  Net.peer.on('error', err => {
+    let msg = err.type || 'error';
+    if (err.type === 'unavailable-id') msg = 'この合言葉は既に使用中です';
+    if (err.type === 'network') msg = 'ネットワーク接続失敗';
+    if (err.type === 'server-error') msg = 'シグナリングサーバ応答なし';
+    setNetStatus('error', msg);
+  });
+  Net.peer.on('disconnected', () => { setNetStatus('error', 'シグナリング切断'); });
+  Net.peer.on('connection', conn => {
+    conn.on('open', () => {
+      if (state && state.phase !== 'end') { conn.send({type:'reject', reason:'game-started'}); setTimeout(()=>conn.close(), 100); return; }
+      if (Net.hostPlayers.length >= Net.config.numPlayers) { conn.send({type:'reject', reason:'room-full'}); setTimeout(()=>conn.close(), 100); return; }
+      conn.on('data', d => handleHostMessage(conn, d));
+      conn.on('close', () => onClientDisconnect(conn));
+      conn.on('error', () => onClientDisconnect(conn));
+    });
+  });
+}
+
+function onClientDisconnect(conn) {
+  const player = Net.hostPlayers.find(p => p.peerId === conn.peer);
+  if (!player) return;
+  Net.conns.delete(conn.peer);
+  if (state && state.phase !== 'end' && player.idx < state.players.length) {
+    // In-game disconnect: mark action-unable
+    if (state.players[player.idx].alive) {
+      markActionUnable(player.idx);
+      logEntry({type:'disconnect', player:player.idx});
+      broadcastStateIfHost();
+      if (aliveCount() <= 1) endGame();
+      else if (currentPlayerIdx() === player.idx) postActionAdvance();
+      renderAll();
+    }
+  } else {
+    // Lobby disconnect: remove
+    Net.hostPlayers = Net.hostPlayers.filter(p => p.peerId !== conn.peer);
+    Net.hostPlayers.forEach((p, i) => p.idx = i);
+    broadcastLobby();
+    renderLobby();
+  }
+}
+
+function handleHostMessage(conn, msg) {
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.type === 'hello') {
+    if (msg.ver !== VERSION) { conn.send({type:'reject', reason:'version-mismatch', expected:VERSION}); setTimeout(()=>conn.close(), 200); return; }
+    if (msg.ruleHash !== null && msg.ruleHash !== Net.ruleHash) { conn.send({type:'reject', reason:'rule-mismatch', expected:Net.ruleHash}); setTimeout(()=>conn.close(), 200); return; }
+    if (state && state.phase !== 'end') { conn.send({type:'reject', reason:'game-started'}); setTimeout(()=>conn.close(), 200); return; }
+    if (Net.hostPlayers.length >= Net.config.numPlayers) { conn.send({type:'reject', reason:'room-full'}); setTimeout(()=>conn.close(), 200); return; }
+    if (Net.hostPlayers.some(p => p.peerId === conn.peer)) return; // duplicate
+    const idx = Net.hostPlayers.length;
+    Net.hostPlayers.push({idx, name: (msg.name||'').slice(0,16) || ('P'+(idx+1)), peerId: conn.peer, isHost:false, connected:true});
+    Net.conns.set(conn.peer, conn);
+    conn.send({type:'welcome', yourIdx: idx, ver:VERSION, config: Net.config, players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost}))});
+    broadcastLobby();
+    renderLobby();
+  } else if (msg.type === 'action') {
+    if (!state || state.phase === 'end') return;
+    const player = Net.hostPlayers.find(p => p.peerId === conn.peer);
+    if (!player) return;
+    processOnlineAction(player.idx, msg.action);
+  }
+}
+
+function broadcastLobby() {
+  const payload = {type:'lobby-update', players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost}))};
+  for (const conn of Net.conns.values()) { try { conn.send(payload); } catch(e){} }
+}
+function broadcastStateIfHost() {
+  if (Net.mode !== 'host') return;
+  for (const [peerId, conn] of Net.conns.entries()) {
+    const player = Net.hostPlayers.find(p => p.peerId === peerId);
+    if (!player) continue;
+    try { conn.send({type:'state', view: buildClientView(state, player.idx)}); } catch(e){}
+  }
+}
+
+function netJoin({keyword, name}) {
+  if (!keyword) { showOnlineMsg('エラー','合言葉を入力してください'); return; }
+  Net.mode = 'client';
+  Net.roomCode = keyword;
+  Net.roomId = roomIdFor(keyword);
+  Net.myName = name || 'Guest';
+  Net.myPlayerIdx = -1;
+  Net.hostPlayers = [];
+  setNetStatus('connecting', 'PeerServerに登録中…');
+
+  try { if (Net.peer) Net.peer.destroy(); } catch(e){}
+  Net.peer = new Peer(undefined, {debug: 0});
+  Net.peer.on('open', () => {
+    setNetStatus('connecting', 'ホストに接続中…');
+    const conn = Net.peer.connect(Net.roomId, {reliable: true});
+    Net.hostConn = conn;
+    let opened = false;
+    conn.on('open', () => {
+      opened = true;
+      setNetStatus('handshake', 'ハンドシェイク中…');
+      // We don't know ruleHash yet; send hello and let host validate
+      conn.send({type:'hello', ver:VERSION, name: Net.myName, ruleHash: null /* host will validate */});
+      // Re-send hello with proper ruleHash after first welcome-rejection-then-retry pattern is unnecessary —
+      // we let host accept w/o ruleHash on join (the rules will be enforced anyway by host authority).
+    });
+    conn.on('data', d => handleClientMessage(d));
+    conn.on('close', () => {
+      if (!opened) setNetStatus('error', 'ホストに到達できません');
+      else setNetStatus('disconnected', '接続が切断されました');
+    });
+    conn.on('error', () => setNetStatus('error', '接続エラー'));
+  });
+  Net.peer.on('error', err => {
+    let msg = err.type || 'error';
+    if (err.type === 'peer-unavailable') msg = 'ホストが見つかりません (合言葉を確認)';
+    if (err.type === 'network') msg = 'ネットワーク接続失敗';
+    setNetStatus('error', msg);
+  });
+}
+
+function handleClientMessage(msg) {
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.type === 'welcome') {
+    // Verify host's rule hash matches what client expects? Host is authoritative.
+    Net.myPlayerIdx = msg.yourIdx;
+    Net.hostPlayers = msg.players;
+    Net.config = msg.config;
+    Net.ruleHash = computeRuleHash(msg.config);
+    setNetStatus('lobby', 'ロビー待機中');
+  } else if (msg.type === 'reject') {
+    let txt = msg.reason;
+    if (msg.reason === 'version-mismatch') txt = 'バージョン不一致 (host: ' + (msg.expected||'?') + ', you: '+VERSION+')';
+    if (msg.reason === 'rule-mismatch') txt = 'ルール設定不一致';
+    if (msg.reason === 'game-started') txt = '既にゲーム開始済み';
+    if (msg.reason === 'room-full') txt = 'ルーム満員';
+    setNetStatus('error', txt);
+    showOnlineMsg('参加拒否', txt);
+    try { Net.hostConn?.close(); } catch(e){}
+  } else if (msg.type === 'lobby-update') {
+    Net.hostPlayers = msg.players;
+    renderLobby();
+  } else if (msg.type === 'game-start') {
+    state = msg.view;
+    state.mode = 'online-client';
+    showScreen('game');
+    handoffShownFor = -2; // disable handoff
+    UI_PENDING = null; UI_EXCHANGE_MODE = false; UI_EXCHANGE_PICKED.clear(); ui.selectedCardId = null;
+    renderAll();
+    maybeStartTimerForLocalTurn();
+  } else if (msg.type === 'state') {
+    if (!state || state.mode !== 'online-client') {
+      // First state message after game-start race
+      state = msg.view;
+      state.mode = 'online-client';
+      showScreen('game');
+    } else {
+      state = msg.view;
+      state.mode = 'online-client';
+    }
+    UI_PENDING = null;
+    UI_EXCHANGE_MODE = false;
+    UI_EXCHANGE_PICKED.clear();
+    ui.selectedCardId = null;
+    if (state.phase === 'end') { stopTurnTimer(); showResult(); return; }
+    renderAll();
+    maybeStartTimerForLocalTurn();
+  } else if (msg.type === 'error') {
+    showOnlineMsg('不正アクション', msg.reason || '');
+  }
+}
+
+function maybeStartTimerForLocalTurn() {
+  if (!state) return;
+  if (currentPlayerIdx() === localPlayerIdx()) startTurnTimer();
+  else stopTurnTimer();
+}
+
+function localPlayerIdx() {
+  if (Net.mode === 'host') return 0;
+  if (Net.mode === 'client') return Net.myPlayerIdx;
+  return currentPlayerIdx();
+}
+
+function buildClientView(s, viewerIdx) {
+  return {
+    board: s.board.map(row => row.map(c => ({x:c.x, y:c.y, forbidden:c.forbidden, card: c.card ? {...c.card} : null}))),
+    deck: new Array(s.deck.length).fill(null),
+    players: s.players.map((p, i) => ({
+      idx: p.idx, name: p.name, color: p.color, isCPU: false, alive: p.alive,
+      hand: i === viewerIdx ? p.hand.map(c => ({...c})) : new Array(p.hand.length).fill(null),
+    })),
+    phase: s.phase,
+    initOrder: s.initOrder ? [...s.initOrder] : null,
+    initIdx: s.initIdx,
+    currentRoundOrder: s.currentRoundOrder ? [...s.currentRoundOrder] : null,
+    nextRoundOrder: s.nextRoundOrder ? [...s.nextRoundOrder] : null,
+    currentTurnIdx: s.currentTurnIdx,
+    round: s.round,
+    log: s.log.slice(-50),
+    lastPlaced: s.lastPlaced,
+    turnTime: s.turnTime,
+    seedStr: s.seedStr,
+    winners: s.winners,
+    mode: 'online-client',
+    viewerIdx,
+  };
+}
+
+function processOnlineAction(playerIdx, action) {
+  if (!action || typeof action !== 'object') return;
+  if (currentPlayerIdx() !== playerIdx) {
+    sendErrorTo(playerIdx, 'not-your-turn'); return;
+  }
+  const player = state.players[playerIdx];
+  if (!player.alive) { sendErrorTo(playerIdx, 'dead'); return; }
+  if (action.type === 'place') {
+    const card = player.hand.find(c => c.id === action.cardId);
+    if (!card) { sendErrorTo(playerIdx, 'card-not-in-hand'); return; }
+    const legal = action.isJammer
+      ? isLegalJammer(state, card, action.x, action.y, playerIdx)
+      : isLegalNormal(state, card, action.x, action.y, playerIdx);
+    if (!legal) { sendErrorTo(playerIdx, 'illegal-placement'); return; }
+    placeCard(card, action.x, action.y, action.isJammer);
+    postActionAdvance();
+    broadcastStateIfHost();
+    renderAll();
+  } else if (action.type === 'exchange') {
+    if (state.phase !== 'play') { sendErrorTo(playerIdx, 'wrong-phase'); return; }
+    if (anyLegalPlacement(state, playerIdx)) { sendErrorTo(playerIdx, 'placement-available'); return; }
+    if (!Array.isArray(action.cardIds) || action.cardIds.length === 0) { sendErrorTo(playerIdx, 'no-cards'); return; }
+    if (action.cardIds.length > state.deck.length) { sendErrorTo(playerIdx, 'deck-insufficient'); return; }
+    const handIds = new Set(player.hand.map(c => c.id));
+    for (const id of action.cardIds) if (!handIds.has(id)) { sendErrorTo(playerIdx, 'invalid-card'); return; }
+    exchangeCards(playerIdx, action.cardIds);
+    if (anyLegalPlacement(state, playerIdx)) {
+      broadcastStateIfHost();
+      renderAll();
+    } else {
+      markActionUnable(playerIdx);
+      postActionAdvance();
+      broadcastStateIfHost();
+      renderAll();
+    }
+  } else if (action.type === 'give-up') {
+    if (anyLegalPlacement(state, playerIdx)) { sendErrorTo(playerIdx, 'must-play'); return; }
+    if (state.deck.length > 0 && player.hand.length > 0) { sendErrorTo(playerIdx, 'must-try-exchange'); return; }
+    markActionUnable(playerIdx);
+    postActionAdvance();
+    broadcastStateIfHost();
+    renderAll();
+  }
+}
+function sendErrorTo(playerIdx, reason) {
+  if (playerIdx === 0) return; // host
+  const peer = Net.hostPlayers.find(p => p.idx === playerIdx);
+  if (!peer) return;
+  const conn = Net.conns.get(peer.peerId);
+  if (conn) try { conn.send({type:'error', reason}); } catch(e){}
+}
+
+function netLeave() {
+  stopTurnTimer();
+  try {
+    for (const conn of Net.conns.values()) { try { conn.close(); } catch(e){} }
+  } catch(e){}
+  try { Net.hostConn?.close(); } catch(e){}
+  try { Net.peer?.destroy(); } catch(e){}
+  Net.mode = 'none';
+  Net.peer = null;
+  Net.hostConn = null;
+  Net.conns.clear();
+  Net.hostPlayers = [];
+  Net.myPlayerIdx = -1;
+  Net.status = 'disconnected';
+  state = null;
+  $('online-pane-lobby').classList.add('hidden');
+  $('online-pane-host').classList.remove('hidden');
+  $('online-pane-join').classList.add('hidden');
+  showScreen('title');
+}
+
+// ============================== UI ==============================
+// 配置演出トリガー（各クライアント側で独立再生 — 追加通信ゼロ）
+function triggerPlaceEffect(x, y, hasNewConn) {
+  // 配置後の接続数を取得（現在プレイヤー）
+  const pIdx = state.lastPlaced ? state.lastPlaced.owner : currentPlayerIdx();
+  const connCount = countConnections(state, pIdx);
+  const tier = connCount >= 13 ? 4 : connCount >= 8 ? 3 : connCount >= 4 ? 2 : 1;
+
+  // === 効果音 (密度レイヤー) ===
+  SFX.kachick();
+  if (tier === 2) {
+    // 中密度: カチ + ス…
+    setTimeout(() => SFX.su(), 70);
+  } else if (tier === 3) {
+    // 高密度: カチ + シュ + ズゥン
+    setTimeout(() => SFX.shu(), 70);
+    setTimeout(() => SFX.zuun(), 110);
+  } else if (tier === 4) {
+    // 超密度: カチ + シュ + ブゥン
+    setTimeout(() => SFX.shu(), 70);
+    setTimeout(() => SFX.buun(), 120);
+  } else if (hasNewConn) {
+    // tier1 でも新規接続あり: 軽いシュ
+    setTimeout(() => SFX.shu(), 80);
+  }
+
+  // === 盤面カード演出 ===
+  const boardEl = $('board');
+  if (boardEl) {
+    const cells = boardEl.querySelectorAll('.cell');
+    cells.forEach(cell => {
+      const cx = +cell.dataset.x, cy = +cell.dataset.y;
+      const isPlaced = cx === x && cy === y;
+
+      if (isPlaced) {
+        // 配置マス: フラッシュ + ポップ
+        cell.classList.add('place-flash');
+        setTimeout(() => cell.classList.remove('place-flash'), 300);
+        const cardEl = cell.querySelector('.card');
+        if (cardEl) {
+          cardEl.classList.remove('place-pop');
+          void cardEl.offsetWidth;
+          cardEl.classList.add('place-pop');
+          cardEl.addEventListener('animationend', () => cardEl.classList.remove('place-pop'), {once: true});
+        }
+
+        // tier3/4: 波紋 — 周辺カードへ連鎖スケール
+        if (tier >= 3) {
+          const dist1 = [];
+          cells.forEach(nc => {
+            const nx = +nc.dataset.x, ny = +nc.dataset.y;
+            const d = Math.abs(nx - x) + Math.abs(ny - y);
+            if (d >= 1 && d <= 2) {
+              const ncCard = nc.querySelector('.card');
+              if (ncCard && state.board[ny] && state.board[ny][nx] && state.board[ny][nx].card &&
+                  state.board[ny][nx].card.owner === pIdx) {
+                dist1.push({el: ncCard, d});
+              }
+            }
+          });
+          dist1.forEach(({el, d}) => {
+            setTimeout(() => {
+              el.classList.remove('resonance-ripple');
+              void el.offsetWidth;
+              el.classList.add('resonance-ripple');
+              el.addEventListener('animationend', () => el.classList.remove('resonance-ripple'), {once: true});
+            }, d * 55);
+          });
+        }
+      }
+    });
+  }
+
+  // === 接続線 + 盤面常時演出を更新 ===
+  if (hasNewConn) {
+    requestAnimationFrame(() => drawConnectionLines(true));
+  }
+  // 常時発光・脈動はdrawConnectionLines内で制御
+  requestAnimationFrame(() => applyResonanceToBoard());
+}
+
+// 盤面全体に密度演出を適用（renderAll後に呼ぶ）
+// 方向インデックス: 0=上, 1=右, 2=下, 3=左
+const EDGE_DIRS = [
+  { dx:  0, dy: -1, name: 'top'    },
+  { dx:  1, dy:  0, name: 'right'  },
+  { dx:  0, dy:  1, name: 'bottom' },
+  { dx: -1, dy:  0, name: 'left'   },
+];
+
+// あるカードが、その方向に「接続済みの同じオーナーカード」を持つか
+function hasConnectedNeighbor(x, y, dx, dy, ownerIdx) {
+  const nx = x + dx, ny = y + dy;
+  if (!inBounds(nx, ny)) return false;
+  const nc = state.board[ny][nx].card;
+  if (!nc || nc.owner !== ownerIdx || nc.isJammer) return false;
+  const tc = state.board[y][x].card;
+  if (!tc) return false;
+  return adjacencyOK(tc, nc);
+}
+
+function applyResonanceToBoard() {
+  if (!state) return;
+  const boardEl = $('board');
+  if (!boardEl) return;
+  const cells = boardEl.querySelectorAll('.cell');
+
+  // プレイヤー別接続数マップ
+  const connMap = {};
+  for (const p of state.players) {
+    connMap[p.idx] = countConnections(state, p.idx);
+  }
+
+  cells.forEach(cell => {
+    const cx = +cell.dataset.x, cy = +cell.dataset.y;
+    if (!state.board[cy] || !state.board[cy][cx]) return;
+    const cd = state.board[cy][cx].card;
+    if (!cd || cd.isJammer) return;
+    const cardEl = cell.querySelector('.card');
+    if (!cardEl) return;
+    const cn = connMap[cd.owner] || 0;
+
+    // 接続が1本もない（孤立カード）は外周演出なし
+    if (cn === 0) {
+      clearEdges(cardEl);
+      cardEl.classList.remove('resonance-glow', 'has-outer-edge');
+      return;
+    }
+
+    // このカード自身が接続グループに参加しているか確認
+    // （接続が1本でもある = countConnections > 0 だが、
+    //   このカード個別に接続があるかチェック）
+    let selfConnected = false;
+    for (const {dx, dy} of EDGE_DIRS) {
+      if (hasConnectedNeighbor(cx, cy, dx, dy, cd.owner)) { selfConnected = true; break; }
+    }
+
+    if (!selfConnected) {
+      // 孤立カード（他のペアが接続してるがこのカードは無関係）
+      clearEdges(cardEl);
+      cardEl.classList.remove('resonance-glow', 'has-outer-edge');
+      return;
+    }
+
+    // 外周辺検出: 方向に接続済みネイバーがいない辺 = 外周
+    let hasAnyEdge = false;
+    for (const {dx, dy, name} of EDGE_DIRS) {
+      const isInner = hasConnectedNeighbor(cx, cy, dx, dy, cd.owner);
+      cardEl.setAttribute('data-edge-' + name, isInner ? '0' : '1');
+      if (!isInner) hasAnyEdge = true;
+    }
+
+    if (hasAnyEdge) {
+      cardEl.classList.add('has-outer-edge');
+    } else {
+      cardEl.classList.remove('has-outer-edge');
+    }
+
+    // 常時発光・脈動 (13+)
+    if (cn >= 13) {
+      cardEl.classList.add('resonance-glow');
+    } else {
+      cardEl.classList.remove('resonance-glow');
+    }
+  });
+
+  // SVG接続線の脈動・輝度も更新
+  const svg = $('lines-svg');
+  if (!svg) return;
+  svg.querySelectorAll('line[data-player]').forEach(line => {
+    const pIdx = +line.getAttribute('data-player');
+    const cn = connMap[pIdx] || 0;
+    if (cn >= 13) {
+      line.classList.add('conn-line-pulse');
+      line.classList.remove('conn-line-warm');
+      line.setAttribute('stroke-width', '5');
+      line.setAttribute('opacity', '0.95');
+    } else if (cn >= 4) {
+      line.classList.remove('conn-line-pulse');
+      line.classList.add('conn-line-warm');
+      line.setAttribute('stroke-width', '4');
+      line.setAttribute('opacity', '0.92');
+    } else {
+      line.classList.remove('conn-line-pulse', 'conn-line-warm');
+      line.setAttribute('stroke-width', '4');
+      line.setAttribute('opacity', '0.85');
+    }
+  });
+}
+
+function clearEdges(cardEl) {
+  for (const {name} of EDGE_DIRS) {
+    cardEl.setAttribute('data-edge-' + name, '0');
+  }
+}
+function $(id) { return document.getElementById(id); }
+function showScreen(name) {
+  ['title','setup','online','game','end'].forEach(n => $('screen-'+n).classList.add('hidden'));
+  $('screen-' + name).classList.remove('hidden');
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+}
+
+function renderSetup() {
+  showScreen('setup');
+  const num = +$('setup-num-players').value;
+  const rowsEl = $('player-rows');
+  const prev = [];
+  for (let i=0; i<4; i++) {
+    const ni = $('p-name-'+i), ci = $('p-cpu-'+i), li = $('p-lvl-'+i);
+    if (ni) prev[i] = {name: ni.value, cpu: ci.checked, lvl: li.value};
+  }
+  rowsEl.innerHTML = '';
+  for (let i=0; i<num; i++) {
+    const p = prev[i] || {name:'P'+(i+1), cpu: i>0, lvl:'2'};
+    const row = document.createElement('div');
+    row.className = 'player-row';
+    row.innerHTML =
+      '<span class="color-dot" style="background:'+PLAYER_COLORS[i].bg+'"></span>'+
+      '<span style="font-size:14px; font-weight:700; color:'+PLAYER_COLORS[i].bg+'">'+PLAYER_COLORS[i].badge+'</span>'+
+      '<input type="text" id="p-name-'+i+'" value="'+escapeHtml(p.name)+'">'+
+      '<label><input type="checkbox" id="p-cpu-'+i+'" '+(p.cpu?'checked':'')+'> CPU</label>'+
+      '<select id="p-lvl-'+i+'">'+
+        '<option value="1"'+(p.lvl=='1'?' selected':'')+'>Lv1 ランダム</option>'+
+        '<option value="2"'+(p.lvl=='2'?' selected':'')+'>Lv2 1手読み</option>'+
+        '<option value="3"'+(p.lvl=='3'?' selected':'')+'>Lv3 2手読み</option>'+
+      '</select>';
+    rowsEl.appendChild(row);
+  }
+  applyPendingPlayerSettings();
+}
+
+function renderBoard() {
+  const boardEl = $('board');
+  boardEl.innerHTML = '';
+  const legalCells = new Map();
+  if (UI_SHOW_LEGAL && !UI_PENDING && !UI_EXCHANGE_MODE && state.phase !== 'end') {
+    const localIdx = localPlayerIdx();
+    const isMyTurn = currentPlayerIdx() === localIdx;
+    if (isMyTurn && ui.selectedCardId != null) {
+      const player = state.players[localIdx];
+      const card = player.hand.find(c => c && c.id === ui.selectedCardId);
+      if (card) {
+        for (const m of findLegalPlacements(state, card, localIdx)) {
+          legalCells.set(m.x+','+m.y, m.isJammer ? 'jammer' : 'normal');
+        }
+      }
+    }
+  }
+  for (let y=0; y<BOARD_SIZE; y++) {
+    for (let x=0; x<BOARD_SIZE; x++) {
+      const cellData = state.board[y][x];
+      const el = document.createElement('div');
+      el.className = 'cell';
+      el.dataset.x = x;
+      el.dataset.y = y;
+      if (cellData.forbidden) el.classList.add('forbidden');
+      const lk = x+','+y;
+      if (legalCells.has(lk)) el.classList.add(legalCells.get(lk) === 'jammer' ? 'legal-jammer' : 'legal-normal');
+      if (UI_PENDING && UI_PENDING.x === x && UI_PENDING.y === y) el.classList.add('preview');
+      if (state.lastPlaced && state.lastPlaced.x === x && state.lastPlaced.y === y) el.classList.add('last-placed');
+      if (cellData.card) el.appendChild(renderCardInCell(cellData.card));
+      else if (UI_PENDING && UI_PENDING.x === x && UI_PENDING.y === y) {
+        const tmp = {...UI_PENDING.card, owner: localPlayerIdx(), isJammer: UI_PENDING.isJammer};
+        const ce = renderCardInCell(tmp);
+        ce.style.opacity = '0.65';
+        el.appendChild(ce);
+      }
+      el.addEventListener('click', () => onCellClick(x, y));
+      boardEl.appendChild(el);
+    }
+  }
+  requestAnimationFrame(drawConnectionLines);
+}
+
+function renderCardInCell(card) {
+  const e = document.createElement('div');
+  e.className = 'card suit-' + card.suit;
+  if (card.isJammer) e.classList.add('jammer');
+  e.style.setProperty('--owner', PLAYER_COLORS[card.owner].bg);
+  e.innerHTML =
+    '<div class="suit-corner">'+SUIT_GLYPH[card.suit]+'</div>'+
+    '<div class="rank">'+rankStr(card.rank)+'</div>'+
+    '<div class="suit-center">'+SUIT_GLYPH[card.suit]+'</div>'+
+    '<div class="badge">'+PLAYER_COLORS[card.owner].badge+'</div>';
+  return e;
+}
+
+function drawConnectionLines(animateNew) {
+  const svg = $('lines-svg');
+  const board = $('board');
+  if (!board || !state) return;
+  const w = board.offsetWidth, h = board.offsetHeight;
+  svg.setAttribute('width', w);
+  svg.setAttribute('height', h);
+  svg.setAttribute('viewBox', '0 0 '+w+' '+h);
+  svg.style.width = w+'px';
+  svg.style.height = h+'px';
+
+  // 既存線のキーセットを保存（アニメ判定用）
+  const existingKeys = new Set();
+  if (animateNew) {
+    svg.querySelectorAll('line[data-key]').forEach(l => existingKeys.add(l.getAttribute('data-key')));
+  }
+
+  svg.innerHTML = '';
+  const bRect = board.getBoundingClientRect();
+  const cells = board.querySelectorAll('.cell');
+  const positions = {};
+  cells.forEach(c => {
+    const x = +c.dataset.x, y = +c.dataset.y;
+    const cr = c.getBoundingClientRect();
+    positions[x+','+y] = { cx: cr.left - bRect.left + cr.width/2, cy: cr.top - bRect.top + cr.height/2 };
+  });
+  for (const p of state.players) {
+    const conns = computeConnections(state, p.idx);
+    for (const c of conns) {
+      const a = positions[c.x1+','+c.y1];
+      const b = positions[c.x2+','+c.y2];
+      if (!a || !b) continue;
+      const lineKey = `${c.x1},${c.y1}-${c.x2},${c.y2}-${p.idx}`;
+      const isNew = animateNew && !existingKeys.has(lineKey);
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', a.cx); line.setAttribute('y1', a.cy);
+      line.setAttribute('x2', b.cx); line.setAttribute('y2', b.cy);
+      line.setAttribute('stroke', PLAYER_COLORS[p.idx].bg);
+      line.setAttribute('stroke-width', '4');
+      line.setAttribute('stroke-linecap', 'round');
+      line.setAttribute('opacity', '0.85');
+      line.setAttribute('data-key', lineKey);
+      line.setAttribute('data-player', p.idx);
+      // 密度に応じた線スタイル（新規描画時に適用）
+      const connCount = computeConnections(state, p.idx).length;
+      if (connCount >= 13) {
+        line.classList.add('conn-line-pulse');
+        line.setAttribute('stroke-width', '5');
+        line.setAttribute('opacity', '0.95');
+      } else if (connCount >= 4) {
+        line.classList.add('conn-line-warm');
+        line.setAttribute('opacity', '0.92');
+      }
+      if (isNew) {
+        const len = Math.hypot(b.cx - a.cx, b.cy - a.cy);
+        line.style.setProperty('--line-len', len);
+        line.setAttribute('stroke-dasharray', len);
+        line.setAttribute('stroke-dashoffset', len);
+        line.classList.add('conn-line-new');
+      }
+      svg.appendChild(line);
+    }
+  }
+}
+
+function renderHand() {
+  const el = $('hand-row');
+  el.innerHTML = '';
+  if (!state) return;
+  const localIdx = localPlayerIdx();
+  const curIdx = currentPlayerIdx();
+  const isOnline = state.mode === 'online-host' || state.mode === 'online-client';
+
+  if (localIdx < 0) return;
+  const player = state.players[localIdx];
+
+  if (isOnline) {
+    // Always show local player's own hand.
+    if (curIdx !== localIdx) {
+      el.appendChild(makeMsgRow('相手のターン待ち (' + escapeHtml(state.players[curIdx]?.name||'?') + ')'));
+    }
+    appendHandCards(el, player, localIdx);
+    return;
+  }
+
+  // Local hot-seat
+  if (player.isCPU) { el.innerHTML = '<div class="hidden-hand">CPU ('+escapeHtml(player.name)+' Lv'+player.cpuLevel+') 思考中…</div>'; return; }
+  if (!$('overlay-handoff').classList.contains('hidden')) { el.innerHTML = '<div class="hidden-hand">待機中…</div>'; return; }
+  appendHandCards(el, player, localIdx);
+}
+
+function makeMsgRow(txt) {
+  const d = document.createElement('div');
+  d.className = 'hidden-hand';
+  d.textContent = txt;
+  return d;
+}
+
+function appendHandCards(el, player, pIdx) {
+  for (const card of player.hand) {
+    if (!card) continue;
+    const legal = state.phase === 'init' ? true : (currentPlayerIdx() === pIdx ? findLegalPlacements(state, card, pIdx).length > 0 : false);
+    const e = document.createElement('div');
+    // no-legal-dimはtriggerNoLegalEffectが付与; 再描画時は除去してアニメに任せる
+    e.className = 'hand-card suit-' + card.suit + (legal ? ' legal' : ' illegal');
+    if (ui.selectedCardId === card.id) e.classList.add('selected');
+    if (UI_EXCHANGE_PICKED.has(card.id)) e.classList.add('exchange-selected');
+    e.innerHTML =
+      '<div class="suit-corner">'+SUIT_GLYPH[card.suit]+'</div>'+
+      '<div class="rank">'+rankStr(card.rank)+'</div>'+
+      '<div class="suit-c">'+SUIT_GLYPH[card.suit]+'</div>';
+    e.addEventListener('click', () => onHandCardClick(card));
+    el.appendChild(e);
+  }
+}
+
+function renderTopBar() {
+  if (!state) return;
+  $('round-num').textContent = state.round;
+  const pIdx = currentPlayerIdx();
+  const tp = $('turn-player');
+  if (pIdx >= 0 && state.players[pIdx]) {
+    tp.style.background = PLAYER_COLORS[pIdx].bg;
+    tp.textContent = PLAYER_COLORS[pIdx].badge + ' ' + state.players[pIdx].name + (state.phase==='init'?' [初期]':'');
+  }
+  const nowEl = $('now-order'), nextEl = $('next-order');
+  nowEl.innerHTML = ''; nextEl.innerHTML = '';
+  if (state.phase === 'init') {
+    for (let i=state.initIdx; i<state.initOrder.length; i++) {
+      const idx = state.initOrder[i];
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.style.background = PLAYER_COLORS[idx].bg;
+      if (i === state.initIdx) dot.style.boxShadow = '0 0 0 2px #fff';
+      nowEl.appendChild(dot);
+    }
+  } else if (state.currentRoundOrder) {
+    state.currentRoundOrder.forEach((idx, i) => {
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.style.background = PLAYER_COLORS[idx].bg;
+      if (i === state.currentTurnIdx) dot.style.boxShadow = '0 0 0 2px #fff';
+      if (!state.players[idx].alive) dot.style.opacity = '0.25';
+      nowEl.appendChild(dot);
+    });
+    (state.nextRoundOrder || []).forEach(idx => {
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.style.background = PLAYER_COLORS[idx].bg;
+      dot.style.opacity = '0.85';
+      dot.style.width = '9px'; dot.style.height = '9px';
+      nextEl.appendChild(dot);
+    });
+  }
+  $('deck-count').textContent = state.deck.length;
+  renderNetIndicator();
+}
+
+function renderNetIndicator() {
+  const el = $('net-indicator');
+  if (!el) return;
+  if (Net.mode === 'none' || !state || (state.mode !== 'online-host' && state.mode !== 'online-client')) {
+    el.classList.add('hidden'); return;
+  }
+  el.classList.remove('hidden');
+  if (Net.mode === 'host') {
+    el.className = 'net-status ok';
+    el.textContent = 'HOST · 接続' + Net.conns.size;
+  } else {
+    el.className = 'net-status ' + (Net.status === 'lobby' || Net.status === 'connecting' || Net.status === 'handshake' ? 'warn' : (Net.status.startsWith('error') || Net.status === 'disconnected' ? 'bad' : 'ok'));
+    el.textContent = 'CLIENT · ' + Net.status;
+  }
+}
+
+function renderScores() {
+  const el = $('scores');
+  el.innerHTML = '';
+  for (const p of state.players) {
+    const cn = countConnections(state, p.idx);
+    const r = document.createElement('div');
+    r.className = 'score-row' + (currentPlayerIdx() === p.idx ? ' active' : '') + (!p.alive ? ' dead' : '');
+    const handLen = p.hand ? p.hand.length : 0;
+    r.innerHTML =
+      '<div class="name">'+
+        '<span class="color-dot" style="width:10px;height:10px;background:'+PLAYER_COLORS[p.idx].bg+'"></span>'+
+        '<span style="color:'+PLAYER_COLORS[p.idx].bg+'">'+PLAYER_COLORS[p.idx].badge+'</span>'+
+        escapeHtml(p.name)+(p.isCPU?' [CPU'+p.cpuLevel+']':'')+(!p.alive?' ✗':'')+
+      '</div>'+
+      '<div class="stat">手'+handLen+' 線'+cn+'</div>';
+    el.appendChild(r);
+  }
+}
+
+function renderLog() {
+  const el = $('log-panel');
+  el.innerHTML = '';
+  const recent = (state.log || []).slice(-40).reverse();
+  for (const entry of recent) {
+    const e = document.createElement('div');
+    e.className = 'log-entry';
+    let txt = '';
+    if (entry.type === 'place') {
+      const p = state.players[entry.player];
+      txt = 'R'+entry.round+' '+p.name+': '+entry.card+' → ('+entry.x+','+entry.y+')'+(entry.isJammer?' [妨害]':'');
+    } else if (entry.type === 'exchange') {
+      const p = state.players[entry.player];
+      txt = 'R'+entry.round+' '+p.name+': 交換 '+entry.returned.join(',')+' ('+entry.drawn+'枚)';
+    } else if (entry.type === 'action-unable') {
+      const p = state.players[entry.player];
+      txt = 'R'+entry.round+' '+p.name+': 行動不能';
+    } else if (entry.type === 'disconnect') {
+      const p = state.players[entry.player];
+      txt = 'R'+entry.round+' '+p.name+': 切断';
+    } else if (entry.type === 'round-start') {
+      txt = '— ラウンド '+entry.round+' 開始 —';
+    } else if (entry.type === 'game-end') {
+      const ws = entry.winners.map(i => state.players[i].name).join(', ');
+      txt = '★ 終了 勝者: '+ws;
+    }
+    e.textContent = txt;
+    el.appendChild(e);
+  }
+}
+
+function renderAll() {
+  if (!state) return;
+  renderTopBar();
+  renderBoard();
+  renderHand();
+  renderScores();
+  renderLog();
+  updateActionButtons();
+  // 盤面共鳴 — 密度演出を適用
+  requestAnimationFrame(applyResonanceToBoard);
+}
+
+function updateActionButtons() {
+  const localIdx = localPlayerIdx();
+  const curIdx = currentPlayerIdx();
+  const isMyTurn = curIdx === localIdx && localIdx >= 0;
+  const isHuman = localIdx >= 0 && !state.players[localIdx].isCPU;
+  const handoffOpen = !$('overlay-handoff').classList.contains('hidden');
+  const inPlayPhase = state.phase === 'play';
+  const isOnline = state.mode === 'online-host' || state.mode === 'online-client';
+  const canActLocally = isHuman && isMyTurn && !handoffOpen;
+
+  // 配置確定・キャンセルはポップアップに移譲 — ボタンは常時非表示
+  $('btn-confirm').classList.add('hidden');
+  $('btn-cancel').classList.add('hidden');
+
+  const canShowExchange = canActLocally && inPlayPhase && !UI_PENDING && !UI_EXCHANGE_MODE;
+  let exEligible = false;
+  if (canShowExchange) {
+    exEligible = !anyLegalPlacement(state, localIdx) && state.deck.length > 0 && state.players[localIdx].hand.length > 0;
+  }
+  $('btn-exchange').classList.toggle('hidden', !canShowExchange);
+  $('btn-exchange').disabled = !exEligible;
+  // 合法手あり or 非表示なら呼吸アニメを止める
+  if (!canShowExchange || !exEligible) {
+    $('btn-exchange').classList.remove('no-legal-breath');
+  }
+
+  $('btn-exchange-confirm').classList.toggle('hidden', !UI_EXCHANGE_MODE);
+  $('btn-exchange-cancel').classList.toggle('hidden', !UI_EXCHANGE_MODE);
+  $('btn-exchange-confirm').disabled = UI_EXCHANGE_PICKED.size === 0 || UI_EXCHANGE_PICKED.size > state.deck.length;
+
+  let canGiveUp = false;
+  if (canActLocally && inPlayPhase && !UI_PENDING && !UI_EXCHANGE_MODE) {
+    if (!anyLegalPlacement(state, localIdx) && (state.deck.length === 0 || state.players[localIdx].hand.length === 0)) {
+      canGiveUp = true;
+    }
+  }
+  $('btn-giveup').classList.toggle('hidden', !canGiveUp);
+
+  let msg = '';
+  if (!isMyTurn) {
+    if (state.phase !== 'end') msg = (state.players[curIdx]?.name||'?') + ' のターン待機';
+  } else if (state.phase === 'init') msg = '初期配置: 隣接条件なしで配置(' + (state.initIdx+1) + '/' + state.initOrder.length + ')';
+  else if (UI_PENDING) msg = UI_PENDING.isJammer ? '妨害配置 — 確定待ち' : '配置 — 確定待ち';
+  else if (UI_EXCHANGE_MODE) msg = '交換するカードを選択 (山札残' + state.deck.length + ')';
+  else {
+    if (anyLegalPlacement(state, localIdx)) msg = 'カードを選択 → マスをタップ';
+    else if (state.deck.length > 0 && state.players[localIdx].hand.length > 0) msg = '置けるカードなし — 交換してください';
+    else msg = '置けず交換も不可 — 行動不能ボタンを押してください';
+  }
+  $('message').textContent = msg;
+}
+
+// ============================== INPUT ==============================
+function onHandCardClick(card) {
+  if (!isMyInteractiveTurn()) return;
+  if (UI_PENDING) return;
+  if (UI_EXCHANGE_MODE) {
+    if (UI_EXCHANGE_PICKED.has(card.id)) UI_EXCHANGE_PICKED.delete(card.id);
+    else UI_EXCHANGE_PICKED.add(card.id);
+    renderHand(); updateActionButtons();
+    return;
+  }
+  ui.selectedCardId = (ui.selectedCardId === card.id) ? null : card.id;
+  renderHand(); renderBoard(); updateActionButtons();
+}
+
+function isMyInteractiveTurn() {
+  const localIdx = localPlayerIdx();
+  if (localIdx < 0) return false;
+  if (state.players[localIdx].isCPU) return false;
+  return currentPlayerIdx() === localIdx && !($('overlay-handoff').classList.contains('hidden') === false);
+  // The above is awkward — handoff overlay open means we can't act. Let me simplify:
+}
+// Override (cleaner)
+function isMyInteractiveTurn() {
+  const localIdx = localPlayerIdx();
+  if (localIdx < 0) return false;
+  if (state.players[localIdx].isCPU) return false;
+  if (currentPlayerIdx() !== localIdx) return false;
+  if (!$('overlay-handoff').classList.contains('hidden')) return false;
+  return true;
+}
+
+function onCellClick(x, y) {
+  if (UI_EXCHANGE_MODE) return;
+  if (!isMyInteractiveTurn()) return;
+  if (UI_PENDING) {
+    if (UI_PENDING.x === x && UI_PENDING.y === y) { confirmPlacement(); return; }
+    hidePlacePopup();
+    UI_PENDING = null;
+  }
+  if (ui.selectedCardId == null) return;
+  const localIdx = localPlayerIdx();
+  const player = state.players[localIdx];
+  const card = player.hand.find(c => c && c.id === ui.selectedCardId);
+  if (!card) return;
+  const legal = findLegalPlacements(state, card, localIdx);
+  const m = legal.find(mm => mm.x === x && mm.y === y);
+  if (!m) { renderAll(); return; }
+  UI_PENDING = {card, x, y, isJammer: m.isJammer};
+  if (PLACE_CONFIRM_DELAY <= 0) {
+    // 即設置
+    confirmPlacement();
+  } else {
+    renderAll();
+    showPlacePopup(x, y);
+  }
+}
+
+function showPlacePopup(x, y) {
+  const popup = $('place-confirm-popup');
+  if (!popup) return;
+  // セルの位置を取得
+  const board = $('board');
+  const cells = board ? board.querySelectorAll('.cell') : [];
+  let cellEl = null;
+  cells.forEach(c => { if (+c.dataset.x === x && +c.dataset.y === y) cellEl = c; });
+  if (!cellEl) return;
+  const rect = cellEl.getBoundingClientRect();
+  const vw = window.innerWidth, vh = window.innerHeight;
+  popup.classList.remove('hidden');
+  // 位置計算: セルの真下に表示、画面外にはみ出さないよう調整
+  const pw = popup.offsetWidth || 88;
+  const ph = popup.offsetHeight || 80;
+  let left = rect.left + rect.width / 2 - pw / 2;
+  let top  = rect.bottom + 6;
+  if (left < 4) left = 4;
+  if (left + pw > vw - 4) left = vw - pw - 4;
+  if (top + ph > vh - 4) top = rect.top - ph - 6;
+  popup.style.left = left + 'px';
+  popup.style.top  = top  + 'px';
+  // ラベル
+  const fill = $('popup-timer-fill');
+  const label = $('popup-label');
+  if (PLACE_CONFIRM_DELAY > 0) {
+    label.textContent = PLACE_CONFIRM_DELAY.toFixed(1) + '秒後に確定';
+    fill.style.width = '100%';
+  }
+  // カウントダウン開始
+  _placeConfirmStart = performance.now();
+  const delayMs = PLACE_CONFIRM_DELAY * 1000;
+  // ラフループでプログレスバーを更新
+  function rafTick(now) {
+    if (!UI_PENDING) return;
+    const elapsed = now - _placeConfirmStart;
+    const remaining = Math.max(0, 1 - elapsed / delayMs);
+    if (fill) fill.style.width = (remaining * 100) + '%';
+    const remSec = Math.max(0, (delayMs - elapsed) / 1000);
+    if (label) label.textContent = remSec.toFixed(1) + '秒後に確定';
+    if (remaining > 0) {
+      _placeConfirmRaf = requestAnimationFrame(rafTick);
+    }
+  }
+  if (_placeConfirmRaf) { cancelAnimationFrame(_placeConfirmRaf); _placeConfirmRaf = null; }
+  _placeConfirmRaf = requestAnimationFrame(rafTick);
+  // タイマー
+  if (_placeConfirmTimer) { clearTimeout(_placeConfirmTimer); _placeConfirmTimer = null; }
+  _placeConfirmTimer = setTimeout(() => {
+    _placeConfirmTimer = null;
+    if (UI_PENDING) confirmPlacement();
+  }, delayMs);
+}
+
+function hidePlacePopup() {
+  if (_placeConfirmTimer) { clearTimeout(_placeConfirmTimer); _placeConfirmTimer = null; }
+  if (_placeConfirmRaf) { cancelAnimationFrame(_placeConfirmRaf); _placeConfirmRaf = null; }
+  const popup = $('place-confirm-popup');
+  if (popup) popup.classList.add('hidden');
+}
+
+function confirmPlacement() {
+  if (!UI_PENDING) return;
+  hidePlacePopup();
+  const {card, x, y, isJammer} = UI_PENDING;
+  stopTurnTimer();
+  if (state.mode === 'online-client') {
+    Net.hostConn?.send({type:'action', action:{type:'place', cardId:card.id, x, y, isJammer}});
+    UI_PENDING = null; ui.selectedCardId = null; renderAll();
+    return;
+  }
+  UI_PENDING = null; ui.selectedCardId = null;
+  placeCard(card, x, y, isJammer);
+  postActionAdvance();
+  if (state.mode === 'online-host') broadcastStateIfHost();
+}
+function cancelPlacement() { hidePlacePopup(); UI_PENDING = null; renderAll(); }
+function enterExchangeMode() {
+  const localIdx = localPlayerIdx();
+  if (anyLegalPlacement(state, localIdx)) return;
+  UI_EXCHANGE_MODE = true; UI_EXCHANGE_PICKED.clear(); renderAll();
+}
+function cancelExchange() { UI_EXCHANGE_MODE = false; UI_EXCHANGE_PICKED.clear(); renderAll(); }
+function confirmExchange() {
+  if (UI_EXCHANGE_PICKED.size === 0) return;
+  if (UI_EXCHANGE_PICKED.size > state.deck.length) return;
+  const localIdx = localPlayerIdx();
+  const cardIds = [...UI_EXCHANGE_PICKED];
+  stopTurnTimer();
+  if (state.mode === 'online-client') {
+    Net.hostConn?.send({type:'action', action:{type:'exchange', cardIds}});
+    UI_EXCHANGE_MODE = false; UI_EXCHANGE_PICKED.clear();
+    renderAll();
+    return;
+  }
+  exchangeCards(localIdx, cardIds);
+  UI_EXCHANGE_MODE = false; UI_EXCHANGE_PICKED.clear();
+  if (anyLegalPlacement(state, localIdx)) {
+    renderAll();
+    if (state.mode === 'online-host') broadcastStateIfHost();
+    startTurnTimer();
+  } else {
+    markActionUnable(localIdx);
+    postActionAdvance();
+    if (state.mode === 'online-host') broadcastStateIfHost();
+  }
+}
+function giveUpTurn() {
+  const localIdx = localPlayerIdx();
+  stopTurnTimer();
+  if (state.mode === 'online-client') {
+    Net.hostConn?.send({type:'action', action:{type:'give-up'}});
+    renderAll();
+    return;
+  }
+  markActionUnable(localIdx);
+  postActionAdvance();
+  if (state.mode === 'online-host') broadcastStateIfHost();
+}
+
+function postActionAdvance() {
+  if (state.phase === 'init') advanceInit();
+  else if (state.phase === 'play') advanceTurn();
+  if (state.phase === 'end') { stopTurnTimer(); showResult(); return; }
+  prepareNewTurn();
+}
+
+// ===== ターン移動演出 =====
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return _audioCtx;
+}
+function playTurnSound() {
+  try {
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    // 低音コッ — 木製コマ置き風
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(200, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.35, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.12);
+    // 微かな倍音「ヌッ」感
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(320, ctx.currentTime);
+    osc2.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.06);
+    gain2.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+    osc2.start(ctx.currentTime);
+    osc2.stop(ctx.currentTime + 0.1);
+  } catch(e) { /* audio not available */ }
+}
+function triggerTurnArrival(pIdx) {
+  if (pIdx < 0 || !state) return;
+  const color = PLAYER_COLORS[pIdx].bg;
+  // チップ発光
+  const chip = $('turn-player');
+  if (chip) {
+    chip.classList.remove('turn-arrive');
+    void chip.offsetWidth; // reflow
+    chip.classList.add('turn-arrive');
+    chip.addEventListener('animationend', () => chip.classList.remove('turn-arrive'), {once:true});
+  }
+  // 盤面外周フラッシュ
+  const board = $('board');
+  if (board) {
+    board.style.setProperty('--turn-color', color);
+    board.classList.remove('turn-flash-ring');
+    void board.offsetWidth;
+    board.classList.add('turn-flash-ring');
+    board.addEventListener('animationend', () => board.classList.remove('turn-flash-ring'), {once:true});
+  }
+  // 効果音
+  playTurnSound();
+}
+
+function prepareNewTurn() {
+  const pIdx = currentPlayerIdx();
+  if (pIdx < 0) { showResult(); return; }
+  const player = state.players[pIdx];
+  if (!player.alive) { postActionAdvance(); return; }
+  // Online: just render and let player input; no CPU branch
+  if (state.mode === 'online-host' || state.mode === 'online-client') {
+    UI_PENDING = null; ui.selectedCardId = null;
+    renderAll();
+    triggerTurnArrival(pIdx);
+    maybeStartTimerForLocalTurn();
+    return;
+  }
+  // Local mode
+  if (state.phase === 'play' && !anyLegalPlacement(state, pIdx)) {
+    if (player.isCPU) {
+      if (state.deck.length > 0 && player.hand.length > 0) {
+        const ids = player.hand.map(c => c.id);
+        const toEx = ids.slice(0, Math.min(ids.length, state.deck.length));
+        exchangeCards(pIdx, toEx);
+        if (anyLegalPlacement(state, pIdx)) { renderAll(); startCPUTurn(); return; }
+        markActionUnable(pIdx); postActionAdvance(); return;
+      } else {
+        markActionUnable(pIdx); postActionAdvance(); return;
+      }
+    } else {
+      renderAll();
+      triggerTurnArrival(pIdx);
+      // ★ 合法手ゼロ — 静かな絶望演出
+      // renderAll()で交換ボタンが表示された後に発火
+      requestAnimationFrame(() => triggerNoLegalEffect());
+      doHandoff();
+      if ($('overlay-handoff').classList.contains('hidden')) startTurnTimer();
+      return;
+    }
+  }
+  if (player.isCPU) { renderAll(); startCPUTurn(); }
+  else {
+    ui.selectedCardId = null; UI_PENDING = null;
+    renderAll();
+    triggerTurnArrival(pIdx);
+    doHandoff();
+    if ($('overlay-handoff').classList.contains('hidden')) startTurnTimer();
+  }
+}
+
+function doHandoff() {
+  if (state.mode === 'online-host' || state.mode === 'online-client') return;
+  const humanCount = state.players.filter(p => !p.isCPU && p.alive).length;
+  if (humanCount < 2) return;
+  const pIdx = currentPlayerIdx();
+  if (pIdx === handoffShownFor) return;
+  handoffShownFor = pIdx;
+  $('handoff-name').textContent = state.players[pIdx].name;
+  $('handoff-name').style.color = PLAYER_COLORS[pIdx].bg;
+  $('overlay-handoff').classList.remove('hidden');
+  pauseTurnTimer();
+  renderHand(); updateActionButtons();
+}
+function handoffReady() { $('overlay-handoff').classList.add('hidden'); renderAll(); startTurnTimer(); }
+
+function startCPUTurn() {
+  if (cpuPending) return;
+  cpuPending = true;
+  pauseTurnTimer();
+  const pIdx = currentPlayerIdx();
+  const player = state.players[pIdx];
+  const delay = 300 + Math.floor(Math.random() * 300);
+  setTimeout(() => {
+    cpuPending = false;
+    if (!state || state.phase === 'end') return;
+    if (currentPlayerIdx() !== pIdx) return;
+    if (state.phase === 'init') {
+      const move = cpuInitMove(state, pIdx, player.cpuLevel || 2);
+      if (move) placeCard(move.card, move.x, move.y, false);
+    } else {
+      if (anyLegalPlacement(state, pIdx)) {
+        const move = cpuPickMove(state, pIdx, player.cpuLevel || 2);
+        if (move) placeCard(move.card, move.x, move.y, move.isJammer);
+      } else {
+        markActionUnable(pIdx);
+      }
+    }
+    postActionAdvance();
+  }, delay);
+}
+
+// ============================== TIMER ==============================
+let timerSec = 0;
+function startTurnTimer() {
+  stopTurnTimer();
+  if (!state) return;
+  if (!state.turnTime || state.turnTime <= 0) { $('timer').textContent = '∞'; return; }
+  const localIdx = localPlayerIdx();
+  const isOnline = state.mode === 'online-host' || state.mode === 'online-client';
+  if (!isOnline) {
+    const pIdx = currentPlayerIdx();
+    if (pIdx < 0 || state.players[pIdx].isCPU) return;
+    if (!$('overlay-handoff').classList.contains('hidden')) return;
+  } else {
+    if (currentPlayerIdx() !== localIdx) return;
+  }
+  timerSec = state.turnTime;
+  updateTimerDisplay();
+  timerHandle = setInterval(() => {
+    timerSec--;
+    updateTimerDisplay();
+    if (timerSec <= 0) { stopTurnTimer(); onTurnTimeout(); }
+  }, 1000);
+}
+function pauseTurnTimer() { if (timerHandle) { clearInterval(timerHandle); timerHandle = null; } }
+function stopTurnTimer() { if (timerHandle) { clearInterval(timerHandle); timerHandle = null; } }
+function updateTimerDisplay() {
+  const t = $('timer');
+  t.textContent = timerSec;
+  t.classList.toggle('warn', timerSec <= 10 && timerSec > 5);
+  t.classList.toggle('danger', timerSec <= 5);
+}
+function onTurnTimeout() {
+  if (!state) return;
+  const localIdx = localPlayerIdx();
+  const pIdx = currentPlayerIdx();
+  const isOnline = state.mode === 'online-host' || state.mode === 'online-client';
+  if (isOnline && pIdx !== localIdx) return;
+  const player = state.players[pIdx];
+  if (!isOnline && player.isCPU) return;
+  UI_PENDING = null; ui.selectedCardId = null;
+  hidePlacePopup();
+  UI_EXCHANGE_MODE = false; UI_EXCHANGE_PICKED.clear();
+  if (state.phase === 'init') {
+    // Use heuristic for timeout init too
+    const move = cpuInitMove(state, pIdx, 2);
+    if (state.mode === 'online-client') {
+      Net.hostConn?.send({type:'action', action:{type:'place', cardId:move.card.id, x:move.x, y:move.y, isJammer:false}});
+      return;
+    }
+    if (move) placeCard(move.card, move.x, move.y, false);
+    postActionAdvance();
+    if (state.mode === 'online-host') broadcastStateIfHost();
+  } else {
+    const moves = [];
+    for (const c of state.players[pIdx].hand) {
+      for (const m of findLegalPlacements(state, c, pIdx)) moves.push({card:c, x:m.x, y:m.y, isJammer:m.isJammer});
+    }
+    if (moves.length > 0) {
+      const m = moves[Math.floor(Math.random() * moves.length)];
+      if (state.mode === 'online-client') {
+        Net.hostConn?.send({type:'action', action:{type:'place', cardId:m.card.id, x:m.x, y:m.y, isJammer:m.isJammer}});
+        return;
+      }
+      placeCard(m.card, m.x, m.y, m.isJammer);
+      postActionAdvance();
+      if (state.mode === 'online-host') broadcastStateIfHost();
+    } else {
+      if (state.mode === 'online-client') {
+        Net.hostConn?.send({type:'action', action:{type:'give-up'}});
+        return;
+      }
+      markActionUnable(pIdx);
+      postActionAdvance();
+      if (state.mode === 'online-host') broadcastStateIfHost();
+    }
+  }
+}
+
+// ============================== RESULT ==============================
+function showResult() {
+  stopTurnTimer();
+  showScreen('end');
+  const el = $('result-list');
+  el.innerHTML = '';
+  const rows = state.players.map(p => ({...p, score:countConnections(state, p.idx)}));
+  rows.sort((a,b) => {
+    const aw = (state.winners || []).includes(a.idx) ? 1 : 0;
+    const bw = (state.winners || []).includes(b.idx) ? 1 : 0;
+    if (aw !== bw) return bw - aw;
+    if (a.alive !== b.alive) return (b.alive?1:0) - (a.alive?1:0);
+    return b.score - a.score;
+  });
+  for (const p of rows) {
+    const winner = (state.winners || []).includes(p.idx);
+    const r = document.createElement('div');
+    r.className = 'result-row' + (winner ? ' winner' : '');
+    r.innerHTML =
+      '<div>' + (winner ? '🏆 ' : '') +
+      '<span class="color-dot" style="width:14px;height:14px;background:'+PLAYER_COLORS[p.idx].bg+'"></span> '+
+      '<span style="font-weight:700">' + PLAYER_COLORS[p.idx].badge + ' ' + escapeHtml(p.name) + '</span>'+
+      (p.isCPU?'<span style="font-size:11px;opacity:0.7"> [CPU '+p.cpuLevel+']</span>':'')+
+      (!p.alive?'<span style="font-size:11px;opacity:0.7"> 行動不能</span>':'')+
+      '</div>'+
+      '<div style="font-variant-numeric:tabular-nums;">隣接線 '+p.score+'</div>';
+    el.appendChild(r);
+  }
+}
+
+// ============================== START / LOBBY ==============================
+function startGameWithCurrentSetup() {
+  saveSettings();
+  const num = +$('setup-num-players').value;
+  const players = [];
+  for (let i=0; i<num; i++) {
+    players.push({
+      name: ($('p-name-'+i).value || ('P'+(i+1))).slice(0, 16),
+      isCPU: $('p-cpu-'+i).checked,
+      cpuLevel: +$('p-lvl-'+i).value,
+    });
+  }
+  const seed = $('setup-seed').value;
+  const turnTime = +$('setup-time').value;
+  UI_SHOW_LEGAL = $('setup-show-legal').checked;
+  PLACE_CONFIRM_DELAY = Math.max(0, parseFloat($('setup-confirm-delay').value) || 0);
+  opts = {players, seed, turnTime, mode:'local'};
+  startGame();
+}
+function startSoloQuick() {
+  opts = {
+    players: [
+      {name:'You', isCPU:false},
+      {name:'CPU L2', isCPU:true, cpuLevel:2},
+    ],
+    seed: '',
+    turnTime: 30,
+    mode: 'local',
+  };
+  startGame();
+}
+function startGame() {
+  Net.mode = 'none';
+  newGame(opts);
+  showScreen('game');
+  handoffShownFor = -1;
+  hidePlacePopup();
+  UI_PENDING = null; UI_EXCHANGE_MODE = false; UI_EXCHANGE_PICKED.clear();
+  ui.selectedCardId = null; cpuPending = false;
+  renderAll();
+  prepareNewTurn();
+}
+
+function startOnlineGame() {
+  if (Net.mode !== 'host') return;
+  if (Net.hostPlayers.length < 2) { showOnlineMsg('開始不可','参加者が足りません'); return; }
+  const players = Net.hostPlayers.map(p => ({name: p.name, isCPU: false}));
+  opts = {players, seed:'', turnTime: Net.config.turnTime, mode:'online-host'};
+  newGame(opts);
+  state.mode = 'online-host';
+  // Broadcast game-start
+  for (const [peerId, conn] of Net.conns.entries()) {
+    const player = Net.hostPlayers.find(p => p.peerId === peerId);
+    if (!player) continue;
+    try { conn.send({type:'game-start', view: buildClientView(state, player.idx)}); } catch(e){}
+  }
+  showScreen('game');
+  handoffShownFor = -2; // disable
+  hidePlacePopup();
+  UI_PENDING = null; UI_EXCHANGE_MODE = false; UI_EXCHANGE_PICKED.clear();
+  ui.selectedCardId = null; cpuPending = false;
+  renderAll();
+  prepareNewTurn();
+  broadcastStateIfHost();
+}
+
+function renderLobby() {
+  if (Net.mode === 'none') return;
+  // Switch UI to lobby pane
+  $('online-pane-host').classList.add('hidden');
+  $('online-pane-join').classList.add('hidden');
+  $('online-pane-lobby').classList.remove('hidden');
+  showScreen('online');
+
+  $('lobby-keyword').textContent = Net.roomCode || '(?)';
+  const stEl = $('lobby-status');
+  let cls = 'warn', txt = Net.status;
+  if (Net.status === 'hosting' || Net.status === 'lobby') { cls = 'ok'; txt = Net.mode === 'host' ? '待機中(ホスト)' : 'ロビー'; }
+  else if (Net.status.startsWith('error') || Net.status === 'disconnected') { cls = 'bad'; txt = Net.status; }
+  else if (Net.status === 'connecting' || Net.status === 'handshake' || Net.status === 'creating') { cls = 'warn'; }
+  stEl.className = 'net-status ' + cls;
+  stEl.textContent = txt;
+  $('lobby-status-msg').textContent = Net.statusMsg || '';
+
+  const total = Net.config ? Net.config.numPlayers : Net.hostPlayers.length;
+  $('lobby-count').textContent = Net.hostPlayers.length + ' / ' + total;
+
+  const lp = $('lobby-players');
+  lp.innerHTML = '';
+  Net.hostPlayers.forEach(p => {
+    const row = document.createElement('div');
+    const isMe = (Net.mode === 'host' && p.idx === 0) || (Net.mode === 'client' && p.idx === Net.myPlayerIdx);
+    row.className = 'lobby-player' + (isMe ? ' me' : '');
+    row.innerHTML =
+      '<span class="color-dot" style="background:'+PLAYER_COLORS[p.idx].bg+'"></span>'+
+      '<span style="font-weight:700">'+PLAYER_COLORS[p.idx].badge+' '+escapeHtml(p.name)+'</span>'+
+      (p.isHost ? '<span class="badge-host">HOST</span>' : '');
+    lp.appendChild(row);
+  });
+
+  const startBtn = $('btn-host-start');
+  startBtn.classList.toggle('hidden', Net.mode !== 'host' || Net.hostPlayers.length < 2);
+  startBtn.disabled = Net.hostPlayers.length < 2;
+}
+
+// ============================== REPLAY ==============================
+function downloadReplay() {
+  if (!state) return;
+  const data = { version: VERSION, seed: state.seedStr, config: state.config, log: state.log, winners: state.winners };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'limiles-replay-'+(state.seedStr||'online')+'-'+Date.now()+'.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ============================== ACTION DISPATCH ==============================
+function handleAction(a) {
+  switch (a) {
+    case 'new-game': renderSetup(); break;
+    case 'solo-quick': startSoloQuick(); break;
+    case 'rules': $('overlay-rules').classList.remove('hidden'); break;
+    case 'online':
+      showScreen('online');
+      $('online-pane-host').classList.remove('hidden');
+      $('online-pane-join').classList.add('hidden');
+      $('online-pane-lobby').classList.add('hidden');
+      $('tab-host-btn').classList.add('active');
+      $('tab-join-btn').classList.remove('active');
+      break;
+    case 'online-tab-host':
+      $('online-pane-host').classList.remove('hidden');
+      $('online-pane-join').classList.add('hidden');
+      $('tab-host-btn').classList.add('active');
+      $('tab-join-btn').classList.remove('active');
+      break;
+    case 'online-tab-join':
+      $('online-pane-host').classList.add('hidden');
+      $('online-pane-join').classList.remove('hidden');
+      $('tab-host-btn').classList.remove('active');
+      $('tab-join-btn').classList.add('active');
+      break;
+    case 'online-host-create': {
+      saveSettings();
+      const keyword = $('online-host-keyword').value.trim();
+      const name = $('online-host-name').value.trim();
+      const numPlayers = +$('online-host-num').value;
+      const turnTime = +$('online-host-time').value;
+      netHostCreate({keyword, name, numPlayers, turnTime});
+      renderLobby();
+      break;
+    }
+    case 'online-join': {
+      saveSettings();
+      const keyword = $('online-join-keyword').value.trim();
+      const name = $('online-join-name').value.trim();
+      netJoin({keyword, name});
+      renderLobby();
+      break;
+    }
+    case 'online-host-start': startOnlineGame(); break;
+    case 'online-leave': netLeave(); break;
+    case 'close-rules': $('overlay-rules').classList.add('hidden'); break;
+    case 'close-om': $('overlay-online-msg').classList.add('hidden'); break;
+    case 'random-seed': $('setup-seed').value = Math.floor(Math.random() * 1000000); break;
+    case 'back-to-title':
+      stopTurnTimer();
+      if (Net.mode !== 'none') netLeave();
+      else { state = null; showScreen('title'); }
+      break;
+    case 'start-game': startGameWithCurrentSetup(); break;
+    case 'confirm-place': confirmPlacement(); break;
+    case 'cancel-place': cancelPlacement(); break;
+    case 'exchange-mode': enterExchangeMode(); break;
+    case 'exchange-confirm': confirmExchange(); break;
+    case 'exchange-cancel': cancelExchange(); break;
+    case 'give-up-turn': giveUpTurn(); break;
+    case 'handoff-ready': handoffReady(); break;
+    case 'download-replay': downloadReplay(); break;
+    case 'rematch':
+      if (Net.mode !== 'none') { netLeave(); }
+      startGame();
+      break;
+    case 'show-rules': $('overlay-rules').classList.remove('hidden'); $('overlay-menu').classList.add('hidden'); break;
+    case 'toggle-legal': UI_SHOW_LEGAL = !UI_SHOW_LEGAL; $('overlay-menu').classList.add('hidden'); renderAll(); break;
+    case 'abort-game':
+      $('overlay-menu').classList.add('hidden');
+      stopTurnTimer();
+      if (Net.mode !== 'none') netLeave();
+      else { state = null; showScreen('title'); }
+      break;
+    case 'resume': $('overlay-menu').classList.add('hidden'); break;
+  }
+}
+
+// ============================== BOOTSTRAP ==============================
+window.addEventListener('load', () => {
+  document.body.addEventListener('click', e => {
+    const t = e.target.closest('[data-action]');
+    if (t) handleAction(t.dataset.action);
+  });
+  $('setup-num-players').addEventListener('change', () => {
+    saveSettings();
+    renderSetup();
+  });
+  $('btn-menu').addEventListener('click', () => {
+    if (!state || state.phase === 'end') return;
+    $('overlay-menu').classList.remove('hidden');
+    pauseTurnTimer();
+  });
+  window.addEventListener('resize', () => {
+    if (state && !$('screen-game').classList.contains('hidden')) requestAnimationFrame(drawConnectionLines);
+  });
+  window.addEventListener('orientationchange', () => {
+    setTimeout(() => { if (state) requestAnimationFrame(drawConnectionLines); }, 300);
+  });
+  loadSettings();
+  showScreen('title');
+});
+
+// Expose for testing / simulation
+window.__limiles = {
+  get state() { return state; },
+  get net() { return Net; },
+  render: renderAll,
+  // Simulation API
+  runSim: (opts) => {
+    // Run a single game completely without delays.
+    const cfg = {
+      players: opts.players,
+      seed: opts.seed || Math.floor(Math.random()*1e9),
+      turnTime: 0,
+      mode: 'sim',
+    };
+    const s = newGame(cfg);
+    let safety = 5000;
+    while (s.phase !== 'end' && safety-- > 0) {
+      const pIdx = currentPlayerIdx();
+      if (pIdx < 0) break;
+      const p = s.players[pIdx];
+      if (!p.alive) { advanceTurn(); continue; }
+      if (s.phase === 'init') {
+        const m = cpuInitMove(s, pIdx, p.cpuLevel||2);
+        if (m) placeCard(m.card, m.x, m.y, false);
+        advanceInit();
+        continue;
+      }
+      if (anyLegalPlacement(s, pIdx)) {
+        const m = cpuPickMove(s, pIdx, p.cpuLevel||2);
+        if (m) placeCard(m.card, m.x, m.y, m.isJammer);
+      } else {
+        if (s.deck.length > 0 && p.hand.length > 0) {
+          exchangeCards(pIdx, p.hand.map(c=>c.id).slice(0, Math.min(p.hand.length, s.deck.length)));
+          if (anyLegalPlacement(s, pIdx)) {
+            const m = cpuPickMove(s, pIdx, p.cpuLevel||2);
+            if (m) placeCard(m.card, m.x, m.y, m.isJammer);
+          } else markActionUnable(pIdx);
+        } else markActionUnable(pIdx);
+      }
+      advanceTurn();
+    }
+    if (s.phase !== 'end') endGame();
+    return {winners: s.winners, rounds: s.round, log: s.log.length, conns: s.players.map(p => countConnections(s,p.idx))};
+  },
+  // Init heuristic only (override one player's init to random)
+  runSimWithRandomInit: (opts, randomIdx) => {
+    const cfg = {players: opts.players, seed: opts.seed || Math.floor(Math.random()*1e9), turnTime:0, mode:'sim'};
+    const s = newGame(cfg);
+    let safety = 5000;
+    while (s.phase !== 'end' && safety-- > 0) {
+      const pIdx = currentPlayerIdx();
+      if (pIdx < 0) break;
+      const p = s.players[pIdx];
+      if (!p.alive) { advanceTurn(); continue; }
+      if (s.phase === 'init') {
+        let m;
+        if (pIdx === randomIdx) m = cpuInitMove(s, pIdx, 1); // forced random
+        else m = cpuInitMove(s, pIdx, p.cpuLevel||2);
+        if (m) placeCard(m.card, m.x, m.y, false);
+        advanceInit();
+        continue;
+      }
+      if (anyLegalPlacement(s, pIdx)) {
+        const m = cpuPickMove(s, pIdx, p.cpuLevel||2);
+        if (m) placeCard(m.card, m.x, m.y, m.isJammer);
+      } else {
+        if (s.deck.length > 0 && p.hand.length > 0) {
+          exchangeCards(pIdx, p.hand.map(c=>c.id).slice(0, Math.min(p.hand.length, s.deck.length)));
+          if (anyLegalPlacement(s, pIdx)) {
+            const m = cpuPickMove(s, pIdx, p.cpuLevel||2);
+            if (m) placeCard(m.card, m.x, m.y, m.isJammer);
+          } else markActionUnable(pIdx);
+        } else markActionUnable(pIdx);
+      }
+      advanceTurn();
+    }
+    if (s.phase !== 'end') endGame();
+    return {winners: s.winners};
+  },
+};
+
+})();
+</script>
+</body>
+</html>
