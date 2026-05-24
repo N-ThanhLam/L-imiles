@@ -233,13 +233,14 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 
 .card { width:100%; height:100%; background:#f8f9fa; color:#111; border-radius:3px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:800; line-height:1; position:relative; border:2px solid var(--owner, #888); box-shadow: 0 1px 3px rgba(0,0,0,0.5); overflow:hidden; }
 .card .rank { font-size: calc(var(--cell-size) * 0.46); line-height:1; }
-.card .suit-center { font-size: calc(var(--cell-size) * 0.26); margin-top:1px; line-height:1; }
-.card .suit-corner { position:absolute; top:1px; left:2px; font-size: calc(var(--cell-size) * 0.22); line-height:1; }
-.card .badge { position:absolute; bottom:0; right:2px; font-size: calc(var(--cell-size) * 0.24); line-height:1; color:var(--owner); text-shadow: 0 0 2px #fff; }
-.card.suit-H, .card.suit-D { color:#c0392b; }
-.card.suit-S, .card.suit-C { color:#1a1a1a; }
+.card .suit-corner { position:absolute; top:1px; left:2px; font-size: calc(var(--cell-size) * 0.32); line-height:1; }
+.card .suit-corner-br { position:absolute; bottom:1px; right:2px; font-size: calc(var(--cell-size) * 0.32); line-height:1; transform: rotate(180deg); }
+.card.suit-H { color:#c0392b; }
+.card.suit-D { color:#8b6914; }
+.card.suit-S { color:#1a1a1a; }
+.card.suit-C { color:#1a5c2e; }
 .card.jammer { background: repeating-linear-gradient(45deg, #2a2a35, #2a2a35 4px, #383848 4px, #383848 8px); color:#fff; }
-.card.jammer .rank, .card.jammer .suit-center, .card.jammer .suit-corner { color:#fff; }
+.card.jammer .rank, .card.jammer .suit-corner, .card.jammer .suit-corner-br { color:#fff; }
 .card.jammer::after { content:'妨'; position:absolute; top:0; right:1px; font-size: calc(var(--cell-size) * 0.22); color:var(--danger); font-weight:900; text-shadow: 0 0 3px #000; }
 
 #lines-svg { position:absolute; top:0; left:0; pointer-events:none; }
@@ -257,7 +258,9 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 .bottom-bar { background:var(--panel); border-top:1px solid var(--border); padding:8px; display:flex; flex-direction:column; gap:6px; }
 .hand-row { display:flex; gap:6px; overflow-x:auto; padding:4px 2px; min-height:80px; -webkit-overflow-scrolling:touch; align-items:center; }
 .hand-card { flex:0 0 auto; width:54px; height:78px; background:#f8f9fa; color:#111; border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:800; line-height:1; border:3px solid transparent; cursor:pointer; position:relative; transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; box-shadow: 0 2px 4px rgba(0,0,0,0.4); }
-.hand-card.suit-H, .hand-card.suit-D { color:#c0392b; }
+.hand-card.suit-H { color:#c0392b; }
+.hand-card.suit-D { color:#8b6914; }
+.hand-card.suit-C { color:#1a5c2e; }
 .hand-card .rank { font-size:22px; }
 .hand-card .suit-c { font-size:18px; margin-top:2px; }
 .hand-card .suit-corner { position:absolute; top:2px; left:3px; font-size:11px; line-height:1; }
@@ -1076,9 +1079,10 @@ function newGame(config) {
     if (deck.length === 0) break;
     p.hand.push(deck.shift());
   }
-  const order = [];
-  for (let i=0; i<players.length; i++) order.push(i);
-  for (let i=players.length-1; i>=0; i--) order.push(i);
+  const firstHalf = [];
+  for (let i=0; i<players.length; i++) firstHalf.push(i);
+  shuffle(firstHalf, rand);
+  const order = [...firstHalf, ...[...firstHalf].reverse()];
   state = {
     board, deck, players,
     seed, seedStr: String(seed),
@@ -1267,13 +1271,34 @@ function cloneState(s) {
   };
 }
 function evalScore(s, myIdx) {
-  let mine = countConnections(s, myIdx);
-  let bestOpp = 0;
-  for (const p of s.players) if (p.idx !== myIdx) {
-    const cn = countConnections(s, p.idx);
-    if (cn > bestOpp) bestOpp = cn;
+  const mine = countConnections(s, myIdx);
+  let bestOpp = 0, sumOpp = 0, numOpp = 0;
+  for (const p of s.players) {
+    if (p.idx !== myIdx && p.alive) {
+      const cn = countConnections(s, p.idx);
+      if (cn > bestOpp) bestOpp = cn;
+      sumOpp += cn;
+      numOpp++;
+    }
   }
-  return mine * 2 - bestOpp;
+  // 自分の接続数を強く評価、最強相手を抑制
+  let score = mine * 2.5 - bestOpp * 1.3;
+  // 多人数戦: 全相手の平均スコアも加味して接続優位性を測る
+  if (numOpp > 1) score -= (sumOpp / numOpp) * 0.35;
+  return score;
+}
+// 次の相手プレイヤーのインデックスを返す
+function getNextOpponentIdx(ns, playerIdx) {
+  const order = ns.currentRoundOrder || [];
+  let ni = (ns.currentTurnIdx ?? 0) + 1;
+  while (ni < order.length && !ns.players[order[ni]].alive) ni++;
+  if (ni < order.length && order[ni] !== playerIdx) return order[ni];
+  if (ns.nextRoundOrder) {
+    for (const idx of ns.nextRoundOrder) {
+      if (idx !== playerIdx && ns.players[idx] && ns.players[idx].alive) return idx;
+    }
+  }
+  return -1;
 }
 function listAllMoves(s, playerIdx) {
   const moves = [];
@@ -1297,43 +1322,159 @@ function simulatePlace(s, move, playerIdx) {
   p.hand = p.hand.filter(c => c.id !== move.card.id);
   return ns;
 }
-function cpuPickMove(s, playerIdx, level) {
+function cpuPickMove(s, playerIdx, level, deadline) {
   const moves = listAllMoves(s, playerIdx);
   if (moves.length === 0) return null;
   if (level <= 1) return moves[Math.floor(Math.random() * moves.length)];
-  let best = -Infinity, bestMoves = [];
+  if (deadline == null) deadline = Infinity;
+
+  // ===== Phase 1: 1手読み + モビリティ評価 (Lv2/Lv3 共通) =====
+  const scored = [];
   for (const m of moves) {
     const ns = simulatePlace(s, m, playerIdx);
     let score = evalScore(ns, playerIdx);
     if (m.isJammer) score -= 0.5;
-    if (level >= 3) {
-      const order = ns.currentRoundOrder || [];
-      let nextIdx = ns.currentTurnIdx + 1;
-      while (nextIdx < order.length && !ns.players[order[nextIdx]].alive) nextIdx++;
-      let oppIdx = -1;
-      if (nextIdx < order.length) oppIdx = order[nextIdx];
-      else if (ns.nextRoundOrder && ns.nextRoundOrder.length > 0) oppIdx = ns.nextRoundOrder[0];
-      if (oppIdx >= 0 && oppIdx !== playerIdx) {
-        const oppMoves = listAllMoves(ns, oppIdx);
-        if (oppMoves.length > 0) {
-          let oppBest = -Infinity;
-          const sample = oppMoves.length > 24 ? oppMoves.slice(0,24) : oppMoves;
-          for (const om of sample) {
-            const nns = simulatePlace(ns, om, oppIdx);
-            const sc = evalScore(nns, playerIdx);
-            if (sc > oppBest) oppBest = sc;
-          }
-          score = (score + oppBest) / 2;
-        }
+    // モビリティ: 自分の次の手数ボーナス / 相手の次の手数ペナルティ
+    const myNext = listAllMoves(ns, playerIdx);
+    score += Math.min(myNext.length, 16) * 0.15;
+    for (const p of ns.players) {
+      if (p.idx !== playerIdx && p.alive) {
+        score -= Math.min(listAllMoves(ns, p.idx).length, 16) * 0.07;
       }
     }
-    if (score > best) { best = score; bestMoves = [m]; }
-    else if (score === best) bestMoves.push(m);
+    scored.push({m, ns, score1: score, score: score});
   }
-  return bestMoves[Math.floor(Math.random() * bestMoves.length)];
+  // 1手読みスコア順にソート（以降の探索で有望な手から処理）
+  scored.sort((a, b) => b.score1 - a.score1);
+
+  if (level < 3) {
+    const best = scored[0].score;
+    const tied = scored.filter(x => x.score >= best - 0.001);
+    return tied[Math.floor(Math.random() * tied.length)].m;
+  }
+
+  // ===== Phase 2: 2手読み (自分 → 相手の最善) =====
+  // 相手の全手を脅威順（自分にとって最悪順）にソートして最悪ケースを求める
+  for (const entry of scored) {
+    if (Date.now() >= deadline) break;
+    const oppIdx = getNextOpponentIdx(entry.ns, playerIdx);
+    if (oppIdx < 0) continue;
+    const oppMoves = listAllMoves(entry.ns, oppIdx);
+    if (!oppMoves.length) continue;
+
+    // 相手手を「自分への脅威大＝スコア低順」に並べる
+    const oppScored = oppMoves.map(om => {
+      const nns = simulatePlace(entry.ns, om, oppIdx);
+      return {om, sc: evalScore(nns, playerIdx)};
+    });
+    oppScored.sort((a, b) => a.sc - b.sc); // ascending: 自分に最悪な手が先頭
+
+    // 最悪ケース（ミニマックス）: 相手が自分に最も不利な手を打つと仮定
+    let worstForMe = Infinity;
+    for (const {sc} of oppScored) {
+      if (sc < worstForMe) worstForMe = sc;
+      if (Date.now() >= deadline) break;
+    }
+    if (worstForMe < Infinity) {
+      entry.score = entry.score1 * 0.35 + worstForMe * 0.65;
+    }
+    entry._oppScored = oppScored; // Phase 3 で再利用
+  }
+  scored.sort((a, b) => b.score - a.score); // 2手読み結果で再ソート
+
+  // ===== Phase 3: 3手読み (自分 → 相手の最善 → 自分の最善応手) =====
+  // 時間が残っていれば、上位手を中心にさらに深く読む
+  for (const entry of scored) {
+    if (Date.now() >= deadline) break;
+    if (!entry._oppScored) continue;
+    const oppIdx = getNextOpponentIdx(entry.ns, playerIdx);
+    if (oppIdx < 0) continue;
+
+    // 最も脅威の高い相手手（top 20）に対して自分の最善応手を探す
+    const topThreats = entry._oppScored.slice(0, Math.min(entry._oppScored.length, 20));
+    let worstFinal = Infinity;
+    for (const {om} of topThreats) {
+      if (Date.now() >= deadline) break;
+      const nns = simulatePlace(entry.ns, om, oppIdx);
+      const myMoves2 = listAllMoves(nns, playerIdx);
+      if (!myMoves2.length) {
+        const sc = evalScore(nns, playerIdx);
+        if (sc < worstFinal) worstFinal = sc;
+        continue;
+      }
+      // 自分の最善応手（全手評価）
+      let bestResponse = -Infinity;
+      for (const mm of myMoves2) {
+        if (Date.now() >= deadline) break;
+        const nnns = simulatePlace(nns, mm, playerIdx);
+        const sc = evalScore(nnns, playerIdx);
+        if (sc > bestResponse) bestResponse = sc;
+      }
+      if (bestResponse > -Infinity && bestResponse < worstFinal) worstFinal = bestResponse;
+    }
+    if (worstFinal < Infinity) {
+      // 3手読みスコアで上書き（より信頼度が高い）
+      entry.score = entry.score1 * 0.2 + worstFinal * 0.8;
+    }
+  }
+
+  // 最終スコアが最良の手を返す
+  scored.sort((a, b) => b.score - a.score);
+  const best = scored[0].score;
+  const tied = scored.filter(x => x.score >= best - 0.001);
+  return tied[Math.floor(Math.random() * tied.length)].m;
 }
 
-// --- CPU init placement heuristic (replaces random) ---
+// ============================== CPU TURN DRIVER ==============================
+function startCPUTurn() {
+  if (cpuPending) return;
+  cpuPending = true;
+  pauseTurnTimer();
+  const pIdx = currentPlayerIdx();
+  const player = state.players[pIdx];
+  const level = player.cpuLevel || 2;
+
+  // Lv3: 最低900ms待ってからプレイ（思考感を演出しつつ計算時間を確保）
+  // Lv2: 300〜600ms の人間らしい間
+  const minWaitMs  = level >= 3 ? 900 : 300 + Math.floor(Math.random() * 300);
+  const thinkMs    = level >= 3 ? 880 : 350; // deadlineはminWaitより短く設定し余裕をもたせる
+  const callTime   = Date.now();
+
+  // 少し遅れてから計算開始（UIの更新を先に済ませる）
+  setTimeout(() => {
+    if (!state || state.phase === 'end') { cpuPending = false; return; }
+    if (currentPlayerIdx() !== pIdx)    { cpuPending = false; return; }
+
+    const deadline = Date.now() + thinkMs;
+    let result = null;
+
+    if (state.phase === 'init') {
+      result = {type: 'init', move: cpuInitMove(state, pIdx, level)};
+    } else if (anyLegalPlacement(state, pIdx)) {
+      result = {type: 'play', move: cpuPickMove(state, pIdx, level, deadline)};
+    } else {
+      result = {type: 'unable'};
+    }
+
+    // 計算完了後、minWaitMs が経過するまで待ってからプレイ（Lv3 は必ず~1秒思考）
+    const elapsed = Date.now() - callTime;
+    const waitMore = Math.max(0, minWaitMs - elapsed);
+    setTimeout(() => {
+      cpuPending = false;
+      if (!state || state.phase === 'end') return;
+      if (currentPlayerIdx() !== pIdx) return;
+      if (!result) return;
+      if (result.type === 'init') {
+        if (result.move) placeCard(result.move.card, result.move.x, result.move.y, false);
+      } else if (result.type === 'play') {
+        if (result.move) placeCard(result.move.card, result.move.x, result.move.y, result.move.isJammer);
+      } else {
+        markActionUnable(pIdx);
+      }
+      postActionAdvance();
+    }, waitMore);
+  }, 20);
+}
 // Coefficients tuned via CPU-vs-random simulation (see scoreInitPlacement comments)
 function scoreInitPlacement(s, card, x, y, playerIdx, level) {
   if (s.board[y][x].forbidden || s.board[y][x].card) return -Infinity;
@@ -1341,6 +1482,9 @@ function scoreInitPlacement(s, card, x, y, playerIdx, level) {
   // 1. Center bias (Chebyshev distance from 3.5,3.5; max 3.5)
   const dCheb = Math.max(Math.abs(x - 3.5), Math.abs(y - 3.5));
   score += (3.5 - dCheb) * 1.2;
+  // 1b. Wall distance bonus: prefer cells not on the edge of the board
+  const distFromWall = Math.min(x, y, BOARD_SIZE-1-x, BOARD_SIZE-1-y);
+  score += Math.min(distFromWall, 2) * 1.8;
   // 2. Open 4-neighbors (expansion room)
   let open4 = 0;
   for (const [dx,dy] of DIR) {
@@ -1348,6 +1492,14 @@ function scoreInitPlacement(s, card, x, y, playerIdx, level) {
     if (inBounds(nx,ny) && !s.board[ny][nx].forbidden && !s.board[ny][nx].card) open4++;
   }
   score += open4 * 1.5;
+  // 2b. Forbidden neighbor penalty: avoid cells boxed in by forbidden squares
+  let forbidNeighbors = 0;
+  for (let dy=-1; dy<=1; dy++) for (let dx=-1; dx<=1; dx++) {
+    if (dx===0 && dy===0) continue;
+    const nx=x+dx, ny=y+dy;
+    if (!inBounds(nx,ny) || s.board[ny][nx].forbidden) forbidNeighbors++;
+  }
+  score -= forbidNeighbors * 0.9;
   // 3. Open 8-neighbors (looser density)
   let open8 = 0;
   for (let dy=-1; dy<=1; dy++) for (let dx=-1; dx<=1; dx++) {
@@ -1356,26 +1508,23 @@ function scoreInitPlacement(s, card, x, y, playerIdx, level) {
     if (inBounds(nx,ny) && !s.board[ny][nx].forbidden && !s.board[ny][nx].card) open8++;
   }
   score += open8 * 0.35;
-  // 4. Adjacency interactions
-  for (const [dx,dy] of DIR) {
+  // 4. Adjacency interactions (8-neighbor: 直交 + 斜め)
+  // 初期配置では自分の1枚目に近づくと展開余地が狭まるのでペナルティ。
+  // 敵カードも近づきたくない。
+  for (let dy=-1; dy<=1; dy++) for (let dx=-1; dx<=1; dx++) {
+    if (dx===0 && dy===0) continue;
     const nx=x+dx, ny=y+dy;
     if (!inBounds(nx,ny)) continue;
     const nc = s.board[ny][nx].card;
     if (!nc) continue;
+    const isDiag = (dx !== 0 && dy !== 0);
     if (nc.owner === playerIdx && !nc.isJammer) {
-      // Adjacent to own card. Form early connection if matching → big bonus.
-      if (adjacencyOK(card, nc)) score += 7;
-      else score += 0.8; // cluster
+      // 初期配置では自分のカードに近づかない（2枚を離して置く）
+      score -= isDiag ? 2.5 : 6.0;
     } else {
-      score -= 2.0; // avoid enemy proximity (they may jam later)
+      // 敵カードも避ける
+      score -= isDiag ? 1.2 : 2.5;
     }
-  }
-  // 5. Diagonal own cards (loose cluster bonus)
-  for (const [dx,dy] of [[-1,-1],[1,-1],[-1,1],[1,1]]) {
-    const nx=x+dx, ny=y+dy;
-    if (!inBounds(nx,ny)) continue;
-    const nc = s.board[ny][nx].card;
-    if (nc && nc.owner === playerIdx && !nc.isJammer) score += 0.6;
   }
   // 6. Lv3+: count future legal placements for hand
   if (level >= 3) {
@@ -2029,8 +2178,7 @@ function renderCardInCell(card) {
   e.innerHTML =
     '<div class="suit-corner">'+SUIT_GLYPH[card.suit]+'</div>'+
     '<div class="rank">'+rankStr(card.rank)+'</div>'+
-    '<div class="suit-center">'+SUIT_GLYPH[card.suit]+'</div>'+
-    '<div class="badge">'+PLAYER_COLORS[card.owner].badge+'</div>';
+    '<div class="suit-corner-br">'+SUIT_GLYPH[card.suit]+'</div>';
   return e;
 }
 
@@ -2626,32 +2774,6 @@ function doHandoff() {
   renderHand(); updateActionButtons();
 }
 function handoffReady() { $('overlay-handoff').classList.add('hidden'); renderAll(); startTurnTimer(); }
-
-function startCPUTurn() {
-  if (cpuPending) return;
-  cpuPending = true;
-  pauseTurnTimer();
-  const pIdx = currentPlayerIdx();
-  const player = state.players[pIdx];
-  const delay = 300 + Math.floor(Math.random() * 300);
-  setTimeout(() => {
-    cpuPending = false;
-    if (!state || state.phase === 'end') return;
-    if (currentPlayerIdx() !== pIdx) return;
-    if (state.phase === 'init') {
-      const move = cpuInitMove(state, pIdx, player.cpuLevel || 2);
-      if (move) placeCard(move.card, move.x, move.y, false);
-    } else {
-      if (anyLegalPlacement(state, pIdx)) {
-        const move = cpuPickMove(state, pIdx, player.cpuLevel || 2);
-        if (move) placeCard(move.card, move.x, move.y, move.isJammer);
-      } else {
-        markActionUnable(pIdx);
-      }
-    }
-    postActionAdvance();
-  }, delay);
-}
 
 // ============================== TIMER ==============================
 let timerSec = 0;
