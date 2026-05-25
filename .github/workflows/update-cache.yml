@@ -1,0 +1,23 @@
+name: Auto Update Cache Buster
+
+on:
+  push:
+    branches:
+      - main  # あなたのリポジトリのメインのブランチ名が「master」の場合は master に書き換えてください
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Inject Commit Hash into HTML
+        run: |
+          sed -i "s/VERSION_GITHUB_SHA/${{ github.sha }}/g" index.html
+
+      - name: Deploy to GitHub Pages
+        uses: Peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./
