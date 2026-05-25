@@ -30,7 +30,7 @@
   --p1: #3498db;
   --p2: #2ecc71;
   --p3: #f1c40f;
-  --cell-size: clamp(36px, 9.5vmin, 64px);
+  --cell-size: 56px; /* JSで盤面サイズに合わせ動的更新 */
   --gap: 2px;
   --radius: 6px;
 }
@@ -72,11 +72,19 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 .tab-row button { border-radius:0; background:transparent; border:none; border-bottom:2px solid transparent; color:var(--text-dim); padding:10px 18px; font-weight:700; }
 .tab-row button.active { color:var(--accent); border-bottom-color:var(--accent); }
 
-#screen-game { background:var(--bg); }
-.top-bar { background:var(--panel); padding:6px 10px; display:flex; gap:10px; align-items:center; border-bottom:1px solid var(--border); flex-wrap:wrap; font-size:12px; min-height:36px; }
-.turn-info { display:flex; align-items:center; gap:6px; font-weight:600; }
-.player-chip { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:14px; font-size:11px; color:#fff; font-weight:700; }
-.timer { font-weight:700; font-variant-numeric: tabular-nums; padding:3px 8px; border-radius:4px; background:var(--panel-2); min-width:30px; text-align:center; }
+#screen-game { background:var(--bg); flex-direction:row; }
+/* ===== board-first layout =====
+   優先順位: 1) 盤面サイズ確定 2) 盤面最大化 3) 正方形維持 4) 余りにUI 5) UI溢れ時はUIスクロール
+   PC: 横並び・盤面は左端へ密着・高さ基準で正方形最大化
+   Mobile/Portrait: 縦並び・盤面は上端へ密着・横幅基準で正方形最大化
+*/
+.top-bar { background:var(--panel-2); padding:0; display:flex; flex-direction:column; border-bottom:1px solid var(--border); font-size:13px; font-weight:600; }
+.top-bar-row { display:flex; align-items:center; gap:8px; padding:4px 10px; width:100%; }
+.top-bar-row + .top-bar-row { border-top:1px solid rgba(255,255,255,0.05); }
+.top-bar-row .spacer { flex:1; min-width:4px; }
+.turn-info { display:flex; align-items:center; gap:6px; font-weight:700; font-size:13px; }
+.player-chip { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:14px; font-size:13px; color:#fff; font-weight:700; line-height:1.2; }
+.timer { font-weight:800; font-variant-numeric: tabular-nums; padding:3px 8px; border-radius:6px; background:var(--panel); min-width:42px; text-align:center; font-size:14px; }
 .timer.warn { background:var(--warn); color:#3a2a04; }
 .timer.danger { background:var(--danger); color:#3a0d0d; animation: blink 0.5s infinite alternate; }
 @keyframes blink { from { opacity:0.6; } to { opacity:1; } }
@@ -98,28 +106,45 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
   animation: slowBreath 1.2s ease-in-out infinite;
 }
 .order-row { display:flex; gap:4px; align-items:center; }
-.order-row .label { font-size:10px; color:var(--text-dim); font-weight:700; letter-spacing:0.1em; }
-.order-row .dot { width:11px; height:11px; border-radius:50%; display:inline-block; }
-.deck-info { font-size:11px; color:var(--text-dim); }
-.public-draw { display:inline-flex; align-items:center; gap:4px; padding:2px 6px; background:var(--panel-2); border-radius:6px; font-size:11px; color:var(--text-dim); border:1px solid var(--border); }
-.public-draw .pd-label { color:var(--accent); font-weight:800; letter-spacing:0.08em; font-size:10px; }
-.public-draw .pd-card { display:inline-flex; align-items:center; justify-content:center; min-width:22px; padding:1px 4px; background:#f8f9fa; color:#111; border-radius:3px; font-weight:800; font-size:11px; line-height:1.1; }
-.public-draw .pd-card.suit-H { color:#c0392b; }
-.public-draw .pd-card.suit-D { color:#8b6914; }
-.public-draw .pd-card.suit-C { color:#1a5c2e; }
-.public-draw .pd-card.suit-S { color:#1a1a1a; }
-.public-draw .pd-empty { color:var(--text-dim); opacity:0.5; font-style:italic; }
-.menu-btn { padding:4px 10px; font-size:11px; }
-.net-status { font-size:10px; padding:2px 8px; border-radius:10px; font-weight:700; }
+.order-row .label { font-size:11px; color:var(--text-dim); font-weight:700; letter-spacing:0.06em; }
+.order-row .dot { width:12px; height:12px; border-radius:50%; display:inline-block; }
+.deck-info { font-size:12px; color:var(--text-dim); font-weight:700; }
+/* 山札先頭 2-4枚プレビュー (public-draw) 機能は廃止 — 関連スタイルは削除 */
+.menu-btn { padding:4px 10px; font-size:12px; font-weight:700; }
+.net-status { font-size:11px; padding:3px 8px; border-radius:10px; font-weight:700; }
 .net-status.ok { background:var(--good); color:#0d2818; }
 .net-status.warn { background:var(--warn); color:#3a2a04; }
 .net-status.bad { background:var(--danger); color:#3a0d0d; }
+/* ===== sync 同期デバッグオーバーレイ ===== */
+.sync-debug { position:fixed; right:8px; bottom:8px; z-index:80; background:rgba(10,12,18,0.85); border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:11px; color:var(--text-dim); font-family:ui-monospace,Menlo,Consolas,monospace; line-height:1.4; pointer-events:none; box-shadow:0 2px 8px rgba(0,0,0,0.5); }
+.sync-debug .sd-row { display:flex; gap:6px; }
+.sync-debug .sd-k { color:var(--accent); min-width:34px; }
+.sync-debug .sd-v { color:var(--text); }
+.sync-debug .sd-v.bad { color:var(--danger); }
+.sync-debug .sd-v.warn { color:var(--warn); }
+.sync-debug .sd-v.ok { color:var(--good); }
 
-.main-area { flex:1; display:flex; min-height:0; overflow:hidden; }
-.board-wrap { flex:1; display:flex; align-items:center; justify-content:center; padding:8px; position:relative; min-width:0; min-height:0; overflow:hidden; }
-.board-container { position:relative; }
-.board { display:grid; grid-template-columns:repeat(8, var(--cell-size)); grid-template-rows:repeat(8, var(--cell-size)); gap:var(--gap); background:var(--board-bg); padding:var(--gap); border:2px solid var(--border); border-radius:8px; position:relative; }
-.cell { width:var(--cell-size); height:var(--cell-size); background:#0d141f; border-radius:4px; position:relative; display:flex; align-items:center; justify-content:center; cursor:default; overflow:hidden; }
+/* ===== board-first: #screen-game 直下構成 ===== */
+/* 元の .main-area / .board-wrap は使わず、新規 .board-area / .side-panel を直接配置 */
+.main-area { display:contents; } /* レガシー互換: 子のflex反転を無効化 */
+.board-area {
+  flex:0 0 auto;
+  /* 正方形維持 — 利用可能領域の短辺に合わせて最大化 */
+  width: min(100dvh, 100vw);
+  height: min(100dvh, 100vw);
+  aspect-ratio: 1 / 1;
+  background: var(--board-bg);
+  position: relative;
+  /* 余白完全排除 — margin/padding/centering ゼロ */
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  /* 左上密着 */
+  align-self: flex-start;
+}
+.board-container { position:relative; width:100%; height:100%; }
+.board { display:grid; grid-template-columns:repeat(8, 1fr); grid-template-rows:repeat(8, 1fr); gap:var(--gap); background:var(--board-bg); padding:var(--gap); border:none; border-radius:0; position:relative; width:100%; height:100%; }
+.cell { width:100%; height:100%; background:#0d141f; border-radius:4px; position:relative; display:flex; align-items:center; justify-content:center; cursor:default; overflow:hidden; }
 .cell.forbidden { background:var(--forbidden); }
 .cell.forbidden::before { content:''; position:absolute; inset:0; background-image: repeating-linear-gradient(45deg, transparent 0, transparent 5px, #1a1c28 5px, #1a1c28 6px); opacity:0.7; }
 .cell.forbidden::after { content:'×'; position:absolute; color:#3a4258; font-size:calc(var(--cell-size) * 0.4); font-weight:900; }
@@ -305,29 +330,38 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 .card.suit-D { color:#8b6914; }
 .card.suit-S { color:#1a1a1a; }
 .card.suit-C { color:#1a5c2e; }
+/* === ランク数字はプレイヤーカラーで表示 (--owner) === */
+/* スーツ記号 (corner) は従来通り suit 色 */
+.card .rank { color: var(--owner, #111); text-shadow: 0 1px 0 rgba(255,255,255,0.55), 0 0 2px rgba(0,0,0,0.25); }
 .card.jammer { background: repeating-linear-gradient(45deg, #2a2a35, #2a2a35 4px, #383848 4px, #383848 8px); color:#fff; }
-.card.jammer .rank, .card.jammer .suit-corner, .card.jammer .suit-corner-br { color:#fff; }
+.card.jammer .rank, .card.jammer .suit-corner, .card.jammer .suit-corner-br { color:#fff; text-shadow:none; }
 .card.jammer::after { content:'妨'; position:absolute; top:0; right:1px; font-size: calc(var(--cell-size) * 0.22); color:var(--danger); font-weight:900; text-shadow: 0 0 3px #000; }
 
 #lines-svg { position:absolute; top:0; left:0; pointer-events:none; z-index: 10; }
 
-.side-panel { width:240px; background:var(--panel); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
-.scores { padding:8px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:4px; font-size:12px; }
-.score-row { display:flex; flex-direction:column; padding:5px 7px; border-radius:5px; gap:3px; background:rgba(255,255,255,0.02); }
-.score-row.active { background:var(--panel-2); box-shadow: inset 0 0 0 1px var(--accent); }
+/* ===== side-panel: 盤面の隣 (PC) / 下 (Mobile) に全UIを集約 =====
+   余り領域全部を占有し、UIが溢れた場合のみ内部スクロール (盤面サイズは絶対維持)
+*/
+.side-panel { flex:1 1 0; min-width:0; min-height:0; background:var(--panel); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+.side-panel-scroll { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; }
+/* プレイヤー情報は横方向に配置 — 横長カードを並べる */
+.scores { padding:4px 6px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:3px; font-size:12px; }
+.score-row { display:flex; flex-direction:row; align-items:center; padding:4px 8px; border-radius:6px; gap:6px; background:rgba(255,255,255,0.03); flex:none; width:100%; min-width:0; font-size:12px; }
+.score-row.active { background:var(--panel-2); box-shadow: inset 0 0 0 2px var(--accent); }
 .score-row.dead { opacity:0.45; }
-.score-row .name { display:flex; align-items:center; gap:6px; font-weight:600; flex-wrap:wrap; }
+.score-row .name { display:flex; align-items:center; gap:4px; font-weight:700; font-size:13px; flex:0 0 auto; min-width:0; }
+.score-row .name > span:nth-child(3) { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:80px; }
 .score-row .stat { font-variant-numeric: tabular-nums; color:var(--text-dim); font-size:11px; }
-.score-row .net-stat { font-variant-numeric: tabular-nums; color:var(--text-dim); font-size:11px; display:flex; flex-direction:column; gap:1px; }
-.score-row .net-main-score { color:var(--text); font-size:12px; }
-.score-row .net-main-score b { color:var(--warn); font-size:13px; font-weight:800; }
-.score-row .net-list { display:flex; flex-wrap:wrap; gap:3px; }
-.score-row .net-item { padding:1px 5px; border-radius:8px; background:var(--panel); font-size:10px; }
-.score-row .net-item.net-main { background:var(--warn); color:#3a2a04; font-weight:700; }
+.score-row .net-stat { font-variant-numeric: tabular-nums; color:var(--text-dim); font-size:11px; display:flex; flex-direction:row; gap:6px; align-items:center; flex:1; min-width:0; flex-wrap:nowrap; overflow:hidden; }
+.score-row .net-main-score { color:var(--text); font-size:12px; font-weight:700; white-space:nowrap; }
+.score-row .net-main-score b { color:var(--warn); font-size:15px; font-weight:900; }
+.score-row .net-list { display:flex; flex-wrap:nowrap; gap:3px; overflow:hidden; }
+.score-row .net-item { padding:1px 5px; border-radius:8px; background:var(--panel); font-size:10px; font-weight:700; }
+.score-row .net-item.net-main { background:var(--warn); color:#3a2a04; font-weight:800; }
 .score-row .net-item-none { color:var(--text-dim); opacity:0.5; }
-.score-row .net-isolated { color:var(--text-dim); font-size:10px; opacity:0.6; }
-.score-row .net-meta { color:var(--text-dim); font-size:10px; opacity:0.7; }
-.rate-badge { display:inline-block; padding:1px 6px; background:var(--accent); color:#0a1220; font-weight:700; font-size:10px; border-radius:8px; margin-left:4px; font-variant-numeric: tabular-nums; }
+.score-row .net-isolated { color:var(--text-dim); font-size:10px; opacity:0.7; }
+.score-row .net-meta { color:var(--text-dim); font-size:10px; opacity:0.8; white-space:nowrap; }
+.rate-badge { display:inline-block; padding:1px 5px; background:var(--accent); color:#0a1220; font-weight:800; font-size:10px; border-radius:8px; margin-left:3px; font-variant-numeric: tabular-nums; }
 .rate-badge.rate-zero { background:var(--panel-2); color:var(--text-dim); }
 .status-tag { display:inline-block; padding:1px 5px; border-radius:8px; font-size:9px; font-weight:800; letter-spacing:0.04em; margin-left:3px; }
 .title-badge { display:inline-block; padding:2px 8px; background:linear-gradient(135deg, #a98cff, #5ea8ff); color:#0a1220; font-weight:800; font-size:10px; letter-spacing:0.05em; border-radius:10px; margin-left:3px; box-shadow:0 2px 5px rgba(95,168,255,0.4); }
@@ -349,27 +383,32 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
   pointer-events:none;
   z-index: 1;
 }
-.log-panel { flex:1; overflow-y:auto; padding:8px; font-size:11px; color:var(--text-dim); }
+/* 履歴は内部記録のみで UI 上では非表示 — state.log と replay.actions は維持 */
+.log-panel { display:none !important; }
 .log-entry { padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
 
-.bottom-bar { background:var(--panel); border-top:1px solid var(--border); padding:8px; display:flex; flex-direction:column; gap:6px; }
-.hand-row { display:flex; gap:6px; overflow-x:auto; padding:4px 2px; min-height:80px; -webkit-overflow-scrolling:touch; align-items:center; }
-.hand-card { flex:0 0 auto; width:54px; height:78px; background:#f8f9fa; color:#111; border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:800; line-height:1; border:3px solid transparent; cursor:pointer; position:relative; transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; box-shadow: 0 2px 4px rgba(0,0,0,0.4); }
+/* bottom-bar はレガシー名のまま side-panel 内に配置 — もはや「下帯」ではないので border-top も削除 */
+.bottom-bar { background:var(--panel); border-top:1px solid var(--border); padding:6px 8px; display:flex; flex-direction:column; gap:4px; }
+.hand-row { display:flex; gap:4px; overflow-x:auto; padding:4px 2px; min-height:auto; -webkit-overflow-scrolling:touch; align-items:center; }
+.hand-card { --hc-size: 71px; flex:0 0 auto; width:var(--hc-size); height:var(--hc-size); background:#f8f9fa; color:#111; border-radius:3px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:800; line-height:1; border:2px solid var(--owner, transparent); cursor:pointer; position:relative; transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; box-shadow: 0 1px 3px rgba(0,0,0,0.5); overflow:hidden; }
 .hand-card.suit-H { color:#c0392b; }
 .hand-card.suit-D { color:#8b6914; }
 .hand-card.suit-C { color:#1a5c2e; }
-.hand-card .rank { font-size:22px; }
-.hand-card .suit-c { font-size:18px; margin-top:2px; }
-.hand-card .suit-corner { position:absolute; top:2px; left:3px; font-size:11px; line-height:1; }
-.hand-card.legal { border-color:var(--accent); }
+/* === 手札のランク数字はプレイヤーカラー === */
+.hand-card .rank { font-size: calc(var(--hc-size) * 0.46); color: var(--owner, #111); text-shadow: 0 1px 0 rgba(255,255,255,0.55), 0 0 2px rgba(0,0,0,0.25); }
+.hand-card .suit-c { display:none; }
+.hand-card .suit-corner { position:absolute; top:1px; left:2px; font-size: calc(var(--hc-size) * 0.32); line-height:1; }
+.hand-card .suit-corner-br { position:absolute; bottom:1px; right:2px; font-size: calc(var(--hc-size) * 0.32); line-height:1; transform: rotate(180deg); }
+.hand-card.legal { box-shadow: inset 0 0 0 2px var(--accent), 0 1px 3px rgba(0,0,0,0.5); border-color:var(--owner, transparent); }
 .hand-card.illegal { opacity:0.45; }
-.hand-card.selected { transform: translateY(-8px); border-color:var(--warn) !important; box-shadow:0 6px 16px rgba(245,185,65,0.5); }
-.hand-card.exchange-selected { border-color:var(--danger) !important; transform: translateY(-4px); opacity:1; }
-.card-back { flex:0 0 auto; width:36px; height:54px; background:linear-gradient(135deg,#2a3a52,#1a2230); border:2px solid var(--border); border-radius:5px; display:flex; align-items:center; justify-content:center; color:var(--text-dim); font-size:10px; }
-.hidden-hand { padding:4px 0; color:var(--text-dim); font-size:13px; text-align:center; flex:1; }
+.hand-card.selected { transform: translateY(-6px); border-color:var(--warn) !important; box-shadow:0 6px 16px rgba(245,185,65,0.5); }
+.hand-card.exchange-selected { border-color:var(--danger) !important; transform: translateY(-3px); opacity:1; }
+.card-back { flex:0 0 auto; width:30px; height:44px; background:linear-gradient(135deg,#2a3a52,#1a2230); border:2px solid var(--border); border-radius:4px; display:flex; align-items:center; justify-content:center; color:var(--text-dim); font-size:9px; }
+.hidden-hand { padding:4px 0; color:var(--text-dim); font-size:12px; text-align:center; flex:1; }
 
-.action-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; min-height:38px; }
-.action-row .spacer { flex:1; min-width:8px; }
+.action-row { display:flex; gap:5px; align-items:center; flex-wrap:wrap; min-height:auto; }
+.action-row .spacer { flex:1; min-width:6px; }
+.action-row button { font-size:12px; padding:5px 10px; }
 #message { font-size:11px; color:var(--text-dim); min-height:14px; }
 
 .overlay { position:fixed; inset:0; background:rgba(0,0,0,0.75); display:flex; align-items:center; justify-content:center; z-index:100; padding:16px; }
@@ -388,58 +427,24 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 .lobby-player .badge-host { background:var(--accent); color:#0a1220; font-size:10px; padding:2px 6px; border-radius:8px; font-weight:700; }
 .lobby-player .badge-disc { background:var(--danger); color:#3a0d0d; font-size:10px; padding:2px 6px; border-radius:8px; font-weight:700; }
 
-/* ===== PC: 下帯を細くして盤面を広く ===== */
-@media (min-width: 761px) {
-  .bottom-bar { padding:4px 8px; gap:3px; }
-  .hand-row { min-height:64px; padding:2px; gap:5px; }
-  .hand-card { width:46px; height:66px; }
-  .hand-card .rank { font-size:18px; }
-  .hand-card .suit-c { font-size:14px; }
-  .action-row { min-height:28px; }
-  #message { min-height:12px; font-size:10px; }
+/* ===== board-first レスポンシブ =====
+   PC (landscape & 十分な幅): 横並び・盤面は高さで最大化
+   Mobile / Portrait / 狭幅: 縦並び・盤面は横幅で最大化
+   どちらでも盤面は完全正方形・端へ密着・余白ゼロ
+*/
+@media (orientation: portrait), (max-width: 760px) {
+  #screen-game { flex-direction: column; }
+  .side-panel { border-left: none; border-top: 1px solid var(--border); flex: 1 1 0; min-height: 0; }
+  /* 手札カード: 6枚がぴったり収まるサイズ
+     bottom-bar padding: 8px*2=16px, hand-row padding: 2px*2=4px, gap: 4px*5=20px
+     1枚 = (100dvw - 40px) / 6 */
+  .hand-card { --hc-size: calc((100dvw - 40px) / 6); }
 }
-
-@media (max-width: 760px) {
-  .main-area { flex-direction:column; }
-  .side-panel { width:100%; border-left:none; border-top:1px solid var(--border); max-height:130px; }
-  .scores { flex-direction:row; flex-wrap:wrap; overflow-x:auto; border-bottom:none; }
-  .score-row { font-size:10px; min-width:auto; padding:3px 6px; }
-  .score-row .name { font-size:10px; }
-  .log-panel { display:none; }
-  :root { --cell-size: clamp(34px, 11vw, 56px); }
-}
-@media (max-height: 600px) and (orientation: landscape) {
-  :root { --cell-size: clamp(28px, 7vmin, 48px); }
-  .hand-card { width:44px; height:62px; }
-  .hand-card .rank { font-size:16px; }
-  .hand-card .suit-c { font-size:14px; }
-  .hand-row { min-height:64px; }
-  .side-panel { max-height:none; }
-}
+/* 結果画面: スマホ表示調整のみ残す */
 @media (max-width: 520px) {
-  .top-bar { font-size:11px; gap:6px; padding:5px 6px; flex-wrap:wrap; }
-  .order-row .dot { width:9px; height:9px; }
-  .public-draw { padding:2px 4px; font-size:10px; }
-  .public-draw .pd-card { min-width:18px; font-size:10px; padding:1px 3px; }
-  .hand-card { width:46px; height:66px; }
-  .hand-card .rank { font-size:18px; }
-  .hand-card .suit-c { font-size:14px; }
-  .hand-row { min-height:68px; }
-  /* 小画面: side-panelをトグル可能に */
-  .side-panel { max-height:90px; }
-  .side-panel.collapsed .scores { display:none; }
-  .log-panel { display:none; }
-  /* result: 中央大型表示 */
   #screen-end > div { padding:16px 12px !important; }
   .result-row { font-size:13px; padding:8px 10px; }
-  /* リプレイバー縮小 */
   #replay-controls button { padding:4px 7px; font-size:11px; }
-}
-@media (max-width: 420px) {
-  .top-bar { font-size:11px; gap:6px; padding:5px 6px; }
-  .order-row .dot { width:9px; height:9px; }
-  .hand-card { width:42px; height:60px; }
-  .hand-card .rank { font-size:16px; }
 }
 ::-webkit-scrollbar { width:8px; height:8px; }
 ::-webkit-scrollbar-track { background:transparent; }
@@ -507,6 +512,131 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
   font-weight: 700;
   border-radius: 6px;
   cursor: pointer;
+}
+
+/* ===== PC ブラウザ版のみ: 交換・降参・カード選択UIを1.5倍 =====
+   portrait / 760px以下はモバイル扱いなので除外 */
+@media (orientation: landscape) and (min-width: 761px) {
+  /* ボタン全体 (交換 / 交換確定 / 交換キャンセル / 行動不能 / 降参 / 配置確定 / キャンセル) */
+  .action-row button {
+    font-size: 18px;     /* 12px × 1.5 */
+    padding: 7.5px 15px; /* 5px/10px × 1.5 */
+  }
+  /* メッセージ表示 */
+  #message {
+    font-size: 16.5px; /* 11px × 1.5 */
+    min-height: 21px;  /* 14px × 1.5 */
+  }
+  /* action-row の gap も合わせて拡大 */
+  .action-row {
+    gap: 7.5px; /* 5px × 1.5 */
+  }
+
+  /* ===== top-bar (ラウンド・プレイヤー・タイマー・山・順番) ===== */
+  .top-bar {
+    font-size: 19.5px; /* 13px × 1.5 */
+  }
+  .top-bar-row {
+    padding: 6px 15px; /* 4px/10px × 1.5 */
+    gap: 12px;         /* 8px × 1.5 */
+  }
+  .turn-info {
+    gap: 9px;          /* 6px × 1.5 */
+    font-size: 19.5px; /* 13px × 1.5 */
+  }
+  .player-chip {
+    gap: 9px;          /* 6px × 1.5 */
+    padding: 4.5px 15px; /* 3px/10px × 1.5 */
+    border-radius: 21px; /* 14px × 1.5 */
+    font-size: 19.5px;   /* 13px × 1.5 */
+  }
+  .timer {
+    padding: 4.5px 12px; /* 3px/8px × 1.5 */
+    min-width: 63px;     /* 42px × 1.5 */
+    font-size: 21px;     /* 14px × 1.5 */
+  }
+  .order-row {
+    gap: 6px; /* 4px × 1.5 */
+  }
+  .order-row .label {
+    font-size: 16.5px; /* 11px × 1.5 */
+  }
+  .order-row .dot {
+    width: 18px;  /* 12px × 1.5 */
+    height: 18px;
+  }
+  .deck-info {
+    font-size: 18px; /* 12px × 1.5 */
+  }
+  .menu-btn {
+    padding: 6px 15px; /* 4px/10px × 1.5 */
+    font-size: 18px;   /* 12px × 1.5 */
+  }
+  .net-status {
+    font-size: 16.5px; /* 11px × 1.5 */
+    padding: 4.5px 12px; /* 3px/8px × 1.5 */
+  }
+
+  /* ===== プレイヤー情報エリア (scores) ===== */
+  .scores {
+    padding: 6px 9px; /* 4px/6px × 1.5 */
+    gap: 4.5px;       /* 3px × 1.5 */
+    font-size: 18px;  /* 12px × 1.5 */
+  }
+  .score-row {
+    padding: 6px 12px; /* 4px/8px × 1.5 */
+    gap: 9px;          /* 6px × 1.5 */
+    font-size: 18px;   /* 12px × 1.5 */
+  }
+  .score-row .name {
+    gap: 6px;          /* 4px × 1.5 */
+    font-size: 19.5px; /* 13px × 1.5 */
+  }
+  .score-row .name > span:nth-child(3) {
+    max-width: 120px; /* 80px × 1.5 */
+  }
+  .score-row .stat {
+    font-size: 16.5px; /* 11px × 1.5 */
+  }
+  .score-row .net-stat {
+    font-size: 16.5px; /* 11px × 1.5 */
+    gap: 9px;          /* 6px × 1.5 */
+  }
+  .score-row .net-main-score {
+    font-size: 18px;   /* 12px × 1.5 */
+  }
+  .score-row .net-main-score b {
+    font-size: 22.5px; /* 15px × 1.5 */
+  }
+  .score-row .net-list {
+    gap: 4.5px; /* 3px × 1.5 */
+  }
+  .score-row .net-item {
+    padding: 1.5px 7.5px; /* 1px/5px × 1.5 */
+    font-size: 15px;       /* 10px × 1.5 */
+  }
+  .score-row .net-isolated {
+    font-size: 15px; /* 10px × 1.5 */
+  }
+  .score-row .net-meta {
+    font-size: 15px; /* 10px × 1.5 */
+  }
+  .rate-badge {
+    padding: 1.5px 7.5px; /* 1px/5px × 1.5 */
+    font-size: 15px;       /* 10px × 1.5 */
+  }
+  .status-tag {
+    padding: 1.5px 7.5px; /* 1px/5px × 1.5 */
+    font-size: 13.5px;     /* 9px × 1.5 */
+  }
+  .title-badge {
+    padding: 3px 12px;   /* 2px/8px × 1.5 */
+    font-size: 15px;     /* 10px × 1.5 */
+  }
+  .color-dot {
+    width: 27px;  /* 18px × 1.5 */
+    height: 27px;
+  }
 }
 </style>
 </head>
@@ -590,7 +720,7 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
         </div>
         <div class="setup-row">
           <label>あなたの名前</label>
-          <input type="text" id="online-host-name" placeholder="プレイヤー名" maxlength="16" value="Host">
+          <input type="text" id="online-host-name" placeholder="プレイヤー名" maxlength="6" value="Host">
         </div>
         <div class="setup-row">
           <label>プレイヤー数</label>
@@ -627,7 +757,7 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
         </div>
         <div class="setup-row">
           <label>あなたの名前</label>
-          <input type="text" id="online-join-name" placeholder="プレイヤー名" maxlength="16" value="Guest">
+          <input type="text" id="online-join-name" placeholder="プレイヤー名" maxlength="6" value="Guest">
         </div>
         <div class="actions-bar">
           <button data-action="back-to-title">戻る</button>
@@ -661,45 +791,63 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
   </div>
 
   <div id="screen-game" class="screen hidden">
-    <div class="top-bar">
-      <div class="turn-info">
-        <span>R<span id="round-num">1</span></span>
-        <span class="player-chip" id="turn-player">P1</span>
-        <span class="timer" id="timer">30</span>
+    <!-- 盤面 — 左 (PC) / 上 (Mobile)。端へ密着・余白ゼロ・正方形維持 -->
+    <div class="board-area">
+      <div class="board-container">
+        <div class="board" id="board"></div>
+        <svg id="lines-svg"></svg>
       </div>
-      <div class="order-row"><span class="label">NOW</span><span id="now-order"></span></div>
-      <div class="order-row"><span class="label">NEXT</span><span id="next-order"></span></div>
-      <div class="deck-info">山札 <span id="deck-count">0</span></div>
-      <div class="public-draw" id="public-draw" title="次に山札から引かれるカード (公開情報)"><span class="pd-label">NEXT</span><span id="pd-cards"></span></div>
-      <span id="net-indicator" class="net-status hidden"></span>
-      <div style="flex:1; min-width:8px;"></div>
-      <button id="btn-menu" class="menu-btn">メニュー</button>
     </div>
-    <div class="main-area">
-      <div class="board-wrap">
-        <div class="board-container">
-          <div class="board" id="board"></div>
-          <svg id="lines-svg"></svg>
+    <!-- 全UI — 右 (PC) / 下 (Mobile)。残り領域を占有・溢れたら内部スクロール -->
+    <div class="side-panel">
+      <div class="top-bar">
+        <!-- 1行目: ラウンド数・現在ターンプレイヤー・タイマー・山札残数 -->
+        <div class="top-bar-row">
+          <div class="turn-info">
+            <span>R<span id="round-num">1</span></span>
+            <span class="player-chip" id="turn-player">P1</span>
+            <span class="timer" id="timer">30</span>
+          </div>
+          <div class="deck-info">山 <span id="deck-count">0</span></div>
+        </div>
+        <!-- 2行目: 現在ラウンド順・次ラウンド順 -->
+        <div class="top-bar-row">
+          <div class="order-row"><span class="label">NOW</span><span id="now-order"></span></div>
+          <div class="order-row"><span class="label">NEXT</span><span id="next-order"></span></div>
+        </div>
+        <!-- 3行目: ネット接続状況・SYNC・メニュー(右端) -->
+        <div class="top-bar-row">
+          <span id="net-indicator" class="net-status hidden"></span>
+          <div class="spacer"></div>
+          <button id="btn-sync-debug" class="menu-btn" title="同期デバッグ表示切替">SYNC</button>
+          <button id="btn-menu" class="menu-btn">メニュー</button>
         </div>
       </div>
-      <div class="side-panel">
+      <div class="side-panel-scroll">
         <div class="scores" id="scores"></div>
         <div class="log-panel" id="log-panel"></div>
       </div>
-    </div>
-    <div class="bottom-bar">
-      <div class="hand-row" id="hand-row"></div>
-      <div class="action-row">
-        <button id="btn-confirm" class="primary hidden" data-action="confirm-place">配置確定</button>
-        <button id="btn-cancel" class="hidden" data-action="cancel-place">キャンセル</button>
-        <button id="btn-exchange" data-action="exchange-mode">交換</button>
-        <button id="btn-exchange-confirm" class="warn hidden" data-action="exchange-confirm">交換確定</button>
-        <button id="btn-exchange-cancel" class="hidden" data-action="exchange-cancel">交換キャンセル</button>
-        <button id="btn-giveup" class="danger hidden" data-action="give-up-turn">行動不能</button>
-        <button id="btn-surrender" class="danger hidden" data-action="surrender" title="このゲームを降参します">降参</button>
-        <div class="spacer"></div>
-        <span id="message"></span>
+      <div class="bottom-bar">
+        <div class="hand-row" id="hand-row"></div>
+        <div class="action-row">
+          <button id="btn-confirm" class="primary hidden" data-action="confirm-place">配置確定</button>
+          <button id="btn-cancel" class="hidden" data-action="cancel-place">キャンセル</button>
+          <button id="btn-exchange" data-action="exchange-mode">交換</button>
+          <button id="btn-exchange-confirm" class="warn hidden" data-action="exchange-confirm">交換確定</button>
+          <button id="btn-exchange-cancel" class="hidden" data-action="exchange-cancel">交換キャンセル</button>
+          <button id="btn-giveup" class="danger hidden" data-action="give-up-turn">行動不能</button>
+          <button id="btn-surrender" class="danger hidden" data-action="surrender" title="このゲームを降参します">降参</button>
+          <div class="spacer"></div>
+          <span id="message"></span>
+        </div>
       </div>
+    </div>
+    <div id="sync-debug" class="sync-debug hidden">
+      <div class="sd-row"><span class="sd-k">ver</span><span class="sd-v" id="sd-ver">0</span></div>
+      <div class="sd-row"><span class="sd-k">local</span><span class="sd-v" id="sd-local">—</span></div>
+      <div class="sd-row"><span class="sd-k">host</span><span class="sd-v" id="sd-host">—</span></div>
+      <div class="sd-row"><span class="sd-k">sync</span><span class="sd-v" id="sd-sync">idle</span></div>
+      <div class="sd-row"><span class="sd-k">recv</span><span class="sd-v" id="sd-recv">off</span></div>
     </div>
   </div>
 
@@ -2085,7 +2233,7 @@ function cpuInitMove(s, playerIdx, level) {
 
 // ============================== NETWORK (PeerJS) ==============================
 const Net = {
-  mode: 'none',          // 'none' | 'host' | 'client' | 'spectator'
+  mode: 'none',          // 'none' | 'online-host' | 'online-client' | 'spectator'
   peer: null,
   conns: new Map(),      // host: peerId → DataConnection
   hostConn: null,        // client: connection to host
@@ -2100,7 +2248,75 @@ const Net = {
   ruleHash: '',
   reconnectToken: '',    // client-side: received from host
   joinAsSpectator: false,
+  _lastStateVersion: 0,  // race condition 対策: 受理済み stateVersion の最大値
+  // ===== 自動修復同期 =====
+  isRecovering: false,   // true の間は client→host へ action を送らない
+  localHash: '',         // client: 直近受理 state の hash
+  hostHash: '',          // client: host が報告した hash (mismatch検知用)
+  syncState: 'idle',     // 'idle' | 'recovering' | 'desync-detected' | 'synced'
+  _fullStateTimer: null, // host: 定期 fullState 送信タイマー
+  _pendingFullReqAt: 0,  // client: 直近 requestFullState 送信時刻 (連投抑止)
 };
+const FULLSTATE_INTERVAL_MS = 8000;   // host: 8秒ごとに fullState heartbeat
+const FULLSTATE_REQ_COOLDOWN = 1500;  // client: 同期要求の最短間隔
+
+// ===== 安定シリアライズ + state hash =====
+// JSON.stringify はオブジェクトキー順が実装依存ではないが、配列の中身が
+// オブジェクトの場合キー順に依存する。ここでは明示的にキーをソートして
+// 任意のホスト/クライアント間で同一の hash が得られるようにする。
+function stableSerialize(v) {
+  if (v === null || v === undefined) return 'null';
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'null';
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (typeof v === 'string') return JSON.stringify(v);
+  if (Array.isArray(v)) return '[' + v.map(stableSerialize).join(',') + ']';
+  if (typeof v === 'object') {
+    const keys = Object.keys(v).filter(k => v[k] !== undefined).sort();
+    return '{' + keys.map(k => JSON.stringify(k) + ':' + stableSerialize(v[k])).join(',') + '}';
+  }
+  return 'null';
+}
+// FNV-1a 32bit — 軽量で衝突十分低
+function fnv1aHash(str) {
+  let h = 0x811c9dc5 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+// hash 対象: board, hands, deck length+order, turn 情報, scores系基盤, status
+// 対象外: animation/ui/overlay/effects/local timers/hover/log(長く揺らぐ)/replay/rand
+function computeStateHash(s) {
+  if (!s) return '';
+  const core = {
+    phase: s.phase,
+    round: s.round,
+    initIdx: s.initIdx,
+    initOrder: s.initOrder || null,
+    currentRoundOrder: s.currentRoundOrder || null,
+    nextRoundOrder: s.nextRoundOrder || null,
+    currentTurnIdx: s.currentTurnIdx,
+    deckLen: Array.isArray(s.deck) ? s.deck.length : 0,
+    // deck 中身は client view では null 化されているため、host/client 比較不可。
+    // よって長さのみを hash 対象に含める。
+    board: (s.board || []).map(row => row.map(c => c && c.card
+      ? {s: c.card.suit, r: c.card.rank, o: c.card.owner, j: !!c.card.isJammer}
+      : 0)),
+    players: (s.players || []).map(p => ({
+      idx: p.idx,
+      alive: !!p.alive,
+      exhausted: !!p.exhausted,
+      surrendered: !!p.surrendered,
+      disconnected: !!p.disconnected,
+      handLen: p.hand ? p.hand.length : 0,
+      // 手札中身は viewer 以外は null 化されるため hash 対象外
+    })),
+    publicDraw: (s.publicDraw || []).map(c => c ? {s: c.suit, r: c.rank} : null),
+    winners: s.winners || null,
+  };
+  return fnv1aHash(stableSerialize(core));
+}
 // 再接続トークン永続化
 const RECONNECT_KEY = 'limiles_reconnect';
 function saveReconnectToken(room, token, idx) {
@@ -2128,7 +2344,7 @@ function roomIdFor(keyword) { return 'limiles-' + hashSeed(keyword.toLowerCase()
 
 function netHostCreate({keyword, name, numPlayers, turnTime}) {
   if (!keyword) { showOnlineMsg('エラー','合言葉を入力してください'); return; }
-  Net.mode = 'host';
+  Net.mode = 'online-host';
   Net.roomCode = keyword;
   Net.roomId = roomIdFor(keyword);
   Net.myName = name || 'Host';
@@ -2162,6 +2378,10 @@ function netHostCreate({keyword, name, numPlayers, turnTime}) {
 }
 
 function onClientDisconnect(conn) {
+  // 再接続ハンドラが既にこの conn を差し替え済みの場合はスキップ。
+  // Net.conns に別オブジェクトが入っている、もしくは既に削除済みなら
+  // この conn はもう「現役」ではないので誤って spectator パスへ流さない。
+  if (Net.conns.get(conn.peer) !== conn) return;
   const player = Net.hostPlayers.find(p => p.peerId === conn.peer);
   if (!player) {
     // 観戦者の切断: conns と spectators から除去
@@ -2180,6 +2400,12 @@ function onClientDisconnect(conn) {
       sp.cpuControlled = true;
       sp.protectTurns = 2;
       sp.stats.disconnects++;
+      // ★ 旧 peerId をクリアしておく。
+      //    残留していると handleHostMessage の再接続判定で
+      //    `hp.peerId !== conn.peer` が成り立たず古いコネクションを
+      //    誤って閉じようとしたり、重複エントリが生じる原因になる。
+      player.peerId = '';
+      player.connected = false;
       logEntry({type:'disconnect', player:player.idx});
       broadcastStateIfHost();
       renderAll();
@@ -2214,14 +2440,25 @@ function handleHostMessage(conn, msg) {
           // hostPlayers のmappingも復元
           const hp = Net.hostPlayers.find(h => h.idx === p.idx);
           if (hp) {
+            // 旧 conn が残っている場合は先に閉じて Map から除去する
+            // (切断イベント未着のまま再接続した場合に二重エントリが残るのを防ぐ)
+            if (hp.peerId && hp.peerId !== conn.peer) {
+              const staleConn = Net.conns.get(hp.peerId);
+              if (staleConn) { try { staleConn.close(); } catch(e) {} Net.conns.delete(hp.peerId); }
+            }
             hp.peerId = conn.peer;
             hp.connected = true;
           } else {
             Net.hostPlayers.push({idx:p.idx, name:p.name, peerId:conn.peer, isHost:false, connected:true, rating:p.rating||0});
           }
           Net.conns.set(conn.peer, conn);
+          // ★ 再接続した conn にも切断ハンドラを付け直す。
+          //    conn.on('open') 後に登録するため、ここで明示的に設定する。
+          conn.on('close', () => onClientDisconnect(conn));
+          conn.on('error', () => onClientDisconnect(conn));
           conn.send({type:'welcome', yourIdx:p.idx, ver:VERSION, config:Net.config, reconnected:true, players: Net.hostPlayers.map(hp => ({idx:hp.idx, name:hp.name, isHost:hp.isHost, rating:hp.rating}))});
-          conn.send({type:'state', view: buildClientView(state, p.idx)});
+          // 再接続: 部分 state ではなく fullState を送り、確実に完全上書き同期させる
+          sendFullStateTo(conn, p.idx);
           logEntry({type:'reconnect', player:p.idx});
           recordReplayEvent('reconnect', {player:p.idx});
           broadcastStateIfHost();
@@ -2237,7 +2474,7 @@ function handleHostMessage(conn, msg) {
       state.spectators.push(sp);
       Net.conns.set(conn.peer, conn);
       conn.send({type:'welcome', yourIdx:-1, role:'spectator', ver:VERSION, config:Net.config, players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating}))});
-      conn.send({type:'state', view: buildClientView(state, -1, {spectator:true})});
+      sendFullStateTo(conn, -1, {spectator:true});
       return;
     }
     if (state && state.phase !== 'end') { conn.send({type:'reject', reason:'game-started'}); setTimeout(()=>conn.close(), 200); return; }
@@ -2258,6 +2495,15 @@ function handleHostMessage(conn, msg) {
     const player = Net.hostPlayers.find(p => p.peerId === conn.peer);
     if (!player) return;
     processOnlineAction(player.idx, msg.action);
+  } else if (msg.type === 'requestFullState') {
+    // クライアントが desync を検知して再送を要求してきた
+    if (!state) return;
+    const player = Net.hostPlayers.find(p => p.peerId === conn.peer);
+    if (player) sendFullStateTo(conn, player.idx);
+    else {
+      const sp = state.spectators && state.spectators.find(s => s.peerId === conn.peer);
+      if (sp) sendFullStateTo(conn, -1, {spectator:true});
+    }
   }
 }
 
@@ -2266,27 +2512,67 @@ function broadcastLobby() {
   for (const conn of Net.conns.values()) { try { conn.send(payload); } catch(e){} }
 }
 function broadcastStateIfHost() {
-  if (Net.mode !== 'host') return;
+  if (Net.mode !== 'online-host') return;
+  // 単調増加バージョン番号をインクリメントしてから送信する。
+  // クライアント側がこの番号で古いメッセージを破棄できるようにする。
+  state.stateVersion = (state.stateVersion || 0) + 1;
+  const hash = computeStateHash(state);
+  state._lastHash = hash;
+  if (Net.mode === 'online-host') {
+    Net.localHash = hash; Net.hostHash = hash; Net.syncState = 'synced';
+  }
   for (const [peerId, conn] of Net.conns.entries()) {
     const player = Net.hostPlayers.find(p => p.peerId === peerId);
     if (player) {
-      try { conn.send({type:'state', view: buildClientView(state, player.idx)}); } catch(e){}
+      try { conn.send({type:'state', view: buildClientView(state, player.idx), hash}); } catch(e){}
     } else {
       // 観戦者: hostPlayers に存在しないが conns には登録されている
       const sp = state.spectators && state.spectators.find(s => s.peerId === peerId);
-      if (sp) try { conn.send({type:'state', view: buildClientView(state, -1, {spectator:true})}); } catch(e){}
+      if (sp) try { conn.send({type:'state', view: buildClientView(state, -1, {spectator:true}), hash}); } catch(e){}
     }
   }
 }
 
+// ===== fullState: host が全 state を確実に再送する経路 =====
+// version も hash も同梱。client は version の飛びや hash 不一致を検知して
+// 自発的に requestFullState を投げ、host はこれに応えてここを呼ぶ。
+// また host は heartbeat として一定間隔で全 client に fullState を送る。
+function sendFullStateTo(conn, viewerIdx, opts) {
+  if (!state) return;
+  const hash = computeStateHash(state);
+  state._lastHash = hash;
+  const view = buildClientView(state, viewerIdx, opts);
+  try { conn.send({type:'fullState', view, hash, version: state.stateVersion || 0}); } catch(e){}
+}
+function broadcastFullStateIfHost() {
+  if (Net.mode !== 'online-host') return;
+  if (!state || state.phase === 'end') return;
+  for (const [peerId, conn] of Net.conns.entries()) {
+    const player = Net.hostPlayers.find(p => p.peerId === peerId);
+    if (player) sendFullStateTo(conn, player.idx);
+    else {
+      const sp = state.spectators && state.spectators.find(s => s.peerId === peerId);
+      if (sp) sendFullStateTo(conn, -1, {spectator:true});
+    }
+  }
+}
+function startFullStateHeartbeat() {
+  stopFullStateHeartbeat();
+  Net._fullStateTimer = setInterval(broadcastFullStateIfHost, FULLSTATE_INTERVAL_MS);
+}
+function stopFullStateHeartbeat() {
+  if (Net._fullStateTimer) { clearInterval(Net._fullStateTimer); Net._fullStateTimer = null; }
+}
+
 function netJoin({keyword, name}) {
   if (!keyword) { showOnlineMsg('エラー','合言葉を入力してください'); return; }
-  Net.mode = 'client';
+  Net.mode = 'online-client';
   Net.roomCode = keyword;
   Net.roomId = roomIdFor(keyword);
   Net.myName = name || 'Guest';
   Net.myPlayerIdx = -1;
   Net.hostPlayers = [];
+  Net._lastStateVersion = 0;
   setNetStatus('connecting', 'PeerServerに登録中…');
 
   try { if (Net.peer) Net.peer.destroy(); } catch(e){}
@@ -2325,6 +2611,94 @@ function netJoin({keyword, name}) {
   });
 }
 
+// オンライン対戦の state/timer/UI を完全に破棄する。rematch・game-start の前に呼ぶ。
+// host/client いずれでも安全。Net.peer/conns は維持し、ゲーム状態だけ捨てる。
+function disposeOnlineGameState() {
+  // timers
+  stopTurnTimer();
+  if (_placeConfirmTimer) { clearTimeout(_placeConfirmTimer); _placeConfirmTimer = null; }
+  if (_placeConfirmRaf) { cancelAnimationFrame(_placeConfirmRaf); _placeConfirmRaf = null; }
+  // pending actions / overlays
+  hidePlacePopup();
+  UI_PENDING = null;
+  UI_EXCHANGE_MODE = false;
+  UI_EXCHANGE_PICKED.clear();
+  ui.selectedCardId = null;
+  cpuPending = false;
+  // 演出 banner
+  try {
+    const banner = document.getElementById('netexp-banner');
+    if (banner) banner.remove();
+  } catch(e){}
+  // overlay: handoff / online-msg / menu を閉じる
+  try { $('overlay-handoff').classList.add('hidden'); } catch(e){}
+  try { $('overlay-menu').classList.add('hidden'); } catch(e){}
+  // host 側の heartbeat / 旧 stateVersion / hash cache をリセット
+  // (新ゲーム生成側で state.stateVersion=0 から再開する)
+  Net._lastStateVersion = 0;
+  Net.localHash = '';
+  Net.hostHash = '';
+  Net.isRecovering = false;
+  Net.syncState = 'idle';
+  Net._pendingFullReqAt = 0;
+  // 切断中フラグ等を保持する必要はないが、host の場合は次の game-start でクリア
+  // 旧 state は呼び出し元の newGame で上書きされる
+}
+
+// クライアント→ホスト アクション送信の唯一の窓口。
+// isRecovering 中は送信を破棄して同期完了を待つ。
+function clientSendAction(action) {
+  if (Net.mode !== 'online-client') return false;
+  if (Net.isRecovering) return false;
+  if (!Net.hostConn) return false;
+  try { Net.hostConn.send({type:'action', action}); return true; } catch(e){ return false; }
+}
+
+// クライアント: 同期要求 — host へ fullState を求める
+function requestFullStateFromHost(reason) {
+  if (Net.mode !== 'online-client' && Net.mode !== 'spectator') return;
+  const now = Date.now();
+  if (now - Net._pendingFullReqAt < FULLSTATE_REQ_COOLDOWN) return;
+  Net._pendingFullReqAt = now;
+  Net.isRecovering = true;
+  Net.syncState = 'recovering';
+  try { Net.hostConn?.send({type:'requestFullState', reason: reason||'desync'}); } catch(e){}
+  renderNetIndicator();
+  renderSyncDebug();
+}
+
+// クライアント: host state を完全上書き同期する
+// 部分修復ではなく state を丸ごと差し替え、UI/timer/animation/overlay も reset する
+function replaceGameState(view) {
+  // 1. local pending/animation/overlay 破棄
+  hidePlacePopup();
+  UI_PENDING = null;
+  UI_EXCHANGE_MODE = false;
+  UI_EXCHANGE_PICKED.clear();
+  ui.selectedCardId = null;
+  cpuPending = false;
+  // 演出用の一時要素を除去
+  try {
+    const banner = document.getElementById('netexp-banner');
+    if (banner) banner.remove();
+  } catch(e){}
+  // 2. timers 停止
+  stopTurnTimer();
+  // 3. state を完全上書き
+  state = view;
+  state.mode = 'online-client';
+  // 4. 同期 metadata 更新
+  Net._lastStateVersion = state.stateVersion || 0;
+  Net.localHash = computeStateHash(state);
+  Net.isRecovering = false;
+  Net.syncState = 'synced';
+  // 5. 描画と timer 再生成
+  if (state.phase === 'end') { showResult(); return; }
+  renderAll();
+  maybeStartTimerForLocalTurn();
+  renderSyncDebug();
+}
+
 function handleClientMessage(msg) {
   if (!msg || typeof msg !== 'object') return;
   if (msg.type === 'welcome') {
@@ -2340,8 +2714,13 @@ function handleClientMessage(msg) {
     }
     if (msg.role === 'spectator') {
       Net.mode = 'spectator';
+      Net._lastStateVersion = 0;
       setNetStatus('spectating', '観戦中');
     } else if (msg.reconnected) {
+      // 再接続: 続いて届く fullState を必ず受理するようリセットし、復帰中フラグを立てる
+      Net._lastStateVersion = 0;
+      Net.isRecovering = true;
+      Net.syncState = 'recovering';
       setNetStatus('lobby', '再接続成功');
       showOnlineMsg('再接続成功', 'ゲームに復帰しました');
     } else {
@@ -2360,30 +2739,69 @@ function handleClientMessage(msg) {
     Net.hostPlayers = msg.players;
     renderLobby();
   } else if (msg.type === 'game-start') {
+    // 新規ゲーム開始 — local state を完全破棄して受け入れる
+    disposeOnlineGameState();
     state = msg.view;
     state.mode = 'online-client';
+    Net._lastStateVersion = state.stateVersion || 0;
+    Net.localHash = computeStateHash(state);
+    Net.isRecovering = false;
+    Net.syncState = 'synced';
     showScreen('game');
     handoffShownFor = -2; // disable handoff
-    UI_PENDING = null; UI_EXCHANGE_MODE = false; UI_EXCHANGE_PICKED.clear(); ui.selectedCardId = null;
+    hidePlacePopup();
+    UI_PENDING = null; UI_EXCHANGE_MODE = false; UI_EXCHANGE_PICKED.clear(); ui.selectedCardId = null; cpuPending = false;
     renderAll();
     maybeStartTimerForLocalTurn();
+    renderSyncDebug();
+  } else if (msg.type === 'fullState') {
+    // host authoritative な完全 state — そのまま上書き
+    if (!msg.view) return;
+    if ($('screen-game').classList.contains('hidden')) showScreen('game');
+    Net.hostHash = msg.hash || '';
+    replaceGameState(msg.view);
   } else if (msg.type === 'state') {
+    const incomingVer = msg.view ? (msg.view.stateVersion || 0) : 0;
+    const hostHash = msg.hash || '';
+    Net.hostHash = hostHash;
     if (!state || state.mode !== 'online-client') {
-      // First state message after game-start race
-      state = msg.view;
-      state.mode = 'online-client';
+      // game-start より state が先着 — 完全上書きで受け入れる
+      replaceGameState(msg.view);
       showScreen('game');
-    } else {
-      state = msg.view;
-      state.mode = 'online-client';
+      renderSyncDebug();
+      return;
     }
+    // 復帰処理中は state 部分メッセージを破棄、fullState を待つ
+    if (Net.isRecovering) return;
+    // 旧バージョンは破棄
+    if (incomingVer <= (Net._lastStateVersion || 0)) return;
+    // version 飛び (1 を超える間隔) は途中欠落の疑い → fullState を要求して保留
+    if (incomingVer > (Net._lastStateVersion || 0) + 1 && (Net._lastStateVersion || 0) !== 0) {
+      Net.syncState = 'desync-detected';
+      requestFullStateFromHost('version-gap');
+      renderSyncDebug();
+      return;
+    }
+    Net._lastStateVersion = incomingVer;
+    state = msg.view;
+    state.mode = 'online-client';
     UI_PENDING = null;
     UI_EXCHANGE_MODE = false;
     UI_EXCHANGE_PICKED.clear();
     ui.selectedCardId = null;
+    // hash 不一致 → fullState 要求し desync 自動修復
+    Net.localHash = computeStateHash(state);
+    if (hostHash && Net.localHash !== hostHash) {
+      Net.syncState = 'desync-detected';
+      requestFullStateFromHost('hash-mismatch');
+      renderSyncDebug();
+      return;
+    }
+    Net.syncState = 'synced';
     if (state.phase === 'end') { stopTurnTimer(); showResult(); return; }
     renderAll();
     maybeStartTimerForLocalTurn();
+    renderSyncDebug();
   } else if (msg.type === 'error') {
     showOnlineMsg('不正アクション', msg.reason || '');
   }
@@ -2397,14 +2815,18 @@ function maybeStartTimerForLocalTurn() {
 
 function localPlayerIdx() {
   if (Net.mode === 'spectator') return -1;
-  if (Net.mode === 'host') return 0;
-  if (Net.mode === 'client') return Net.myPlayerIdx;
+  if (Net.mode === 'online-host') return 0;
+  if (Net.mode === 'online-client') return Net.myPlayerIdx;
   return currentPlayerIdx();
 }
 
 function buildClientView(s, viewerIdx, opts) {
   const isSpectator = !!(opts && opts.spectator);
+  // stateVersion: 単調増加シーケンス番号。クライアント側で古い state メッセージを
+  // 捨てるために使用する。newGame 時に 0 から始まり、broadcastStateIfHost() 呼び出し
+  // ごとにホスト側でインクリメントされる（呼び出し元で s.stateVersion を操作）。
   return {
+    stateVersion: s.stateVersion || 0,
     board: s.board.map(row => row.map(c => ({x:c.x, y:c.y, forbidden:c.forbidden, card: c.card ? {...c.card} : null}))),
     deck: new Array(s.deck.length).fill(null),
     publicDraw: (s.publicDraw||[]).map(c => c ? {suit:c.suit, rank:c.rank} : null),
@@ -2500,6 +2922,7 @@ function netLeave() {
   // ゲーム途中の退出はレートに「負け」として記録
   recordOnlineDisconnectLoss();
   stopTurnTimer();
+  stopFullStateHeartbeat();
   try {
     for (const conn of Net.conns.values()) { try { conn.close(); } catch(e){} }
   } catch(e){}
@@ -2512,6 +2935,12 @@ function netLeave() {
   Net.hostPlayers = [];
   Net.myPlayerIdx = -1;
   Net.status = 'disconnected';
+  Net._lastStateVersion = 0;
+  Net.isRecovering = false;
+  Net.localHash = '';
+  Net.hostHash = '';
+  Net.syncState = 'idle';
+  Net._pendingFullReqAt = 0;
   state = null;
   $('online-pane-lobby').classList.add('hidden');
   $('online-pane-host').classList.remove('hidden');
@@ -3035,9 +3464,6 @@ function renderHand() {
 
   if (isOnline) {
     // Always show local player's own hand.
-    if (curIdx !== localIdx) {
-      el.appendChild(makeMsgRow('相手のターン待ち (' + escapeHtml(state.players[curIdx]?.name||'?') + ')'));
-    }
     appendHandCards(el, player, localIdx);
     return;
   }
@@ -3056,18 +3482,21 @@ function makeMsgRow(txt) {
 }
 
 function appendHandCards(el, player, pIdx) {
+  const ownerColor = (PLAYER_COLORS[pIdx] && PLAYER_COLORS[pIdx].bg) || '#111';
   for (const card of player.hand) {
     if (!card) continue;
     const legal = state.phase === 'init' ? true : (currentPlayerIdx() === pIdx ? findLegalPlacements(state, card, pIdx).length > 0 : false);
     const e = document.createElement('div');
     // no-legal-dimはtriggerNoLegalEffectが付与; 再描画時は除去してアニメに任せる
     e.className = 'hand-card suit-' + card.suit + (legal ? ' legal' : ' illegal');
+    // ランク数字をプレイヤーカラーに
+    e.style.setProperty('--owner', ownerColor);
     if (ui.selectedCardId === card.id) e.classList.add('selected');
     if (UI_EXCHANGE_PICKED.has(card.id)) e.classList.add('exchange-selected');
     e.innerHTML =
       '<div class="suit-corner">'+SUIT_GLYPH[card.suit]+'</div>'+
       '<div class="rank">'+rankStr(card.rank)+'</div>'+
-      '<div class="suit-c">'+SUIT_GLYPH[card.suit]+'</div>';
+      '<div class="suit-corner-br">'+SUIT_GLYPH[card.suit]+'</div>';
     e.addEventListener('click', () => onHandCardClick(card));
     el.appendChild(e);
   }
@@ -3107,7 +3536,6 @@ function renderTopBar() {
       dot.className = 'dot';
       dot.style.background = PLAYER_COLORS[idx].bg;
       dot.style.opacity = '0.85';
-      dot.style.width = '9px'; dot.style.height = '9px';
       nextEl.appendChild(dot);
     });
   }
@@ -3130,17 +3558,52 @@ function renderPublicDraw() {
 function renderNetIndicator() {
   const el = $('net-indicator');
   if (!el) return;
+  const sdBtn = document.getElementById('btn-sync-debug');
   if (Net.mode === 'none' || !state || (state.mode !== 'online-host' && state.mode !== 'online-client')) {
-    el.classList.add('hidden'); return;
+    el.classList.add('hidden');
+    if (sdBtn) sdBtn.classList.add('hidden');
+    return;
   }
+  if (sdBtn) sdBtn.classList.remove('hidden');
   el.classList.remove('hidden');
-  if (Net.mode === 'host') {
+  if (Net.mode === 'online-host') {
     el.className = 'net-status ok';
     el.textContent = 'HOST · 接続' + Net.conns.size;
   } else {
-    el.className = 'net-status ' + (Net.status === 'lobby' || Net.status === 'connecting' || Net.status === 'handshake' ? 'warn' : (Net.status.startsWith('error') || Net.status === 'disconnected' ? 'bad' : 'ok'));
-    el.textContent = 'CLIENT · ' + Net.status;
+    const cls = Net.isRecovering ? 'warn' :
+      (Net.syncState === 'desync-detected' ? 'bad' :
+       (Net.status === 'lobby' || Net.status === 'connecting' || Net.status === 'handshake' ? 'warn' :
+        (Net.status.startsWith('error') || Net.status === 'disconnected' ? 'bad' : 'ok')));
+    el.className = 'net-status ' + cls;
+    const tag = Net.isRecovering ? '同期中…' : (Net.syncState === 'desync-detected' ? 'desync' : Net.status);
+    el.textContent = 'CLIENT · ' + tag;
   }
+  renderSyncDebug();
+}
+
+let _syncDebugVisible = false;
+function toggleSyncDebug() {
+  _syncDebugVisible = !_syncDebugVisible;
+  const el = document.getElementById('sync-debug');
+  if (!el) return;
+  el.classList.toggle('hidden', !_syncDebugVisible);
+  if (_syncDebugVisible) renderSyncDebug();
+}
+function renderSyncDebug() {
+  const el = document.getElementById('sync-debug');
+  if (!el || el.classList.contains('hidden')) return;
+  const ver = state ? (state.stateVersion || 0) : 0;
+  document.getElementById('sd-ver').textContent = String(ver);
+  const local = Net.localHash || (state ? computeStateHash(state) : '');
+  document.getElementById('sd-local').textContent = local || '—';
+  const host = Net.hostHash || '—';
+  document.getElementById('sd-host').textContent = host;
+  const sv = document.getElementById('sd-sync');
+  sv.textContent = Net.syncState;
+  sv.className = 'sd-v ' + (Net.syncState === 'synced' ? 'ok' : (Net.syncState === 'desync-detected' ? 'bad' : 'warn'));
+  const rv = document.getElementById('sd-recv');
+  rv.textContent = Net.isRecovering ? 'ON' : 'off';
+  rv.className = 'sd-v ' + (Net.isRecovering ? 'warn' : 'ok');
 }
 
 function renderScores() {
@@ -3152,7 +3615,7 @@ function renderScores() {
     const realNets = score.networks.filter(n => n.edges > 0);
     const isolated = score.networks.length - realNets.length;
     let netStr = realNets.length
-      ? realNets.map((n, i) => '<span class="net-item'+(i===0?' net-main':'')+'">'+n.edges+'('+n.cardCount+')</span>').join(' / ')
+      ? realNets.map((n, i) => '<span class="net-item'+(i===0?' net-main':'')+'">'+n.edges+'</span>').join(' / ')
       : '<span class="net-item-none">—</span>';
     if (isolated > 0) netStr += ' <span class="net-isolated">·孤'+isolated+'</span>';
     const r = document.createElement('div');
@@ -3174,8 +3637,7 @@ function renderScores() {
       '</div>'+
       '<div class="net-stat">'+
         '<div class="net-main-score">最大 <b>'+score.edges+'</b>線/'+score.cards+'枚</div>'+
-        '<div class="net-list">'+netStr+'</div>'+
-        '<div class="net-meta">手'+handLen+' · 総'+score.totalConnections+'</div>'+
+        '<div class="net-meta">手'+handLen+'</div>'+
       '</div>';
     el.appendChild(r);
   }
@@ -3413,7 +3875,7 @@ function confirmPlacement() {
   const {card, x, y, isJammer} = UI_PENDING;
   stopTurnTimer();
   if (state.mode === 'online-client') {
-    Net.hostConn?.send({type:'action', action:{type:'place', cardId:card.id, x, y, isJammer}});
+    clientSendAction({type:'place', cardId:card.id, x, y, isJammer});
     UI_PENDING = null; ui.selectedCardId = null; renderAll();
     return;
   }
@@ -3436,7 +3898,7 @@ function confirmExchange() {
   const cardIds = [...UI_EXCHANGE_PICKED];
   stopTurnTimer();
   if (state.mode === 'online-client') {
-    Net.hostConn?.send({type:'action', action:{type:'exchange', cardIds}});
+    clientSendAction({type:'exchange', cardIds});
     UI_EXCHANGE_MODE = false; UI_EXCHANGE_PICKED.clear();
     renderAll();
     return;
@@ -3457,7 +3919,7 @@ function giveUpTurn() {
   const localIdx = localPlayerIdx();
   stopTurnTimer();
   if (state.mode === 'online-client') {
-    Net.hostConn?.send({type:'action', action:{type:'give-up'}});
+    clientSendAction({type:'give-up'});
     renderAll();
     return;
   }
@@ -3472,7 +3934,7 @@ function surrenderAction() {
   if (!confirm('本当に降参しますか?\n手札は保持されますが行動不能となります。')) return;
   stopTurnTimer();
   if (state.mode === 'online-client') {
-    Net.hostConn?.send({type:'action', action:{type:'surrender'}});
+    clientSendAction({type:'surrender'});
     renderAll();
     return;
   }
@@ -3690,7 +4152,7 @@ function onTurnTimeout() {
     if (!move) {
       // 念のためのフォールバック: 置けるマスがなければ unable 扱い
       if (state.mode === 'online-client') {
-        Net.hostConn?.send({type:'action', action:{type:'give-up'}});
+        clientSendAction({type:'give-up'});
         return;
       }
       markActionUnable(pIdx);
@@ -3699,7 +4161,7 @@ function onTurnTimeout() {
       return;
     }
     if (state.mode === 'online-client') {
-      Net.hostConn?.send({type:'action', action:{type:'place', cardId:move.card.id, x:move.x, y:move.y, isJammer:false}});
+      clientSendAction({type:'place', cardId:move.card.id, x:move.x, y:move.y, isJammer:false});
       return;
     }
     placeCard(move.card, move.x, move.y, false);
@@ -3713,7 +4175,7 @@ function onTurnTimeout() {
     if (moves.length > 0) {
       const m = moves[Math.floor(Math.random() * moves.length)];
       if (state.mode === 'online-client') {
-        Net.hostConn?.send({type:'action', action:{type:'place', cardId:m.card.id, x:m.x, y:m.y, isJammer:m.isJammer}});
+        clientSendAction({type:'place', cardId:m.card.id, x:m.x, y:m.y, isJammer:m.isJammer});
         return;
       }
       placeCard(m.card, m.x, m.y, m.isJammer);
@@ -3721,7 +4183,7 @@ function onTurnTimeout() {
       if (state.mode === 'online-host') broadcastStateIfHost();
     } else {
       if (state.mode === 'online-client') {
-        Net.hostConn?.send({type:'action', action:{type:'give-up'}});
+        clientSendAction({type:'give-up'});
         return;
       }
       markActionUnable(pIdx);
@@ -3737,6 +4199,23 @@ function showResult() {
   showScreen('end');
   // オンラインモードならレート記録 (1ゲーム1回のみ)
   maybeRecordOnlineGameResult();
+  // 「もう一度」ボタンをオンラインモード別に調整
+  const rematchBtn = document.querySelector('[data-action="rematch"]');
+  if (rematchBtn) {
+    if (Net.mode === 'online-host') {
+      rematchBtn.textContent = 'もう一度 (再戦開始)';
+      rematchBtn.disabled = false;
+      rematchBtn.title = '';
+    } else if (Net.mode === 'online-client' || Net.mode === 'spectator') {
+      rematchBtn.textContent = 'もう一度 (ホスト待ち)';
+      rematchBtn.disabled = false; // クリック時に待機メッセージを表示
+      rematchBtn.title = 'ホストが再戦を開始するまでお待ちください';
+    } else {
+      rematchBtn.textContent = 'もう一度';
+      rematchBtn.disabled = false;
+      rematchBtn.title = '';
+    }
+  }
   const el = $('result-list');
   el.innerHTML = '';
   // 順位は state.finalRanking (endGame で確定済み)、なければその場で計算
@@ -3823,8 +4302,11 @@ function startGame() {
 }
 
 function startOnlineGame() {
-  if (Net.mode !== 'host') return;
+  if (Net.mode !== 'online-host') return;
   if (Net.hostPlayers.length < 2) { showOnlineMsg('開始不可','参加者が足りません'); return; }
+  // 旧ゲームの timer/pending/overlay/heartbeat/同期状態を完全破棄してから新ゲーム生成
+  stopFullStateHeartbeat();
+  disposeOnlineGameState();
   const players = Net.hostPlayers.map(p => ({name: p.name, isCPU: false}));
   opts = {players, seed:'', turnTime: Net.config.turnTime, mode:'online-host'};
   newGame(opts);
@@ -3850,6 +4332,8 @@ function startOnlineGame() {
   renderAll();
   prepareNewTurn();
   broadcastStateIfHost();
+  // ホスト権威の保険として、定期的に fullState を送る
+  startFullStateHeartbeat();
 }
 
 function renderLobby() {
@@ -3863,7 +4347,7 @@ function renderLobby() {
   $('lobby-keyword').textContent = Net.roomCode || '(?)';
   const stEl = $('lobby-status');
   let cls = 'warn', txt = Net.status;
-  if (Net.status === 'hosting' || Net.status === 'lobby') { cls = 'ok'; txt = Net.mode === 'host' ? '待機中(ホスト)' : 'ロビー'; }
+  if (Net.status === 'hosting' || Net.status === 'lobby') { cls = 'ok'; txt = Net.mode === 'online-host' ? '待機中(ホスト)' : 'ロビー'; }
   else if (Net.status.startsWith('error') || Net.status === 'disconnected') { cls = 'bad'; txt = Net.status; }
   else if (Net.status === 'connecting' || Net.status === 'handshake' || Net.status === 'creating') { cls = 'warn'; }
   stEl.className = 'net-status ' + cls;
@@ -3877,7 +4361,7 @@ function renderLobby() {
   lp.innerHTML = '';
   Net.hostPlayers.forEach(p => {
     const row = document.createElement('div');
-    const isMe = (Net.mode === 'host' && p.idx === 0) || (Net.mode === 'client' && p.idx === Net.myPlayerIdx);
+    const isMe = (Net.mode === 'online-host' && p.idx === 0) || (Net.mode === 'online-client' && p.idx === Net.myPlayerIdx);
     row.className = 'lobby-player' + (isMe ? ' me' : '');
     const r = typeof p.rating === 'number' ? p.rating : 0;
     const rateCls = r === 0 ? 'rate-badge rate-zero' : 'rate-badge';
@@ -3890,7 +4374,7 @@ function renderLobby() {
   });
 
   const startBtn = $('btn-host-start');
-  startBtn.classList.toggle('hidden', Net.mode !== 'host' || Net.hostPlayers.length < 2);
+  startBtn.classList.toggle('hidden', Net.mode !== 'online-host' || Net.hostPlayers.length < 2);
   startBtn.disabled = Net.hostPlayers.length < 2;
 }
 
@@ -4239,8 +4723,16 @@ function handleAction(a) {
     case 'handoff-ready': handoffReady(); break;
     case 'download-replay': downloadReplay(); break;
     case 'rematch':
-      if (Net.mode !== 'none') { netLeave(); }
-      startGame();
+      if (Net.mode === 'online-host') {
+        // 接続を維持したまま host がゲームを再生成し、全 client へ game-start を再送
+        startOnlineGame();
+      } else if (Net.mode === 'online-client' || Net.mode === 'spectator') {
+        // client はリマッチ開始権なし — ホストが「もう一度」を押すまで待機
+        showOnlineMsg('再戦待機', 'ホストが「もう一度」を押すと再戦が開始されます');
+      } else {
+        // ローカル対戦: 従来通り
+        startGame();
+      }
       break;
     case 'show-rules': $('overlay-rules').classList.remove('hidden'); $('overlay-menu').classList.add('hidden'); break;
     case 'toggle-legal': UI_SHOW_LEGAL = !UI_SHOW_LEGAL; $('overlay-menu').classList.add('hidden'); renderAll(); break;
@@ -4314,11 +4806,42 @@ window.addEventListener('load', () => {
     $('overlay-menu').classList.remove('hidden');
     pauseTurnTimer();
   });
+  const sdBtn = $('btn-sync-debug');
+  if (sdBtn) sdBtn.addEventListener('click', toggleSyncDebug);
+  // === board-first: 盤面サイズに合わせ --cell-size を動的更新 ===
+  // 盤面は grid-template repeat(8, 1fr) でコンテナ追従するが、
+  // カード内文字サイズ (calc(var(--cell-size)*0.46) など) は CSS変数依存なので、
+  // 実レンダリング幅から逆算して --cell-size を書き戻す。
+  function fitBoardCellSize() {
+    const boardEl = document.getElementById('board');
+    if (!boardEl) return;
+    const w = boardEl.clientWidth;
+    if (w <= 0) return;
+    // 8セル + 9ギャップ(padding含む両端2 + 内側7) ≒ paddingは1ギャップ分(左右で2)
+    // .board の padding:var(--gap), gap:var(--gap), --gap=2px
+    const gap = 2;
+    const cell = Math.max(16, Math.floor((w - gap * 2 - gap * 7) / 8));
+    document.documentElement.style.setProperty('--cell-size', cell + 'px');
+  }
+  window.__fitBoardCellSize = fitBoardCellSize;
+  const boardElForObs = document.getElementById('board');
+  if (boardElForObs && typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(() => {
+      fitBoardCellSize();
+      if (state && !$('screen-game').classList.contains('hidden')) {
+        requestAnimationFrame(drawConnectionLines);
+      }
+    });
+    ro.observe(boardElForObs);
+  }
+  fitBoardCellSize();
+
   window.addEventListener('resize', () => {
+    fitBoardCellSize();
     if (state && !$('screen-game').classList.contains('hidden')) requestAnimationFrame(drawConnectionLines);
   });
   window.addEventListener('orientationchange', () => {
-    setTimeout(() => { if (state) requestAnimationFrame(drawConnectionLines); }, 300);
+    setTimeout(() => { fitBoardCellSize(); if (state) requestAnimationFrame(drawConnectionLines); }, 300);
   });
   loadSettings();
   showScreen('title');
