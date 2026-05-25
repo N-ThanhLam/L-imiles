@@ -3,7 +3,7 @@ name: Auto Update Cache Buster
 on:
   push:
     branches:
-      - main  # あなたのリポジトリのメインのブランチ名が「master」の場合は master に書き換えてください
+      - main  # メインブランチ名が master の場合は master に変更してください
 
 jobs:
   build:
@@ -14,7 +14,8 @@ jobs:
 
       - name: Inject Commit Hash into HTML
         run: |
-          sed -i "s/VERSION_GITHUB_SHA/${{ github.sha }}/g" index.html
+          # HTML内のマニフェストファイルのURLに最新のコミットハッシュを付与する
+          sed -i "s/manifest.webmanifest/manifest.webmanifest?v=${{ github.sha }}/g" L-imiles_modified.html
 
       - name: Deploy to GitHub Pages
         uses: Peaceiris/actions-gh-pages@v4
