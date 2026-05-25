@@ -1267,7 +1267,7 @@ function findLegalPlacements(state, card, playerIdx) {
   const out = [];
   for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) {
     if (isLegalNormal(state, card, x, y, playerIdx)) out.push({x,y,isJammer:false});
-    else if (isLegalJammer(state, card, x, y, playerIdx)) out.push({x,y,isJammer:true});
+    if (isLegalJammer(state, card, x, y, playerIdx)) out.push({x,y,isJammer:true});
   }
   return out;
 }
@@ -1535,7 +1535,8 @@ function computeNextRoundOrder(currentOrder) {
   if (state.players.length === 2) {
     const alive = state.players.filter(p => p.alive).map(p => p.idx);
     if (alive.length < 2) return alive;
-    return [...currentOrder]; // 毎ラウンド同順を維持 → A B A B A B の交互になる（reverse だと A B|B A|A B = ABBA になる）
+    // 毎ラウンド同順を維持 (A B A B...)。死亡者は除外。
+    return currentOrder.filter(i => state.players[i] && state.players[i].alive);
   }
   // 3-4 player: first → last, others random
   const first = currentOrder[0];
@@ -1605,7 +1606,6 @@ function markActionUnable(playerIdx, opts) {
   updatePublicDraw();
   recordReplayAction({type: surrender ? 'surrender' : 'unable', player: playerIdx});
   logEntry({type:'action-unable', player:playerIdx, surrender:!!surrender});
-  if (state.nextRoundOrder) state.nextRoundOrder = state.nextRoundOrder.filter(i => i !== playerIdx);
 }
 
 // 降参: 即座にexhausted。手札は山札へ戻さず保持。
@@ -1938,6 +1938,16 @@ function startCPUTurn() {
       result = {type: 'init', move: cpuInitMove(state, pIdx, level)};
     } else if (anyLegalPlacement(state, pIdx)) {
       result = {type: 'play', move: cpuPickMove(state, pIdx, level, deadline)};
+    } else if (state.deck.length > 0 && player.hand.length > 0) {
+      // 合法手なし・山札あり → 交換してから再判定
+      const ids = player.hand.map(c => c.id);
+      const toEx = ids.slice(0, Math.min(ids.length, state.deck.length));
+      exchangeCards(pIdx, toEx);
+      if (anyLegalPlacement(state, pIdx)) {
+        result = {type: 'play', move: cpuPickMove(state, pIdx, level, deadline)};
+      } else {
+        result = {type: 'unable'};
+      }
     } else {
       result = {type: 'unable'};
     }
@@ -2142,7 +2152,14 @@ function netHostCreate({keyword, name, numPlayers, turnTime}) {
 
 function onClientDisconnect(conn) {
   const player = Net.hostPlayers.find(p => p.peerId === conn.peer);
-  if (!player) return;
+  if (!player) {
+    // 観戦者の切断: conns と spectators から除去
+    Net.conns.delete(conn.peer);
+    if (state && state.spectators) {
+      state.spectators = state.spectators.filter(s => s.peerId !== conn.peer);
+    }
+    return;
+  }
   Net.conns.delete(conn.peer);
   if (state && state.phase !== 'end' && player.idx < state.players.length) {
     // In-game disconnect: 即座にCPU代理操作へ切り替え (2ターン保護付き)
@@ -2241,8 +2258,13 @@ function broadcastStateIfHost() {
   if (Net.mode !== 'host') return;
   for (const [peerId, conn] of Net.conns.entries()) {
     const player = Net.hostPlayers.find(p => p.peerId === peerId);
-    if (!player) continue;
-    try { conn.send({type:'state', view: buildClientView(state, player.idx)}); } catch(e){}
+    if (player) {
+      try { conn.send({type:'state', view: buildClientView(state, player.idx)}); } catch(e){}
+    } else {
+      // 観戦者: hostPlayers に存在しないが conns には登録されている
+      const sp = state.spectators && state.spectators.find(s => s.peerId === peerId);
+      if (sp) try { conn.send({type:'state', view: buildClientView(state, -1, {spectator:true})}); } catch(e){}
+    }
   }
 }
 
@@ -2363,6 +2385,7 @@ function maybeStartTimerForLocalTurn() {
 }
 
 function localPlayerIdx() {
+  if (Net.mode === 'spectator') return -1;
   if (Net.mode === 'host') return 0;
   if (Net.mode === 'client') return Net.myPlayerIdx;
   return currentPlayerIdx();
@@ -2430,6 +2453,7 @@ function processOnlineAction(playerIdx, action) {
     if (anyLegalPlacement(state, playerIdx)) {
       broadcastStateIfHost();
       renderAll();
+      maybeStartTimerForLocalTurn();
     } else {
       markActionUnable(playerIdx);
       postActionAdvance();
@@ -2759,7 +2783,10 @@ function renderBoard() {
       const card = player.hand.find(c => c && c.id === ui.selectedCardId);
       if (card) {
         for (const m of findLegalPlacements(state, card, localIdx)) {
-          legalCells.set(m.x+','+m.y, m.isJammer ? 'jammer' : 'normal');
+          const k = m.x+','+m.y;
+          const prev = legalCells.get(k);
+          if (!prev) legalCells.set(k, m.isJammer ? 'jammer' : 'normal');
+          else if (prev !== (m.isJammer ? 'jammer' : 'normal')) legalCells.set(k, 'both');
         }
       }
     }
@@ -2773,7 +2800,11 @@ function renderBoard() {
       el.dataset.y = y;
       if (cellData.forbidden) el.classList.add('forbidden');
       const lk = x+','+y;
-      if (legalCells.has(lk)) el.classList.add(legalCells.get(lk) === 'jammer' ? 'legal-jammer' : 'legal-normal');
+      if (legalCells.has(lk)) {
+        const lv = legalCells.get(lk);
+        if (lv === 'both') { el.classList.add('legal-normal'); el.classList.add('legal-jammer'); }
+        else el.classList.add(lv === 'jammer' ? 'legal-jammer' : 'legal-normal');
+      }
       if (UI_PENDING && UI_PENDING.x === x && UI_PENDING.y === y) el.classList.add('preview');
       if (state.lastPlaced && state.lastPlaced.x === x && state.lastPlaced.y === y) el.classList.add('last-placed');
       if (cellData.card) el.appendChild(renderCardInCell(cellData.card));
@@ -2981,15 +3012,15 @@ function renderHand() {
   const curIdx = currentPlayerIdx();
   const isOnline = state.mode === 'online-host' || state.mode === 'online-client';
 
+  // 観戦モード: 手札表示なし (localIdx < 0 は観戦者かオフライン未割当のいずれか)
+  if (isOnline && (state.isSpectator || localIdx < 0)) {
+    el.innerHTML = '<div class="hidden-hand">観戦中 — 全プレイヤーの手札は非公開</div>';
+    return;
+  }
   if (localIdx < 0) return;
   const player = state.players[localIdx];
 
   if (isOnline) {
-    // 観戦モード: 手札表示なし
-    if (state.isSpectator || localIdx < 0) {
-      el.innerHTML = '<div class="hidden-hand">観戦中 — 全プレイヤーの手札は非公開</div>';
-      return;
-    }
     // Always show local player's own hand.
     if (curIdx !== localIdx) {
       el.appendChild(makeMsgRow('相手のターン待ち (' + escapeHtml(state.players[curIdx]?.name||'?') + ')'));
@@ -3269,14 +3300,6 @@ function onHandCardClick(card) {
 function isMyInteractiveTurn() {
   const localIdx = localPlayerIdx();
   if (localIdx < 0) return false;
-  if (state.players[localIdx].isCPU) return false;
-  return currentPlayerIdx() === localIdx && !($('overlay-handoff').classList.contains('hidden') === false);
-  // The above is awkward — handoff overlay open means we can't act. Let me simplify:
-}
-// Override (cleaner)
-function isMyInteractiveTurn() {
-  const localIdx = localPlayerIdx();
-  if (localIdx < 0) return false;
   if (state && state.mode === 'replay') return false;
   if (state.players[localIdx].isCPU) return false;
   if (currentPlayerIdx() !== localIdx) return false;
@@ -3525,7 +3548,11 @@ function isAutoActed(player) {
 
 function prepareNewTurn() {
   const pIdx = currentPlayerIdx();
-  if (pIdx < 0) { showResult(); return; }
+  if (pIdx < 0) {
+    if (state && state.phase !== 'end') endGame();
+    showResult();
+    return;
+  }
   const player = state.players[pIdx];
   if (!player.alive) { postActionAdvance(); return; }
   // リプレイモード: タイマー・CPU自動進行・ハンドオフは不要
@@ -3635,9 +3662,11 @@ function onTurnTimeout() {
   if (!state) return;
   const localIdx = localPlayerIdx();
   const pIdx = currentPlayerIdx();
+  if (pIdx < 0) return;
   const isOnline = state.mode === 'online-host' || state.mode === 'online-client';
   if (isOnline && pIdx !== localIdx) return;
   const player = state.players[pIdx];
+  if (!player) return;
   if (!isOnline && player.isCPU) return;
   UI_PENDING = null; ui.selectedCardId = null;
   hidePlacePopup();
@@ -3645,11 +3674,22 @@ function onTurnTimeout() {
   if (state.phase === 'init') {
     // Use heuristic for timeout init too
     const move = cpuInitMove(state, pIdx, 2);
+    if (!move) {
+      // 念のためのフォールバック: 置けるマスがなければ unable 扱い
+      if (state.mode === 'online-client') {
+        Net.hostConn?.send({type:'action', action:{type:'give-up'}});
+        return;
+      }
+      markActionUnable(pIdx);
+      postActionAdvance();
+      if (state.mode === 'online-host') broadcastStateIfHost();
+      return;
+    }
     if (state.mode === 'online-client') {
       Net.hostConn?.send({type:'action', action:{type:'place', cardId:move.card.id, x:move.x, y:move.y, isJammer:false}});
       return;
     }
-    if (move) placeCard(move.card, move.x, move.y, false);
+    placeCard(move.card, move.x, move.y, false);
     postActionAdvance();
     if (state.mode === 'online-host') broadcastStateIfHost();
   } else {
@@ -3776,9 +3816,12 @@ function startOnlineGame() {
   opts = {players, seed:'', turnTime: Net.config.turnTime, mode:'online-host'};
   newGame(opts);
   state.mode = 'online-host';
-  // レート情報を state.players へ注入
+  // レート情報・reconnectToken を state.players へ注入
   for (const hp of Net.hostPlayers) {
-    if (state.players[hp.idx]) state.players[hp.idx].rating = typeof hp.rating === 'number' ? hp.rating : 0;
+    if (state.players[hp.idx]) {
+      state.players[hp.idx].rating = typeof hp.rating === 'number' ? hp.rating : 0;
+      if (hp.reconnectToken) state.players[hp.idx].reconnectToken = hp.reconnectToken;
+    }
   }
   // Broadcast game-start
   for (const [peerId, conn] of Net.conns.entries()) {
