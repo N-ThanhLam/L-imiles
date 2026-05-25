@@ -101,6 +101,14 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 .order-row .label { font-size:10px; color:var(--text-dim); font-weight:700; letter-spacing:0.1em; }
 .order-row .dot { width:11px; height:11px; border-radius:50%; display:inline-block; }
 .deck-info { font-size:11px; color:var(--text-dim); }
+.public-draw { display:inline-flex; align-items:center; gap:4px; padding:2px 6px; background:var(--panel-2); border-radius:6px; font-size:11px; color:var(--text-dim); border:1px solid var(--border); }
+.public-draw .pd-label { color:var(--accent); font-weight:800; letter-spacing:0.08em; font-size:10px; }
+.public-draw .pd-card { display:inline-flex; align-items:center; justify-content:center; min-width:22px; padding:1px 4px; background:#f8f9fa; color:#111; border-radius:3px; font-weight:800; font-size:11px; line-height:1.1; }
+.public-draw .pd-card.suit-H { color:#c0392b; }
+.public-draw .pd-card.suit-D { color:#8b6914; }
+.public-draw .pd-card.suit-C { color:#1a5c2e; }
+.public-draw .pd-card.suit-S { color:#1a1a1a; }
+.public-draw .pd-empty { color:var(--text-dim); opacity:0.5; font-style:italic; }
 .menu-btn { padding:4px 10px; font-size:11px; }
 .net-status { font-size:10px; padding:2px 8px; border-radius:10px; font-weight:700; }
 .net-status.ok { background:var(--good); color:#0d2818; }
@@ -191,14 +199,27 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 }
 
 
-/* 接続線脈動 (13+接続時) */
-@keyframes linePulse {
-  0%   { opacity: 0.55; }
-  50%  { opacity: 1.0; }
-  100% { opacity: 0.55; }
+/* ===== 接続面 (connection face) ===== */
+/* 13+接続時: 面の強脈動 */
+@keyframes facePulse {
+  0%   { opacity: 0.70; }
+  50%  { opacity: 1.00; }
+  100% { opacity: 0.70; }
 }
-.conn-line-pulse {
-  animation: linePulse 1.6s ease-in-out infinite;
+.conn-face-pulse {
+  animation: facePulse 1.6s ease-in-out infinite;
+}
+
+/* 全接続面: 常時ゆらぎ呼吸 (opacityのみ — GPU完結・軽量) */
+@keyframes faceBreathe {
+  0%   { opacity: var(--face-op-lo, 0.52); }
+  50%  { opacity: var(--face-op-hi, 0.82); }
+  100% { opacity: var(--face-op-lo, 0.52); }
+}
+.conn-face-live {
+  animation: faceBreathe var(--face-dur, 2.4s) ease-in-out infinite;
+  animation-delay: var(--face-delay, 0s);
+  will-change: opacity;
 }
 
 /* カード縁常時淡発光 (13+接続時) — 外周縁がある場合はouterEdgePulseで上書きされる */
@@ -221,20 +242,60 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
   animation: cardRipple 0.32s ease-out forwards;
 }
 
-/* 接続線ドロップシャドウ (4〜7接続時) */
-.conn-line-warm {
-  filter: drop-shadow(0 0 3px currentColor);
+/* 接続面 新規出現アニメ */
+@keyframes faceAppear {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+.conn-face-new {
+  animation: faceAppear 0.22s ease-out forwards;
 }
 
-/* 接続線スライドイン */
-.conn-line-new {
-  stroke-dasharray: var(--line-len, 200);
-  stroke-dashoffset: var(--line-len, 200);
-  animation: lineSlideIn 0.18s ease-out forwards;
+/* NETWORK EXPANDED バナー */
+.netexp-banner {
+  position: fixed; left: 50%; top: 22%;
+  transform: translateX(-50%) scale(0.85);
+  z-index: 250; pointer-events: none;
+  padding: 14px 28px; border-radius: 12px;
+  background: rgba(15,20,25,0.85);
+  border: 2px solid var(--owner, #5ea8ff);
+  box-shadow: 0 0 24px 4px var(--owner, #5ea8ff), 0 12px 40px rgba(0,0,0,0.6);
+  text-align: center;
+  animation: netexpPop 0.45s cubic-bezier(0.2,1.4,0.4,1) forwards;
+  backdrop-filter: blur(4px);
 }
-@keyframes lineSlideIn {
-  to { stroke-dashoffset: 0; }
+.netexp-banner .netexp-title {
+  font-size: 22px; font-weight: 900; letter-spacing: 0.18em;
+  color: var(--owner, #5ea8ff);
+  text-shadow: 0 0 12px var(--owner, #5ea8ff);
 }
+.netexp-banner .netexp-sub {
+  margin-top: 4px; font-size: 13px; font-weight: 700; color: #fff;
+  letter-spacing: 0.12em;
+}
+.netexp-banner.netexp-fade {
+  animation: netexpFade 0.6s ease-out forwards;
+}
+@keyframes netexpPop {
+  0% { opacity: 0; transform: translateX(-50%) scale(0.6); }
+  60% { opacity: 1; transform: translateX(-50%) scale(1.05); }
+  100% { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+@keyframes netexpFade {
+  0% { opacity: 1; transform: translateX(-50%) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) scale(1.1) translateY(-10px); }
+}
+
+/* リザルト演出: 敗者は暗転 */
+.result-row.loser { opacity: 0.55; filter: saturate(0.7); }
+.result-row.winner-anim {
+  animation: winnerPulse 0.8s ease-in-out infinite alternate;
+}
+@keyframes winnerPulse {
+  0% { box-shadow: 0 4px 16px rgba(245,185,65,0.4); }
+  100% { box-shadow: 0 4px 28px rgba(245,185,65,0.85), 0 0 32px rgba(255,206,94,0.5); }
+}
+
 
 .card { width:100%; height:100%; background:#f8f9fa; color:#111; border-radius:3px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:800; line-height:1; position:relative; border:2px solid var(--owner, #888); box-shadow: 0 1px 3px rgba(0,0,0,0.5); overflow:hidden; }
 .card .rank { font-size: calc(var(--cell-size) * 0.46); line-height:1; }
@@ -248,7 +309,7 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 .card.jammer .rank, .card.jammer .suit-corner, .card.jammer .suit-corner-br { color:#fff; }
 .card.jammer::after { content:'妨'; position:absolute; top:0; right:1px; font-size: calc(var(--cell-size) * 0.22); color:var(--danger); font-weight:900; text-shadow: 0 0 3px #000; }
 
-#lines-svg { position:absolute; top:0; left:0; pointer-events:none; }
+#lines-svg { position:absolute; top:0; left:0; pointer-events:none; z-index: 10; }
 
 .side-panel { width:240px; background:var(--panel); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
 .scores { padding:8px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:4px; font-size:12px; }
@@ -268,6 +329,12 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 .score-row .net-meta { color:var(--text-dim); font-size:10px; opacity:0.7; }
 .rate-badge { display:inline-block; padding:1px 6px; background:var(--accent); color:#0a1220; font-weight:700; font-size:10px; border-radius:8px; margin-left:4px; font-variant-numeric: tabular-nums; }
 .rate-badge.rate-zero { background:var(--panel-2); color:var(--text-dim); }
+.status-tag { display:inline-block; padding:1px 5px; border-radius:8px; font-size:9px; font-weight:800; letter-spacing:0.04em; margin-left:3px; }
+.title-badge { display:inline-block; padding:2px 8px; background:linear-gradient(135deg, #a98cff, #5ea8ff); color:#0a1220; font-weight:800; font-size:10px; letter-spacing:0.05em; border-radius:10px; margin-left:3px; box-shadow:0 2px 5px rgba(95,168,255,0.4); }
+.status-tag.tag-disc { background:var(--warn); color:#3a2a04; animation: discBlink 1.4s ease-in-out infinite; }
+.status-tag.tag-surr { background:var(--danger); color:#fff; }
+.status-tag.tag-exh  { background:var(--panel-2); color:var(--text-dim); border:1px solid var(--border); }
+@keyframes discBlink { 0%,100%{opacity:0.55;} 50%{opacity:1;} }
 
 /* ===== 最大ネットワーク所属カードのハイライト ===== */
 .card.main-net {
@@ -338,9 +405,30 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
   .hand-row { min-height:64px; }
   .side-panel { max-height:none; }
 }
+@media (max-width: 520px) {
+  .top-bar { font-size:11px; gap:6px; padding:5px 6px; flex-wrap:wrap; }
+  .order-row .dot { width:9px; height:9px; }
+  .public-draw { padding:2px 4px; font-size:10px; }
+  .public-draw .pd-card { min-width:18px; font-size:10px; padding:1px 3px; }
+  .hand-card { width:46px; height:66px; }
+  .hand-card .rank { font-size:18px; }
+  .hand-card .suit-c { font-size:14px; }
+  .hand-row { min-height:68px; }
+  /* 小画面: side-panelをトグル可能に */
+  .side-panel { max-height:90px; }
+  .side-panel.collapsed .scores { display:none; }
+  .log-panel { display:none; }
+  /* result: 中央大型表示 */
+  #screen-end > div { padding:16px 12px !important; }
+  .result-row { font-size:13px; padding:8px 10px; }
+  /* リプレイバー縮小 */
+  #replay-controls button { padding:4px 7px; font-size:11px; }
+}
 @media (max-width: 420px) {
   .top-bar { font-size:11px; gap:6px; padding:5px 6px; }
   .order-row .dot { width:9px; height:9px; }
+  .hand-card { width:42px; height:60px; }
+  .hand-card .rank { font-size:16px; }
 }
 ::-webkit-scrollbar { width:8px; height:8px; }
 ::-webkit-scrollbar-track { background:transparent; }
@@ -390,6 +478,14 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
   transform-origin: left center;
   transition: none;
 }
+#replay-controls { position:fixed; bottom:0; left:0; right:0; background:linear-gradient(180deg, rgba(15,20,25,0.4), rgba(15,20,25,0.95)); border-top:1px solid var(--border); padding:8px 12px; z-index:200; backdrop-filter: blur(6px); }
+#replay-controls .replay-row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; max-width:920px; margin:0 auto; }
+#replay-controls .replay-label { font-weight:900; letter-spacing:0.15em; color:var(--accent); font-size:11px; }
+#replay-controls button { padding:5px 10px; font-size:12px; }
+#replay-controls .replay-progress { font-size:11px; color:var(--text-dim); font-variant-numeric: tabular-nums; padding:0 6px; }
+#replay-controls .replay-speeds { display:inline-flex; gap:0; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+#replay-controls .replay-speeds button { border-radius:0; border:none; padding:5px 8px; font-size:11px; background:transparent; }
+#replay-controls .replay-speeds button.active { background:var(--accent); color:#0a1220; font-weight:800; }
 #place-confirm-popup .popup-cancel {
   width: 100%;
   padding: 5px 8px;
@@ -408,15 +504,16 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 
   <div id="screen-title" class="screen">
     <div class="title-logo">L-imiles</div>
-    <div class="title-sub">8 × 8  ADJACENCY  STRATEGY</div>
+    <div class="title-sub">CONNECTION  NETWORK  STRATEGY</div>
     <div class="title-menu">
       <button class="primary" data-action="new-game">ローカル / ホットシート</button>
       <button data-action="solo-quick">ソロ プレイ (CPU L2)</button>
       <button data-action="online">オンライン対戦</button>
       <button data-action="rules">ルール</button>
-      <button data-action="force-update" style="margin-top:6px; background:var(--accent); color:var(--forbidden); font-weight:bold; border-color:var(--accent);">最新版へ強制更新</button>
+      <button data-action="open-replay">リプレイ再生</button>
+      <button data-action="force-update" style="margin-top:6px; background:var(--accent); color:var(--forbidden); font-weight:bold; border-color:var(--accent);">最新版へ更新</button>
     </div>
-    <div class="title-foot">v1.12 · ネットワーク勝負 — single-file build</div>
+    <div class="title-foot">v1.13 · ネットワーク勝負 — single-file build</div>
   </div>
 
   <div id="screen-setup" class="screen hidden">
@@ -523,6 +620,7 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
         </div>
         <div class="actions-bar">
           <button data-action="back-to-title">戻る</button>
+          <button data-action="join-spectator" title="観戦のみ。手札は見えません">観戦参加</button>
           <button class="primary" data-action="online-join">参加</button>
         </div>
       </div>
@@ -561,6 +659,7 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
       <div class="order-row"><span class="label">NOW</span><span id="now-order"></span></div>
       <div class="order-row"><span class="label">NEXT</span><span id="next-order"></span></div>
       <div class="deck-info">山札 <span id="deck-count">0</span></div>
+      <div class="public-draw" id="public-draw" title="次に山札から引かれるカード (公開情報)"><span class="pd-label">NEXT</span><span id="pd-cards"></span></div>
       <span id="net-indicator" class="net-status hidden"></span>
       <div style="flex:1; min-width:8px;"></div>
       <button id="btn-menu" class="menu-btn">メニュー</button>
@@ -586,6 +685,7 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
         <button id="btn-exchange-confirm" class="warn hidden" data-action="exchange-confirm">交換確定</button>
         <button id="btn-exchange-cancel" class="hidden" data-action="exchange-cancel">交換キャンセル</button>
         <button id="btn-giveup" class="danger hidden" data-action="give-up-turn">行動不能</button>
+        <button id="btn-surrender" class="danger hidden" data-action="surrender" title="このゲームを降参します">降参</button>
         <div class="spacer"></div>
         <span id="message"></span>
       </div>
@@ -598,6 +698,7 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
       <div class="result-list" id="result-list"></div>
       <div class="actions-bar">
         <button data-action="download-replay">リプレイ保存</button>
+        <button data-action="share-replay-url">URL共有</button>
         <button data-action="back-to-title">タイトルへ</button>
         <button class="primary" data-action="rematch">もう一度</button>
       </div>
@@ -619,8 +720,8 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
       <div style="font-size:13px; line-height:1.7;">
         <p><b>目的:</b> ゲーム終了時、各プレイヤーの「最大ネットワーク」内の接続線(connection)数を得点とし、最多のプレイヤーが勝利。同点時は最大NWのカード数 → 総接続数で比較。生存だけでは勝てない。</p>
         <p><b>ネットワーク:</b> 自分のカード同士で接続線(隣接成立)で繋がっている塊。Jammerは含まない。盤面に複数のネットワークを持てるが、評価は最大のもの1つのみ。</p>
-        <p><b>盤面:</b> 8×8、ランダムで12マスが禁止マス（配置・隣接通過不可）。</p>
-        <p><b>カード:</b> トランプ52枚。A=1, J=11, Q=12, K=13。A-K循環なし。</p>
+        <p><b>盤面:</b> ランダムで12マスが禁止マス（配置・隣接通過不可）。</p>
+        <p><b>カード:</b> トランプ52枚。A=1, J=11, Q=12, K=13。<b>A↔K循環あり (±1扱い)</b>。</p>
         <p><b>隣接成立条件:</b> 自分のカード間で、上下左右いずれかが「同数字」「同スート」「数字±1」を満たすとき。斜め禁止。</p>
         <p><b>通常配置:</b> 隣接条件を満たす自カードの隣マスのみ。単独配置禁止。</p>
         <p><b>妨害配置:</b> 相手カードと同数字なら、相手隣に単独配置可。自分の隣接線は生成しない・延長しない・隣接元にもならない。</p>
@@ -655,6 +756,25 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
       <div class="confirm-buttons">
         <button class="primary" data-action="close-om">OK</button>
       </div>
+    </div>
+  </div>
+
+  <!-- リプレイ操作バー -->
+  <div id="replay-controls" class="hidden">
+    <div class="replay-row">
+      <span class="replay-label">REPLAY</span>
+      <button id="replay-prev" data-action="replay-prev" title="ハイライトへ戻る">⏮</button>
+      <button id="replay-step-back" data-action="replay-step-back" title="1手戻る">◀</button>
+      <button id="replay-play" class="primary" data-action="replay-play">▶ 再生</button>
+      <button id="replay-step" data-action="replay-step" title="1手進む">▶|</button>
+      <button id="replay-next" data-action="replay-next" title="次のハイライトへ">⏭</button>
+      <span class="replay-progress"><span id="replay-cursor">0</span>/<span id="replay-total">0</span></span>
+      <span class="replay-speeds">
+        <button id="replay-speed-1" data-action="replay-speed-1" class="active">x1</button>
+        <button id="replay-speed-2" data-action="replay-speed-2">x2</button>
+        <button id="replay-speed-4" data-action="replay-speed-4">x4</button>
+      </span>
+      <button id="replay-exit" class="danger" data-action="replay-exit">終了</button>
     </div>
   </div>
 
@@ -1100,8 +1220,20 @@ function adjacencyOK(a, b) {
   if (a.isJammer || b.isJammer) return false;
   if (a.suit === b.suit) return true;
   if (a.rank === b.rank) return true;
-  if (Math.abs(a.rank - b.rank) === 1) return true;
+  const diff = Math.abs(a.rank - b.rank);
+  if (diff === 1) return true;
+  // K↔A circular: A(1) and K(13) treated as ±1
+  if ((a.rank === 1 && b.rank === 13) || (a.rank === 13 && b.rank === 1)) return true;
   return false;
+}
+// 隣接種別を返す: 'suit'(同スート) | 'rank'(同数字) | 'plus1'(±1) | 'cycle'(K↔A) | null
+function adjacencyKind(a, b) {
+  if (!a || !b || a.isJammer || b.isJammer) return null;
+  if (a.rank === b.rank) return 'rank';
+  if (Math.abs(a.rank - b.rank) === 1) return 'plus1';
+  if ((a.rank === 1 && b.rank === 13) || (a.rank === 13 && b.rank === 1)) return 'cycle';
+  if (a.suit === b.suit) return 'suit';
+  return null;
 }
 function* neighborsOf(board, x, y) {
   for (const [dx,dy] of DIR) {
@@ -1161,7 +1293,7 @@ function computeConnections(state, playerIdx) {
       if (!inBounds(nx,ny)) continue;
       const nc = state.board[ny][nx].card;
       if (nc && nc.owner === playerIdx && !nc.isJammer && adjacencyOK(c, nc)) {
-        conn.push({x1:x,y1:y,x2:nx,y2:ny});
+        conn.push({x1:x,y1:y,x2:nx,y2:ny, kind: adjacencyKind(c, nc)});
       }
     }
   }
@@ -1264,7 +1396,22 @@ function newGame(config) {
     isCPU: !!pc.isCPU,
     cpuLevel: pc.cpuLevel || 2,
     hand: [],
-    alive: true,
+    alive: true,           // !exhausted の別名 (互換のため残す)
+    exhausted: false,      // 行動不能 (alive=false と同義)
+    surrendered: false,    // 降参した
+    disconnected: false,   // P2P切断中
+    cpuControlled: false,  // 代理CPU操作中 (切断時など)
+    reconnectToken: pc.reconnectToken || (Math.random().toString(36).slice(2, 10)),
+    protectTurns: 0,       // 瞬断救済 残ターン
+    stats: {
+      maxNetUpdates: 0,    // 最大NW更新回数
+      bestEdges: 0,        // 自己ベスト最大NW線数
+      jammers: 0,          // 妨害配置数
+      exchanges: 0,        // 交換回数
+      noLegalCount: 0,     // 合法手ゼロを迎えた回数
+      disconnects: 0,      // 切断発生回数
+      placements: 0,       // 通常配置数
+    },
   }));
   for (let r=0; r<HAND_SIZE; r++) for (const p of players) {
     if (deck.length === 0) break;
@@ -1290,8 +1437,40 @@ function newGame(config) {
     config,
     winners: null,
     mode: config.mode || 'local',
+    spectators: [],
+    // リプレイ録画 (action-log方式)
+    replay: {
+      version: VERSION,
+      seed: String(seed),
+      settings: {
+        numPlayers: players.length,
+        turnTime: config.turnTime != null ? config.turnTime : DEFAULT_TURN_TIME,
+        playerNames: players.map(p => p.name),
+        playerColors: players.map(p => p.color),
+      },
+      actions: [],
+      snapshots: [], // 5ターンごとの軽量スナップショット (任意)
+      highlights: [], // ターン番号と種別
+      startedAt: Date.now(),
+    },
   };
+  // 公開情報: 山札先頭 N枚 (= プレイヤー数)
+  state.publicDraw = state.deck.slice(0, state.players.length).map(c => c ? {suit:c.suit, rank:c.rank} : null);
   return state;
+}
+
+// ===== Replay recording =====
+function recordReplayAction(act) {
+  if (!state || !state.replay) return;
+  if (state.mode === 'sim') return;
+  state.replay.actions.push({...act, t: state.log.length, round: state.round, phase: state.phase, ts: Date.now() - state.replay.startedAt});
+}
+function recordReplayEvent(type, extra) {
+  if (!state || !state.replay) return;
+  if (state.mode === 'sim') return;
+  const t = state.replay.actions.length; // actionsインデックスで記録
+  state.replay.actions.push({type, ...(extra||{}), t: state.log.length, round: state.round, phase: state.phase, ts: Date.now() - state.replay.startedAt});
+  state.replay.highlights.push({t, type});
 }
 function logEntry(e) {
   e.t = state.log.length; e.round = state.round; e.phase = state.phase;
@@ -1310,8 +1489,10 @@ function placeCard(card, x, y, isJammer) {
   const playerIdx = currentPlayerIdx();
   const player = state.players[playerIdx];
 
-  // 演出用: 配置前の接続数を記録
-  const connsBefore = (state.mode !== 'sim') ? state.players.map(p => computeConnections(state, p.idx).length) : null;
+  // 演出用: 配置前の接続数 + 最大NW線数を記録
+  const isLive = state.mode !== 'sim';
+  const connsBefore = isLive ? state.players.map(p => computeConnections(state, p.idx).length) : null;
+  const myMaxBefore = isLive ? computeLargestNetworkScore(state, playerIdx).edges : 0;
 
   card.owner = playerIdx;
   card.isJammer = !!isJammer;
@@ -1320,12 +1501,30 @@ function placeCard(card, x, y, isJammer) {
   if (idx >= 0) player.hand.splice(idx, 1);
   if (state.deck.length > 0) player.hand.push(state.deck.shift());
   state.lastPlaced = {x, y, owner: playerIdx};
+
+  // 統計
+  if (player.stats) {
+    if (isJammer) player.stats.jammers++;
+    else if (state.phase === 'play') player.stats.placements++;
+  }
+  // 公開情報を更新
+  updatePublicDraw();
+  // リプレイ記録
+  recordReplayAction({type:isJammer?'jammer':'place', player:playerIdx, card:{suit:card.suit, rank:card.rank, id:card.id}, x, y});
   logEntry({type:'place', player:playerIdx, card:cardLogId(card), x, y, isJammer:!!isJammer});
 
-  // 演出: シミュレーション中は再生しない
-  if (connsBefore !== null) {
+  // 演出 & 自己ベスト最大NW更新検出
+  if (isLive) {
     const connsAfter = state.players.map(p => computeConnections(state, p.idx).length);
     const newConnTotal = connsAfter.reduce((s, v, i) => s + (v - connsBefore[i]), 0);
+    const myMaxAfter = computeLargestNetworkScore(state, playerIdx).edges;
+    if (myMaxAfter > myMaxBefore) {
+      player.stats.maxNetUpdates++;
+      if (myMaxAfter > (player.stats.bestEdges || 0)) player.stats.bestEdges = myMaxAfter;
+      const delta = myMaxAfter - myMaxBefore;
+      // 非同期で「NETWORK EXPANDED」演出
+      requestAnimationFrame(() => triggerNetworkExpanded(playerIdx, delta, myMaxAfter));
+    }
     // 非同期で演出キック（renderAll後に要素が存在する）
     requestAnimationFrame(() => triggerPlaceEffect(x, y, newConnTotal > 0));
   }
@@ -1361,6 +1560,7 @@ function startFirstRound() {
   state.phase = 'play';
   handoffShownFor = -1; // ラウンド先頭では必ずハンドオフを表示する
   logEntry({type:'round-start', round:state.round, order:[...state.currentRoundOrder], next:[...state.nextRoundOrder]});
+  if (state.replay) state.replay.highlights.push({t: state.replay.actions.length, type:'round-start'});
 }
 
 function advanceInit() {
@@ -1369,7 +1569,8 @@ function advanceInit() {
 }
 
 function advanceTurn() {
-  if (aliveCount() <= 1) { endGame(); return; }
+  // 新ルール: 全員exhaustedまで継続
+  if (aliveCount() === 0) { endGame(); return; }
   let nextIdx = state.currentTurnIdx + 1;
   while (nextIdx < state.currentRoundOrder.length && !state.players[state.currentRoundOrder[nextIdx]].alive) nextIdx++;
   if (nextIdx >= state.currentRoundOrder.length) endRound();
@@ -1377,7 +1578,7 @@ function advanceTurn() {
 }
 
 function endRound() {
-  if (aliveCount() <= 1) { endGame(); return; }
+  if (aliveCount() === 0) { endGame(); return; }
   state.currentRoundOrder = (state.nextRoundOrder || []).filter(i => state.players[i].alive);
   if (state.currentRoundOrder.length === 0) { endGame(); return; }
   state.nextRoundOrder = computeNextRoundOrder(state.currentRoundOrder);
@@ -1385,15 +1586,34 @@ function endRound() {
   state.currentTurnIdx = 0;
   handoffShownFor = -1; // ラウンド切り替わり時は必ずハンドオフを表示する
   logEntry({type:'round-start', round:state.round, order:[...state.currentRoundOrder], next:[...state.nextRoundOrder]});
+  if (state.replay) state.replay.highlights.push({t: state.replay.actions.length, type:'round-start'});
 }
 
-function markActionUnable(playerIdx) {
+function markActionUnable(playerIdx, opts) {
   const p = state.players[playerIdx];
-  for (const c of p.hand) state.deck.push(c);
-  p.hand = [];
+  // 降参時は手札を山札へ戻さない
+  const surrender = opts && opts.surrender;
+  if (!surrender) {
+    for (const c of p.hand) state.deck.push(c);
+    p.hand = [];
+  } else {
+    p.surrendered = true;
+    // 手札はそのまま保持 (公開しないが state には残る)
+  }
   p.alive = false;
-  logEntry({type:'action-unable', player:playerIdx});
+  p.exhausted = true;
+  updatePublicDraw();
+  recordReplayAction({type: surrender ? 'surrender' : 'unable', player: playerIdx});
+  logEntry({type:'action-unable', player:playerIdx, surrender:!!surrender});
   if (state.nextRoundOrder) state.nextRoundOrder = state.nextRoundOrder.filter(i => i !== playerIdx);
+}
+
+// 降参: 即座にexhausted。手札は山札へ戻さず保持。
+function surrenderPlayer(playerIdx) {
+  if (!state || state.phase === 'end') return;
+  const p = state.players[playerIdx];
+  if (!p || !p.alive) return;
+  markActionUnable(playerIdx, {surrender:true});
 }
 
 function exchangeCards(playerIdx, cardIds) {
@@ -1409,7 +1629,72 @@ function exchangeCards(playerIdx, cardIds) {
   const n = Math.min(toReturn.length, state.deck.length);
   for (let i=0; i<n; i++) p.hand.push(state.deck.shift());
   for (const c of toReturn) state.deck.push(c);
+  if (p.stats) p.stats.exchanges++;
+  updatePublicDraw();
+  recordReplayAction({type:'exchange', player:playerIdx, cardIds:[...cardIds]});
   logEntry({type:'exchange', player:playerIdx, returned:toReturn.map(cardLogId), drawn:n});
+}
+
+// publicDraw を山札先頭 = プレイヤー数枚 で更新
+function updatePublicDraw() {
+  if (!state) return;
+  const n = state.players.length;
+  state.publicDraw = state.deck.slice(0, n).map(c => c ? {suit:c.suit, rank:c.rank} : null);
+}
+
+// ===== 称号: ゲーム終了時に各プレイヤーへ授与する =====
+function computeTitles() {
+  if (!state) return {};
+  const out = {}; // playerIdx → [titles]
+  for (const p of state.players) out[p.idx] = [];
+
+  // 共鳴王: 自己ベスト最大NW線数が最多のプレイヤー
+  let best = -1, bestList = [];
+  for (const p of state.players) {
+    const v = (p.stats && p.stats.bestEdges) || 0;
+    if (v > best) { best = v; bestList = [p.idx]; }
+    else if (v === best && v > 0) bestList.push(p.idx);
+  }
+  if (best > 0) for (const i of bestList) out[i].push({key:'resonance-king', label:'共鳴王', desc:'最大NWベスト '+best});
+
+  // 侵食者: 妨害配置数が最多
+  let jBest = -1, jList = [];
+  for (const p of state.players) {
+    const v = (p.stats && p.stats.jammers) || 0;
+    if (v > jBest) { jBest = v; jList = [p.idx]; }
+    else if (v === jBest && v > 0) jList.push(p.idx);
+  }
+  if (jBest > 0) for (const i of jList) out[i].push({key:'invader', label:'侵食者', desc:'妨害 '+jBest+'回'});
+
+  // 増殖炉: 最大NW更新回数が最多
+  let uBest = -1, uList = [];
+  for (const p of state.players) {
+    const v = (p.stats && p.stats.maxNetUpdates) || 0;
+    if (v > uBest) { uBest = v; uList = [p.idx]; }
+    else if (v === uBest && v > 0) uList.push(p.idx);
+  }
+  if (uBest > 0) for (const i of uList) out[i].push({key:'breeder', label:'増殖炉', desc:'NW更新 '+uBest+'回'});
+
+  // 孤高: 自分以外全員exhaustedの状況で生存しつつ勝利（盤面の単一プレイヤー残存で勝利）
+  if (state.winners && state.winners.length === 1) {
+    const winner = state.winners[0];
+    const others = state.players.filter(p => p.idx !== winner);
+    if (others.every(p => p.exhausted || p.surrendered)) {
+      out[winner].push({key:'solitude', label:'孤高', desc:'単独残存で勝利'});
+    }
+  }
+
+  // 生還者: 切断回数が1回以上ありかつ勝利
+  if (state.winners) {
+    for (const idx of state.winners) {
+      const p = state.players[idx];
+      if (p && p.stats && p.stats.disconnects > 0) {
+        out[idx].push({key:'survivor', label:'生還者', desc:'切断から復帰し勝利'});
+      }
+    }
+  }
+
+  return out;
 }
 
 function endGame() {
@@ -1436,6 +1721,7 @@ function endGame() {
   state.winners = winners;
   state.finalScores = scores;
   state.finalRanking = sorted.map(s => s.idx);
+  state.titles = computeTitles();
   logEntry({type:'game-end', winners, scores});
 }
 
@@ -1631,7 +1917,8 @@ function startCPUTurn() {
   pauseTurnTimer();
   const pIdx = currentPlayerIdx();
   const player = state.players[pIdx];
-  const level = player.cpuLevel || 2;
+  // 切断中の代理CPUは「強すぎず」維持寄り (Lv2固定)、本来のCPUは設定通り
+  const level = player.cpuControlled ? 2 : (player.cpuLevel || 2);
 
   // Lv3: 最低900ms待ってからプレイ（思考感を演出しつつ計算時間を確保）
   // Lv2: 300〜600ms の人間らしい間
@@ -1671,6 +1958,7 @@ function startCPUTurn() {
         markActionUnable(pIdx);
       }
       postActionAdvance();
+      if (state.mode === 'online-host') broadcastStateIfHost();
     }, waitMore);
   }, 20);
 }
@@ -1776,7 +2064,7 @@ function cpuInitMove(s, playerIdx, level) {
 
 // ============================== NETWORK (PeerJS) ==============================
 const Net = {
-  mode: 'none',          // 'none' | 'host' | 'client'
+  mode: 'none',          // 'none' | 'host' | 'client' | 'spectator'
   peer: null,
   conns: new Map(),      // host: peerId → DataConnection
   hostConn: null,        // client: connection to host
@@ -1789,7 +2077,25 @@ const Net = {
   hostPlayers: [],       // host-side authoritative lobby
   config: null,          // host: {numPlayers, turnTime}
   ruleHash: '',
+  reconnectToken: '',    // client-side: received from host
+  joinAsSpectator: false,
 };
+// 再接続トークン永続化
+const RECONNECT_KEY = 'limiles_reconnect';
+function saveReconnectToken(room, token, idx) {
+  try { localStorage.setItem(RECONNECT_KEY, JSON.stringify({room, token, idx, ts: Date.now()})); } catch(e){}
+}
+function loadReconnectToken(room) {
+  try {
+    const raw = localStorage.getItem(RECONNECT_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (o.room !== room) return null;
+    // 5分以内なら有効
+    if (Date.now() - (o.ts||0) > 5 * 60 * 1000) return null;
+    return o;
+  } catch(e) { return null; }
+}
 function computeRuleHash(cfg) { return `${VERSION}|p${cfg.numPlayers}|t${cfg.turnTime}`; }
 function setNetStatus(s, msg) { Net.status = s; Net.statusMsg = msg || ''; renderLobby(); renderNetIndicator(); }
 function showOnlineMsg(title, body) {
@@ -1839,14 +2145,21 @@ function onClientDisconnect(conn) {
   if (!player) return;
   Net.conns.delete(conn.peer);
   if (state && state.phase !== 'end' && player.idx < state.players.length) {
-    // In-game disconnect: mark action-unable
-    if (state.players[player.idx].alive) {
-      markActionUnable(player.idx);
+    // In-game disconnect: 即座にCPU代理操作へ切り替え (2ターン保護付き)
+    const sp = state.players[player.idx];
+    if (sp.alive) {
+      sp.disconnected = true;
+      sp.cpuControlled = true;
+      sp.protectTurns = 2;
+      sp.stats.disconnects++;
       logEntry({type:'disconnect', player:player.idx});
       broadcastStateIfHost();
-      if (aliveCount() <= 1) endGame();
-      else if (currentPlayerIdx() === player.idx) postActionAdvance();
       renderAll();
+      // 切断中のターン中なら CPU が即代行
+      if (currentPlayerIdx() === player.idx) {
+        cpuPending = false;
+        startCPUTurn();
+      }
     }
   } else {
     // Lobby disconnect: remove
@@ -1862,6 +2175,43 @@ function handleHostMessage(conn, msg) {
   if (msg.type === 'hello') {
     if (msg.ver !== VERSION) { conn.send({type:'reject', reason:'version-mismatch', expected:VERSION}); setTimeout(()=>conn.close(), 200); return; }
     if (msg.ruleHash !== null && msg.ruleHash !== Net.ruleHash) { conn.send({type:'reject', reason:'rule-mismatch', expected:Net.ruleHash}); setTimeout(()=>conn.close(), 200); return; }
+    // ===== 再接続: reconnectToken付きで来た場合 =====
+    if (msg.reconnectToken && state && state.phase !== 'end') {
+      for (const p of state.players) {
+        if (p.reconnectToken === msg.reconnectToken && p.disconnected) {
+          // 接続復帰
+          p.disconnected = false;
+          p.cpuControlled = false;
+          p.protectTurns = 0;
+          // hostPlayers のmappingも復元
+          const hp = Net.hostPlayers.find(h => h.idx === p.idx);
+          if (hp) {
+            hp.peerId = conn.peer;
+            hp.connected = true;
+          } else {
+            Net.hostPlayers.push({idx:p.idx, name:p.name, peerId:conn.peer, isHost:false, connected:true, rating:p.rating||0});
+          }
+          Net.conns.set(conn.peer, conn);
+          conn.send({type:'welcome', yourIdx:p.idx, ver:VERSION, config:Net.config, reconnected:true, players: Net.hostPlayers.map(hp => ({idx:hp.idx, name:hp.name, isHost:hp.isHost, rating:hp.rating}))});
+          conn.send({type:'state', view: buildClientView(state, p.idx)});
+          logEntry({type:'reconnect', player:p.idx});
+          recordReplayEvent('reconnect', {player:p.idx});
+          broadcastStateIfHost();
+          renderAll();
+          return;
+        }
+      }
+    }
+    // ===== 観戦者 (spectator) =====
+    if (msg.role === 'spectator' && state && state.phase !== 'end') {
+      const sp = {peerId: conn.peer, name: (msg.name||'観戦者').slice(0,16)};
+      state.spectators = state.spectators || [];
+      state.spectators.push(sp);
+      Net.conns.set(conn.peer, conn);
+      conn.send({type:'welcome', yourIdx:-1, role:'spectator', ver:VERSION, config:Net.config, players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating}))});
+      conn.send({type:'state', view: buildClientView(state, -1, {spectator:true})});
+      return;
+    }
     if (state && state.phase !== 'end') { conn.send({type:'reject', reason:'game-started'}); setTimeout(()=>conn.close(), 200); return; }
     if (Net.hostPlayers.length >= Net.config.numPlayers) { conn.send({type:'reject', reason:'room-full'}); setTimeout(()=>conn.close(), 200); return; }
     if (Net.hostPlayers.some(p => p.peerId === conn.peer)) return; // duplicate
@@ -1869,7 +2219,10 @@ function handleHostMessage(conn, msg) {
     const clientRating = (typeof msg.rating === 'number' && isFinite(msg.rating)) ? msg.rating : 0;
     Net.hostPlayers.push({idx, name: (msg.name||'').slice(0,16) || ('P'+(idx+1)), peerId: conn.peer, isHost:false, connected:true, rating: clientRating});
     Net.conns.set(conn.peer, conn);
-    conn.send({type:'welcome', yourIdx: idx, ver:VERSION, config: Net.config, players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating}))});
+    // クライアントには reconnectToken を発行
+    const token = Math.random().toString(36).slice(2, 10);
+    Net.hostPlayers[idx].reconnectToken = token;
+    conn.send({type:'welcome', yourIdx: idx, ver:VERSION, config: Net.config, reconnectToken: token, players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating}))});
     broadcastLobby();
     renderLobby();
   } else if (msg.type === 'action') {
@@ -1913,10 +2266,12 @@ function netJoin({keyword, name}) {
     conn.on('open', () => {
       opened = true;
       setNetStatus('handshake', 'ハンドシェイク中…');
-      // We don't know ruleHash yet; send hello and let host validate
-      conn.send({type:'hello', ver:VERSION, name: Net.myName, ruleHash: null /* host will validate */, rating: computeRating()});
-      // Re-send hello with proper ruleHash after first welcome-rejection-then-retry pattern is unnecessary —
-      // we let host accept w/o ruleHash on join (the rules will be enforced anyway by host authority).
+      // 再接続トークンがあれば送信して復帰を試みる。観戦者ならrole=spectator
+      const prev = loadReconnectToken(Net.roomCode);
+      const hello = {type:'hello', ver:VERSION, name: Net.myName, ruleHash: null, rating: computeRating()};
+      if (Net.joinAsSpectator) hello.role = 'spectator';
+      else if (prev && prev.token) hello.reconnectToken = prev.token;
+      conn.send(hello);
     });
     conn.on('data', d => handleClientMessage(d));
     conn.on('close', () => {
@@ -1945,7 +2300,20 @@ function handleClientMessage(msg) {
     Net.hostPlayers = msg.players;
     Net.config = msg.config;
     Net.ruleHash = computeRuleHash(msg.config);
-    setNetStatus('lobby', 'ロビー待機中');
+    // Save reconnect token
+    if (msg.reconnectToken) {
+      Net.reconnectToken = msg.reconnectToken;
+      saveReconnectToken(Net.roomCode, msg.reconnectToken, msg.yourIdx);
+    }
+    if (msg.role === 'spectator') {
+      Net.mode = 'spectator';
+      setNetStatus('spectating', '観戦中');
+    } else if (msg.reconnected) {
+      setNetStatus('lobby', '再接続成功');
+      showOnlineMsg('再接続成功', 'ゲームに復帰しました');
+    } else {
+      setNetStatus('lobby', 'ロビー待機中');
+    }
   } else if (msg.type === 'reject') {
     let txt = msg.reason;
     if (msg.reason === 'version-mismatch') txt = 'バージョン不一致 (host: ' + (msg.expected||'?') + ', you: '+VERSION+')';
@@ -2000,14 +2368,20 @@ function localPlayerIdx() {
   return currentPlayerIdx();
 }
 
-function buildClientView(s, viewerIdx) {
+function buildClientView(s, viewerIdx, opts) {
+  const isSpectator = !!(opts && opts.spectator);
   return {
     board: s.board.map(row => row.map(c => ({x:c.x, y:c.y, forbidden:c.forbidden, card: c.card ? {...c.card} : null}))),
     deck: new Array(s.deck.length).fill(null),
+    publicDraw: (s.publicDraw||[]).map(c => c ? {suit:c.suit, rank:c.rank} : null),
     players: s.players.map((p, i) => ({
       idx: p.idx, name: p.name, color: p.color, isCPU: false, alive: p.alive,
+      exhausted: !!p.exhausted, surrendered: !!p.surrendered,
+      disconnected: !!p.disconnected, cpuControlled: !!p.cpuControlled,
       rating: typeof p.rating === 'number' ? p.rating : 0,
-      hand: i === viewerIdx ? p.hand.map(c => ({...c})) : new Array(p.hand.length).fill(null),
+      stats: p.stats ? {...p.stats} : null,
+      // 観戦者は誰の手札も見れない。プレイヤーは自分の手札のみ。
+      hand: (!isSpectator && i === viewerIdx) ? p.hand.map(c => ({...c})) : new Array(p.hand.length).fill(null),
     })),
     phase: s.phase,
     initOrder: s.initOrder ? [...s.initOrder] : null,
@@ -2023,6 +2397,7 @@ function buildClientView(s, viewerIdx) {
     winners: s.winners,
     mode: 'online-client',
     viewerIdx,
+    isSpectator,
   };
 }
 
@@ -2068,6 +2443,14 @@ function processOnlineAction(playerIdx, action) {
     postActionAdvance();
     broadcastStateIfHost();
     renderAll();
+  } else if (action.type === 'surrender') {
+    surrenderPlayer(playerIdx);
+    if (currentPlayerIdx() === playerIdx) postActionAdvance();
+    else if (aliveCount() === 0) { endGame(); showResult(); }
+    broadcastStateIfHost();
+    renderAll();
+  } else if (action.type === 'reconnect-claim') {
+    // 既に handleHostMessage 側で処理済みなのでここでは無視
   }
 }
 function sendErrorTo(playerIdx, reason) {
@@ -2102,6 +2485,25 @@ function netLeave() {
 }
 
 // ============================== UI ==============================
+// ===== NETWORK EXPANDED — 自己最大NW更新時の演出 =====
+function triggerNetworkExpanded(playerIdx, delta, total) {
+  // 既存バナーがあれば破棄
+  const old = document.getElementById('netexp-banner');
+  if (old) old.remove();
+  const color = PLAYER_COLORS[playerIdx] ? PLAYER_COLORS[playerIdx].bg : '#5ea8ff';
+  const banner = document.createElement('div');
+  banner.id = 'netexp-banner';
+  banner.className = 'netexp-banner';
+  banner.style.setProperty('--owner', color);
+  banner.innerHTML =
+    '<div class="netexp-title">NETWORK EXPANDED</div>'+
+    '<div class="netexp-sub">+'+delta+' · TOTAL '+total+'</div>';
+  document.body.appendChild(banner);
+  // 自動でフェード
+  setTimeout(() => { banner.classList.add('netexp-fade'); }, 900);
+  setTimeout(() => { if (banner.parentNode) banner.parentNode.removeChild(banner); }, 1500);
+}
+
 // 配置演出トリガー（各クライアント側で独立再生 — 追加通信ゼロ）
 function triggerPlaceEffect(x, y, hasNewConn) {
   // 配置後の接続数を取得（現在プレイヤー）
@@ -2283,26 +2685,21 @@ function applyResonanceToBoard() {
     }
   });
 
-  // SVG接続線の脈動・輝度も更新
+  // SVG接続面の脈動・輝度も更新
   const svg = $('lines-svg');
   if (!svg) return;
-  svg.querySelectorAll('line[data-player]').forEach(line => {
-    const pIdx = +line.getAttribute('data-player');
+  svg.querySelectorAll('[data-player]').forEach(el => {
+    const pIdx = +el.getAttribute('data-player');
     const cn = connMap[pIdx] || 0;
     if (cn >= 13) {
-      line.classList.add('conn-line-pulse');
-      line.classList.remove('conn-line-warm');
-      line.setAttribute('stroke-width', '5');
-      line.setAttribute('opacity', '0.95');
+      el.classList.add('conn-face-pulse');
+      el.setAttribute('opacity', el.hasAttribute('data-key') ? '0.92' : '0.32');
     } else if (cn >= 4) {
-      line.classList.remove('conn-line-pulse');
-      line.classList.add('conn-line-warm');
-      line.setAttribute('stroke-width', '4');
-      line.setAttribute('opacity', '0.92');
+      el.classList.remove('conn-face-pulse');
+      el.setAttribute('opacity', el.hasAttribute('data-key') ? '0.84' : '0.29');
     } else {
-      line.classList.remove('conn-line-pulse', 'conn-line-warm');
-      line.setAttribute('stroke-width', '4');
-      line.setAttribute('opacity', '0.85');
+      el.classList.remove('conn-face-pulse');
+      el.setAttribute('opacity', el.hasAttribute('data-key') ? '0.70' : '0.24');
     }
   });
 }
@@ -2416,56 +2813,162 @@ function drawConnectionLines(animateNew) {
   svg.style.width = w+'px';
   svg.style.height = h+'px';
 
-  // 既存線のキーセットを保存（アニメ判定用）
+  // 既存面のキーセットを保存（新規アニメ判定用）
   const existingKeys = new Set();
   if (animateNew) {
-    svg.querySelectorAll('line[data-key]').forEach(l => existingKeys.add(l.getAttribute('data-key')));
+    svg.querySelectorAll('[data-key]').forEach(el => existingKeys.add(el.getAttribute('data-key')));
   }
 
   svg.innerHTML = '';
+
+  // ===== SVG Glowフィルター定義 =====
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  for (let pi = 0; pi < 4; pi++) {
+    if (!PLAYER_COLORS[pi]) continue;
+    // 通常glow
+    const f = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+    f.setAttribute('id', 'conn-glow-'+pi);
+    f.setAttribute('x', '-60%'); f.setAttribute('y', '-60%');
+    f.setAttribute('width', '220%'); f.setAttribute('height', '220%');
+    f.innerHTML =
+      '<feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur"/>'+
+      '<feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 2.8 0" result="glow"/>'+
+      '<feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>';
+    defs.appendChild(f);
+    // 強pulse glow
+    const fp = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+    fp.setAttribute('id', 'conn-glow-pulse-'+pi);
+    fp.setAttribute('x', '-80%'); fp.setAttribute('y', '-80%');
+    fp.setAttribute('width', '260%'); fp.setAttribute('height', '260%');
+    fp.innerHTML =
+      '<feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>'+
+      '<feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 3.8 0" result="glow"/>'+
+      '<feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>';
+    defs.appendChild(fp);
+  }
+  svg.appendChild(defs);
+
   const bRect = board.getBoundingClientRect();
   const cells = board.querySelectorAll('.cell');
-  const positions = {};
+  const cellRects = {};
   cells.forEach(c => {
     const x = +c.dataset.x, y = +c.dataset.y;
     const cr = c.getBoundingClientRect();
-    positions[x+','+y] = { cx: cr.left - bRect.left + cr.width/2, cy: cr.top - bRect.top + cr.height/2 };
+    cellRects[x+','+y] = {
+      left:   cr.left   - bRect.left,
+      right:  cr.right  - bRect.left,
+      top:    cr.top    - bRect.top,
+      bottom: cr.bottom - bRect.top,
+      w: cr.width, h: cr.height
+    };
   });
+
   for (const p of state.players) {
     const conns = computeConnections(state, p.idx);
+    const connCount = conns.length;
+    const color = PLAYER_COLORS[p.idx].bg;
+    const isPulse = connCount >= 13;
+    const isWarm  = connCount >= 4 && !isPulse;
+    const glowId  = isPulse ? 'conn-glow-pulse-'+p.idx : 'conn-glow-'+p.idx;
+    const baseOpacity = isPulse ? 0.92 : (isWarm ? 0.84 : 0.70);
+    // 呼吸アニメ: プレイヤーごとに周期と位相をずらす（軽量）
+    const breathDur   = [2.6, 2.2, 2.8, 2.4][p.idx] || 2.4;
+    const breathDelay = [0, -0.9, -1.6, -0.4][p.idx] || 0;
+    const opHi = baseOpacity;
+    const opLo = baseOpacity * (isPulse ? 0.72 : 0.62);
+
     for (const c of conns) {
-      const a = positions[c.x1+','+c.y1];
-      const b = positions[c.x2+','+c.y2];
-      if (!a || !b) continue;
-      const lineKey = `${c.x1},${c.y1}-${c.x2},${c.y2}-${p.idx}`;
-      const isNew = animateNew && !existingKeys.has(lineKey);
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', a.cx); line.setAttribute('y1', a.cy);
-      line.setAttribute('x2', b.cx); line.setAttribute('y2', b.cy);
-      line.setAttribute('stroke', PLAYER_COLORS[p.idx].bg);
-      line.setAttribute('stroke-width', '4');
-      line.setAttribute('stroke-linecap', 'round');
-      line.setAttribute('opacity', '0.85');
-      line.setAttribute('data-key', lineKey);
-      line.setAttribute('data-player', p.idx);
-      // 密度に応じた線スタイル（新規描画時に適用）
-      const connCount = computeConnections(state, p.idx).length;
-      if (connCount >= 13) {
-        line.classList.add('conn-line-pulse');
-        line.setAttribute('stroke-width', '5');
-        line.setAttribute('opacity', '0.95');
-      } else if (connCount >= 4) {
-        line.classList.add('conn-line-warm');
-        line.setAttribute('opacity', '0.92');
+      const r1 = cellRects[c.x1+','+c.y1];
+      const r2 = cellRects[c.x2+','+c.y2];
+      if (!r1 || !r2) continue;
+
+      const connKey = `${c.x1},${c.y1}-${c.x2},${c.y2}-${p.idx}`;
+      const isNew = animateNew && !existingKeys.has(connKey);
+      const isHoriz = c.x2 > c.x1;
+
+      // ===== ジョイント形状 =====
+      // カードのどちら側も数字に届かない「爪」として描画。
+      //  overlap  : カード内に食い込む量（数字手前で止まる）= セルサイズの 23%
+      //  crossSize: 短辺方向の太さ = セルサイズの 38%  (ピル型)
+      //  ギャップを含む全長 = overlap*2 + gap
+
+      const cellSize = isHoriz ? r1.w : r1.h;
+      const overlap  = cellSize * 0.23;   // カードへの食い込み量
+      const thick    = (isHoriz ? r1.h : r1.w) * 0.38;  // 短辺の太さ
+
+      let rx, ry, rw, rh;
+      if (isHoriz) {
+        rw = (r2.left - r1.right) + overlap * 2;   // gap + 両側の爪
+        rh = thick;
+        rx = r1.right - overlap;
+        ry = r1.top + (r1.h - rh) / 2;            // 垂直センタリング
+      } else {
+        rw = thick;
+        rh = (r2.top - r1.bottom) + overlap * 2;
+        rx = r1.left + (r1.w - rw) / 2;           // 水平センタリング
+        ry = r1.bottom - overlap;
       }
-      if (isNew) {
-        const len = Math.hypot(b.cx - a.cx, b.cy - a.cy);
-        line.style.setProperty('--line-len', len);
-        line.setAttribute('stroke-dasharray', len);
-        line.setAttribute('stroke-dashoffset', len);
-        line.classList.add('conn-line-new');
-      }
-      svg.appendChild(line);
+      if (rw <= 0 || rh <= 0) continue;
+      const brad = Math.min(rw, rh) / 2;           // ピル型（完全丸め）
+
+      const NS = 'http://www.w3.org/2000/svg';
+
+      // ① 拡散グロー層（ジョイントより少し大きく均等拡張）
+      const glowPad = brad * 0.9;
+      const gx = rx - glowPad;
+      const gy = ry - glowPad;
+      const gw = rw + glowPad * 2;
+      const gh = rh + glowPad * 2;
+      const glowEl = document.createElementNS(NS, 'rect');
+      glowEl.setAttribute('x', gx); glowEl.setAttribute('y', gy);
+      glowEl.setAttribute('width', gw); glowEl.setAttribute('height', gh);
+      glowEl.setAttribute('rx', brad * 1.2);
+      glowEl.setAttribute('fill', color);
+      glowEl.setAttribute('opacity', baseOpacity * 0.35);
+      glowEl.setAttribute('filter', 'url(#'+glowId+')');
+      glowEl.setAttribute('data-player', p.idx);
+      glowEl.classList.add('conn-face-live');
+      glowEl.style.setProperty('--face-op-hi', baseOpacity * 0.38);
+      glowEl.style.setProperty('--face-op-lo', baseOpacity * 0.18);
+      glowEl.style.setProperty('--face-dur', breathDur+'s');
+      glowEl.style.setProperty('--face-delay', breathDelay+'s');
+      if (isPulse) glowEl.classList.add('conn-face-pulse');
+      if (isNew)   glowEl.classList.add('conn-face-new');
+      svg.appendChild(glowEl);
+
+      // ② メイン接続面
+      const mainEl = document.createElementNS(NS, 'rect');
+      mainEl.setAttribute('x', rx); mainEl.setAttribute('y', ry);
+      mainEl.setAttribute('width', rw); mainEl.setAttribute('height', rh);
+      mainEl.setAttribute('rx', brad);
+      mainEl.setAttribute('fill', color);
+      mainEl.setAttribute('opacity', baseOpacity);
+      mainEl.setAttribute('data-key', connKey);
+      mainEl.setAttribute('data-player', p.idx);
+      mainEl.setAttribute('data-kind', c.kind || 'unknown');
+      mainEl.classList.add('conn-face-live');
+      mainEl.style.setProperty('--face-op-hi', opHi);
+      mainEl.style.setProperty('--face-op-lo', opLo);
+      mainEl.style.setProperty('--face-dur', breathDur+'s');
+      mainEl.style.setProperty('--face-delay', breathDelay+'s');
+      if (isPulse) mainEl.classList.add('conn-face-pulse');
+      if (isNew)   mainEl.classList.add('conn-face-new');
+      svg.appendChild(mainEl);
+
+      // ③ 光芯ハイライト（ジョイント長手方向に細いスジ）
+      const hMarginLong  = isHoriz ? rw * 0.12 : rh * 0.12;  // 長辺の余白
+      const hMarginShort = isHoriz ? rh * 0.30 : rw * 0.30;  // 短辺の余白
+      const hlEl = document.createElementNS(NS, 'rect');
+      hlEl.setAttribute('x',      isHoriz ? rx + hMarginLong  : rx + hMarginShort);
+      hlEl.setAttribute('y',      isHoriz ? ry + hMarginShort : ry + hMarginLong);
+      hlEl.setAttribute('width',  isHoriz ? Math.max(rw - hMarginLong  * 2, 1) : Math.max(rw - hMarginShort * 2, 1));
+      hlEl.setAttribute('height', isHoriz ? Math.max(rh - hMarginShort * 2, 1) : Math.max(rh - hMarginLong  * 2, 1));
+      hlEl.setAttribute('rx', brad * 0.5);
+      hlEl.setAttribute('fill', 'white');
+      hlEl.setAttribute('opacity', '0.26');
+      hlEl.setAttribute('pointer-events', 'none');
+      if (isNew) hlEl.classList.add('conn-face-new');
+      svg.appendChild(hlEl);
     }
   }
 }
@@ -2482,6 +2985,11 @@ function renderHand() {
   const player = state.players[localIdx];
 
   if (isOnline) {
+    // 観戦モード: 手札表示なし
+    if (state.isSpectator || localIdx < 0) {
+      el.innerHTML = '<div class="hidden-hand">観戦中 — 全プレイヤーの手札は非公開</div>';
+      return;
+    }
     // Always show local player's own hand.
     if (curIdx !== localIdx) {
       el.appendChild(makeMsgRow('相手のターン待ち (' + escapeHtml(state.players[curIdx]?.name||'?') + ')'));
@@ -2560,7 +3068,19 @@ function renderTopBar() {
     });
   }
   $('deck-count').textContent = state.deck.length;
+  renderPublicDraw();
   renderNetIndicator();
+}
+
+function renderPublicDraw() {
+  const el = $('pd-cards');
+  if (!el) return;
+  const pd = state.publicDraw || [];
+  if (!pd.length) { el.innerHTML = '<span class="pd-empty">—</span>'; return; }
+  el.innerHTML = pd.map(c => {
+    if (!c) return '<span class="pd-empty">·</span>';
+    return '<span class="pd-card suit-'+c.suit+'">'+SUIT_GLYPH[c.suit]+rankStr(c.rank)+'</span>';
+  }).join('');
 }
 
 function renderNetIndicator() {
@@ -2596,12 +3116,17 @@ function renderScores() {
     const handLen = p.hand ? p.hand.length : 0;
     const ratingStr = (isOnline && typeof p.rating === 'number')
       ? '<span class="rate-badge" title="レート (直近100戦)">R'+p.rating+'</span>' : '';
+    const statusTags = [];
+    if (p.disconnected) statusTags.push('<span class="status-tag tag-disc">切断中 CPU代行</span>');
+    if (p.surrendered) statusTags.push('<span class="status-tag tag-surr">降参</span>');
+    else if (!p.alive) statusTags.push('<span class="status-tag tag-exh">行動不能</span>');
     r.innerHTML =
       '<div class="name">'+
         '<span class="color-dot" style="width:10px;height:10px;background:'+PLAYER_COLORS[p.idx].bg+'"></span>'+
         '<span style="color:'+PLAYER_COLORS[p.idx].bg+'">'+PLAYER_COLORS[p.idx].badge+'</span>'+
-        escapeHtml(p.name)+(p.isCPU?' [CPU'+p.cpuLevel+']':'')+(!p.alive?' ✗':'')+
+        escapeHtml(p.name)+(p.isCPU?' [CPU'+p.cpuLevel+']':'')+
         ratingStr+
+        ' '+statusTags.join(' ')+
       '</div>'+
       '<div class="net-stat">'+
         '<div class="net-main-score">最大 <b>'+score.edges+'</b>線/'+score.cards+'枚</div>'+
@@ -2669,6 +3194,19 @@ function updateActionButtons() {
   $('btn-confirm').classList.add('hidden');
   $('btn-cancel').classList.add('hidden');
 
+  // リプレイ中は全アクションボタン非表示
+  if (state.mode === 'replay') {
+    $('btn-exchange').classList.add('hidden');
+    $('btn-exchange-confirm').classList.add('hidden');
+    $('btn-exchange-cancel').classList.add('hidden');
+    $('btn-giveup').classList.add('hidden');
+    $('btn-surrender').classList.add('hidden');
+    const pIdx = curIdx >= 0 ? curIdx : 0;
+    const pName = state.players[pIdx]?.name || '?';
+    $('message').textContent = '🎬 リプレイ — ' + pName + ' のターン';
+    return;
+  }
+
   const canShowExchange = canActLocally && inPlayPhase && !UI_PENDING && !UI_EXCHANGE_MODE;
   let exEligible = false;
   if (canShowExchange) {
@@ -2692,6 +3230,13 @@ function updateActionButtons() {
     }
   }
   $('btn-giveup').classList.toggle('hidden', !canGiveUp);
+
+  // 降参ボタン: 自ターン or オンラインで常時表示 (ローカルでは自ターン時のみ)
+  let canSurrender = false;
+  if (isHuman && !handoffOpen && inPlayPhase && !UI_PENDING && !UI_EXCHANGE_MODE) {
+    canSurrender = isMyTurn && state.players[localIdx].alive;
+  }
+  $('btn-surrender').classList.toggle('hidden', !canSurrender);
 
   let msg = '';
   if (!isMyTurn) {
@@ -2732,6 +3277,7 @@ function isMyInteractiveTurn() {
 function isMyInteractiveTurn() {
   const localIdx = localPlayerIdx();
   if (localIdx < 0) return false;
+  if (state && state.mode === 'replay') return false;
   if (state.players[localIdx].isCPU) return false;
   if (currentPlayerIdx() !== localIdx) return false;
   if (!$('overlay-handoff').classList.contains('hidden')) return false;
@@ -2884,10 +3430,32 @@ function giveUpTurn() {
   if (state.mode === 'online-host') broadcastStateIfHost();
 }
 
+function surrenderAction() {
+  const localIdx = localPlayerIdx();
+  if (localIdx < 0) return;
+  if (!confirm('本当に降参しますか?\n手札は保持されますが行動不能となります。')) return;
+  stopTurnTimer();
+  if (state.mode === 'online-client') {
+    Net.hostConn?.send({type:'action', action:{type:'surrender'}});
+    renderAll();
+    return;
+  }
+  surrenderPlayer(localIdx);
+  // 自分が現プレイヤーなら turn を進める。違う場合も全員exhaustedチェック。
+  if (currentPlayerIdx() === localIdx) postActionAdvance();
+  else if (aliveCount() === 0) { endGame(); showResult(); }
+  else renderAll();
+  if (state.mode === 'online-host') broadcastStateIfHost();
+}
+
 function postActionAdvance() {
   if (state.phase === 'init') advanceInit();
   else if (state.phase === 'play') advanceTurn();
-  if (state.phase === 'end') { stopTurnTimer(); showResult(); return; }
+  if (state.phase === 'end') {
+    stopTurnTimer();
+    if (state.mode !== 'replay') showResult();
+    return;
+  }
   prepareNewTurn();
 }
 
@@ -2951,22 +3519,41 @@ function triggerTurnArrival(pIdx) {
   playTurnSound();
 }
 
+function isAutoActed(player) {
+  return !!(player && (player.isCPU || player.cpuControlled));
+}
+
 function prepareNewTurn() {
   const pIdx = currentPlayerIdx();
   if (pIdx < 0) { showResult(); return; }
   const player = state.players[pIdx];
   if (!player.alive) { postActionAdvance(); return; }
-  // Online: just render and let player input; no CPU branch
-  if (state.mode === 'online-host' || state.mode === 'online-client') {
+  // リプレイモード: タイマー・CPU自動進行・ハンドオフは不要
+  if (state.mode === 'replay') { return; }
+  // 保護ターン消費 (切断直後のCPU代理に発動)
+  if (player.cpuControlled && player.protectTurns > 0) player.protectTurns--;
+
+  // オンライン: ホストはCPU代理も処理する。クライアントは入力待ち。
+  if (state.mode === 'online-client') {
     UI_PENDING = null; ui.selectedCardId = null;
     renderAll();
     triggerTurnArrival(pIdx);
     maybeStartTimerForLocalTurn();
     return;
   }
+  if (state.mode === 'online-host') {
+    UI_PENDING = null; ui.selectedCardId = null;
+    renderAll();
+    triggerTurnArrival(pIdx);
+    // 切断中のプレイヤー → CPU代理
+    if (player.cpuControlled) { startCPUTurn(); return; }
+    maybeStartTimerForLocalTurn();
+    return;
+  }
   // Local mode
   if (state.phase === 'play' && !anyLegalPlacement(state, pIdx)) {
-    if (player.isCPU) {
+    player.stats.noLegalCount++;
+    if (isAutoActed(player)) {
       if (state.deck.length > 0 && player.hand.length > 0) {
         const ids = player.hand.map(c => c.id);
         const toEx = ids.slice(0, Math.min(ids.length, state.deck.length));
@@ -2987,7 +3574,7 @@ function prepareNewTurn() {
       return;
     }
   }
-  if (player.isCPU) { renderAll(); startCPUTurn(); }
+  if (isAutoActed(player)) { renderAll(); startCPUTurn(); }
   else {
     ui.selectedCardId = null; UI_PENDING = null;
     renderAll();
@@ -2999,6 +3586,7 @@ function prepareNewTurn() {
 
 function doHandoff() {
   if (state.mode === 'online-host' || state.mode === 'online-client') return;
+  if (state.mode === 'replay' || state.mode === 'sim') return;
   const humanCount = state.players.filter(p => !p.isCPU && p.alive).length;
   if (humanCount < 2) return;
   const pIdx = currentPlayerIdx();
@@ -3108,20 +3696,27 @@ function showResult() {
     sc.sort((a,b) => b.edges - a.edges || b.cards - a.cards || b.totalConnections - a.totalConnections);
     ranking = sc.map(s => s.idx);
   }
+  const titles = state.titles || {};
   ranking.forEach((idx, rank) => {
     const p = state.players[idx];
     const score = computeLargestNetworkScore(state, idx);
     const winner = (state.winners || []).includes(idx);
     const r = document.createElement('div');
-    r.className = 'result-row' + (winner ? ' winner' : '');
+    r.className = 'result-row' + (winner ? ' winner winner-anim' : ' loser');
+    const tagList = (titles[idx] || []).map(t =>
+      '<span class="title-badge" title="'+escapeHtml(t.desc)+'">'+escapeHtml(t.label)+'</span>'
+    ).join('');
+    let statusTxt = '';
+    if (p.surrendered) statusTxt = ' <span style="opacity:0.75; font-size:11px;">降参</span>';
+    else if (!p.alive) statusTxt = ' <span style="opacity:0.75; font-size:11px;">行動不能</span>';
     r.innerHTML =
-      '<div style="display:flex; align-items:center; gap:8px;">'+
+      '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">'+
         '<span style="font-size:14px; font-weight:800; min-width:24px;">'+(rank+1)+'位</span>'+
         (winner ? '<span style="font-size:18px;">🏆</span>' : '')+
         '<span class="color-dot" style="width:14px;height:14px;background:'+PLAYER_COLORS[idx].bg+'"></span>'+
         '<span style="font-weight:700">' + PLAYER_COLORS[idx].badge + ' ' + escapeHtml(p.name) + '</span>'+
         (p.isCPU?'<span style="font-size:11px;opacity:0.7"> [CPU '+p.cpuLevel+']</span>':'')+
-        (!p.alive?'<span style="font-size:11px;opacity:0.7"> 行動不能</span>':'')+
+        statusTxt + tagList +
       '</div>'+
       '<div style="text-align:right; font-variant-numeric:tabular-nums; font-size:12px; line-height:1.45;">'+
         '<div style="font-size:14px; font-weight:800;">最大NW '+score.edges+'線 ('+score.cards+'枚)</div>'+
@@ -3244,15 +3839,282 @@ function renderLobby() {
 }
 
 // ============================== REPLAY ==============================
+function buildReplayPayload() {
+  if (!state || !state.replay) return null;
+  return {
+    version: VERSION,
+    seed: state.seedStr,
+    settings: state.replay.settings,
+    actions: state.replay.actions,
+    highlights: state.replay.highlights,
+    winners: state.winners,
+    finalRanking: state.finalRanking,
+  };
+}
 function downloadReplay() {
   if (!state) return;
-  const data = { version: VERSION, seed: state.seedStr, config: state.config, log: state.log, winners: state.winners };
+  const data = buildReplayPayload() || { version: VERSION, seed: state.seedStr, log: state.log, winners: state.winners };
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'limiles-replay-'+(state.seedStr||'online')+'-'+Date.now()+'.json';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ===== シェアURL: ?replay= に圧縮済みJSONを乗せる =====
+// 簡易圧縮: JSON → encodeURIComponent → btoa
+function encodeReplayForUrl(payload) {
+  try {
+    const json = JSON.stringify(payload);
+    // UTF-8 safe base64
+    return btoa(unescape(encodeURIComponent(json))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  } catch(e) { return ''; }
+}
+function decodeReplayFromUrl(s) {
+  try {
+    const b = s.replace(/-/g,'+').replace(/_/g,'/');
+    const json = decodeURIComponent(escape(atob(b)));
+    return JSON.parse(json);
+  } catch(e) { return null; }
+}
+function shareReplayUrl() {
+  if (!state) return;
+  const data = buildReplayPayload();
+  if (!data) return;
+  const enc = encodeReplayForUrl(data);
+  const u = new URL(window.location.href);
+  u.searchParams.set('replay', enc);
+  u.searchParams.delete('t');
+  const url = u.toString();
+  try { navigator.clipboard.writeText(url); showOnlineMsg('棋譜URL', 'クリップボードへコピーしました。<br><small style="word-break:break-all;">'+escapeHtml(url.length>200 ? url.slice(0,200)+'…' : url)+'</small>'); }
+  catch(e) { showOnlineMsg('棋譜URL', '<input type="text" style="width:100%;" value="'+escapeHtml(url)+'" readonly>'); }
+}
+
+// ===== Replay player =====
+const Replay = {
+  active: false,
+  data: null,        // {seed, settings, actions, ...}
+  baseState: null,   // 巻き戻し用の初期状態 (config と seed から再現)
+  cursor: 0,         // 次に適用するactionのインデックス
+  speed: 1,          // 再生速度倍率
+  playing: false,
+  timer: null,
+};
+function loadReplay(data) {
+  if (!data || !data.actions || !Array.isArray(data.actions)) {
+    showOnlineMsg('リプレイ', '不正なデータ形式');
+    return;
+  }
+  Replay.data = data;
+  Replay.cursor = 0;
+  Replay.playing = false;
+  Replay.speed = 1;
+  // 初期状態を再構築
+  const players = (data.settings.playerNames || []).map((n, i) => ({name:n, isCPU:false, cpuLevel:2}));
+  if (!players.length) { showOnlineMsg('リプレイ', 'プレイヤー情報なし'); return; }
+  Net.mode = 'none';
+  opts = {players, seed: data.seed, turnTime: data.settings.turnTime || 0, mode:'replay'};
+  newGame(opts);
+  state.mode = 'replay';
+  handoffShownFor = -2;
+  showScreen('game');
+  Replay.active = true;
+  renderAll();
+  showReplayControls();
+}
+// ファイルから読み込み
+function openReplayFile() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        loadReplay(data);
+      } catch(err) { showOnlineMsg('リプレイ', '読み込みエラー: '+err.message); }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+function applyReplayAction(act) {
+  if (!state || state.phase === 'end') return false;
+  // actionは録画時の player を持つ。currentPlayerIdx と合致しているはず
+  if (act.type === 'place' || act.type === 'jammer') {
+    const pIdx = act.player;
+    const cur = currentPlayerIdx();
+    if (cur !== pIdx) {
+      // 状態がずれている — exhaustedなどでスキップが必要
+      console.warn('replay action player mismatch', cur, pIdx);
+    }
+    const player = state.players[pIdx];
+    if (!player) return false;
+    const card = player.hand.find(c => c && c.suit === act.card.suit && c.rank === act.card.rank);
+    if (!card) { console.warn('replay: card not in hand', act); return false; }
+    placeCard(card, act.x, act.y, act.type === 'jammer');
+    postActionAdvance();
+    return true;
+  }
+  if (act.type === 'exchange') {
+    const pIdx = act.player;
+    const player = state.players[pIdx];
+    if (!player) return false;
+    // 録画したcardIdsは新ゲームのidと合わないかもしれない → suit/rank で合わせる方が安全
+    const idsToReturn = [];
+    for (const wantId of act.cardIds) {
+      // 元のidが残っているならそれを使う。違うシードでは合わない
+      const c = player.hand.find(c => c && c.id === wantId);
+      if (c) idsToReturn.push(c.id);
+    }
+    if (!idsToReturn.length) return false;
+    exchangeCards(pIdx, idsToReturn);
+    return true;
+  }
+  if (act.type === 'surrender') {
+    surrenderPlayer(act.player);
+    if (currentPlayerIdx() === act.player) postActionAdvance();
+    return true;
+  }
+  if (act.type === 'unable') {
+    markActionUnable(act.player);
+    if (currentPlayerIdx() === act.player) postActionAdvance();
+    return true;
+  }
+  return true;
+}
+function replayStepBack() {
+  if (!Replay.active || !Replay.data || Replay.cursor === 0) return;
+  const target = Replay.cursor - 1;
+  replayReset();
+  while (Replay.cursor < target && Replay.cursor < Replay.data.actions.length) {
+    applyReplayAction(Replay.data.actions[Replay.cursor++]);
+  }
+  renderAll();
+  updateReplayControls();
+}
+function replayStep(n) {
+  if (!Replay.active || !Replay.data) return;
+  n = n || 1;
+  for (let i=0; i<n; i++) {
+    if (Replay.cursor >= Replay.data.actions.length) {
+      if (state.phase !== 'end') endGame();
+      renderAll();
+      if (state.phase === 'end') showResult();
+      return;
+    }
+    const act = Replay.data.actions[Replay.cursor++];
+    applyReplayAction(act);
+  }
+  renderAll();
+  updateReplayControls();
+}
+function replayPlay() {
+  Replay.playing = true;
+  const stepMs = Math.max(80, 600 / Replay.speed);
+  if (Replay.timer) clearInterval(Replay.timer);
+  Replay.timer = setInterval(() => {
+    if (!Replay.playing) return;
+    if (Replay.cursor >= Replay.data.actions.length) {
+      replayPause();
+      if (state.phase !== 'end') endGame();
+      renderAll();
+      if (state.phase === 'end') showResult();
+      return;
+    }
+    replayStep(1);
+  }, stepMs);
+  updateReplayControls();
+}
+function replayPause() {
+  Replay.playing = false;
+  if (Replay.timer) { clearInterval(Replay.timer); Replay.timer = null; }
+  updateReplayControls();
+}
+function replaySetSpeed(s) {
+  Replay.speed = s;
+  if (Replay.playing) { replayPause(); replayPlay(); }
+  updateReplayControls();
+}
+function replayJumpToHighlight(dir) {
+  if (!Replay.data) return;
+  const hs = Replay.data.highlights || [];
+  if (!hs.length) return;
+  // 現在の cursor 位置 (= t と一致させる)
+  const cur = Replay.cursor;
+  let target = -1;
+  if (dir > 0) {
+    for (const h of hs) {
+      if ((h.t||0) > cur) { target = h.t; break; }
+    }
+  } else {
+    for (let i=hs.length-1; i>=0; i--) {
+      if ((hs[i].t||0) < cur) { target = hs[i].t; break; }
+    }
+  }
+  if (target < 0) return;
+  // ジャンプ: 状態再構築
+  replayReset();
+  while (Replay.cursor < target && Replay.cursor < Replay.data.actions.length) {
+    applyReplayAction(Replay.data.actions[Replay.cursor++]);
+  }
+  renderAll();
+  updateReplayControls();
+}
+function replayReset() {
+  if (!Replay.data) return;
+  const players = (Replay.data.settings.playerNames || []).map(n => ({name:n, isCPU:false, cpuLevel:2}));
+  opts = {players, seed: Replay.data.seed, turnTime: Replay.data.settings.turnTime || 0, mode:'replay'};
+  newGame(opts);
+  state.mode = 'replay';
+  Replay.cursor = 0;
+  renderAll();
+}
+function showReplayControls() {
+  const el = $('replay-controls');
+  if (el) el.classList.remove('hidden');
+  updateReplayControls();
+}
+function hideReplayControls() {
+  const el = $('replay-controls');
+  if (el) el.classList.add('hidden');
+}
+function updateReplayControls() {
+  if (!Replay.active || !Replay.data) return;
+  const ts = $('replay-cursor');
+  const tt = $('replay-total');
+  const pp = $('replay-play');
+  if (ts) ts.textContent = Replay.cursor;
+  if (tt) tt.textContent = Replay.data.actions.length;
+  if (pp) pp.textContent = Replay.playing ? '⏸ 停止' : '▶ 再生';
+  for (const s of [1,2,4]) {
+    const b = $('replay-speed-'+s);
+    if (b) b.classList.toggle('active', Replay.speed === s);
+  }
+}
+function exitReplay() {
+  replayPause();
+  Replay.active = false;
+  Replay.data = null;
+  Replay.cursor = 0;
+  hideReplayControls();
+  state = null;
+  showScreen('title');
+}
+
+// ===== 観戦参加 =====
+function openSpectatorJoin() {
+  saveSettings();
+  const keyword = $('online-join-keyword').value.trim();
+  const name = $('online-join-name').value.trim();
+  if (!keyword) { showOnlineMsg('エラー', '合言葉を入力してください'); return; }
+  Net.joinAsSpectator = true;
+  netJoin({keyword, name: name + ' (観戦)'});
+  renderLobby();
 }
 
 // ============================== ACTION DISPATCH ==============================
@@ -3317,6 +4179,7 @@ function handleAction(a) {
     case 'exchange-confirm': confirmExchange(); break;
     case 'exchange-cancel': cancelExchange(); break;
     case 'give-up-turn': giveUpTurn(); break;
+    case 'surrender': surrenderAction(); break;
     case 'handoff-ready': handoffReady(); break;
     case 'download-replay': downloadReplay(); break;
     case 'rematch':
@@ -3333,6 +4196,18 @@ function handleAction(a) {
       break;
     case 'resume': $('overlay-menu').classList.add('hidden'); break;
     case 'force-update': forceUpdateLocalStorageCache(); break;
+    case 'open-replay': openReplayFile(); break;
+    case 'replay-play': if (Replay.playing) replayPause(); else replayPlay(); break;
+    case 'replay-step': replayStep(1); break;
+    case 'replay-step-back': replayStepBack(); break;
+    case 'replay-prev': replayJumpToHighlight(-1); break;
+    case 'replay-next': replayJumpToHighlight(1); break;
+    case 'replay-speed-1': replaySetSpeed(1); break;
+    case 'replay-speed-2': replaySetSpeed(2); break;
+    case 'replay-speed-4': replaySetSpeed(4); break;
+    case 'replay-exit': exitReplay(); break;
+    case 'share-replay-url': shareReplayUrl(); break;
+    case 'join-spectator': openSpectatorJoin(); break;
   }
 }
 
@@ -3391,6 +4266,22 @@ window.addEventListener('load', () => {
   });
   loadSettings();
   showScreen('title');
+  // ?replay= が付いていれば自動でリプレイ再生
+  try {
+    const u = new URL(window.location.href);
+    const r = u.searchParams.get('replay');
+    if (r) {
+      const data = decodeReplayFromUrl(r);
+      if (data) {
+        // URLを綺麗にする
+        u.searchParams.delete('replay');
+        window.history.replaceState({}, '', u.toString());
+        loadReplay(data);
+      } else {
+        showOnlineMsg('リプレイ', 'URLの棋譜データを解読できませんでした');
+      }
+    }
+  } catch(e) {}
 });
 
 // Expose for testing / simulation
