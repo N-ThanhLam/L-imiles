@@ -848,6 +848,8 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
       <div class="sd-row"><span class="sd-k">host</span><span class="sd-v" id="sd-host">—</span></div>
       <div class="sd-row"><span class="sd-k">sync</span><span class="sd-v" id="sd-sync">idle</span></div>
       <div class="sd-row"><span class="sd-k">recv</span><span class="sd-v" id="sd-recv">off</span></div>
+      <div class="sd-row"><span class="sd-k">pndg</span><span class="sd-v" id="sd-pendingq">0</span></div>
+      <div class="sd-row"><span class="sd-k">deckFp</span><span class="sd-v" id="sd-deckfp">—</span></div>
     </div>
   </div>
 
@@ -1109,7 +1111,7 @@ function updateMyRatingDisplay() {
 }
 
 // ============================== CONSTANTS ==============================
-const VERSION = '1.12-network';
+const VERSION = '1.13-network';
 const SUITS = ['S','H','D','C'];
 const SUIT_GLYPH = {S:'♠',H:'♥',D:'♦',C:'♣'};
 const RANKS = [1,2,3,4,5,6,7,8,9,10,11,12,13];
@@ -1580,8 +1582,12 @@ function newGame(config) {
   for (let i=0; i<players.length; i++) firstHalf.push(i);
   shuffle(firstHalf, rand);
   const order = [...firstHalf, ...[...firstHalf].reverse()];
+  // 試合識別子: 再戦・再接続時の旧パケット混入を防ぐ UUID
+  const matchId = 'mx' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   state = {
     board, deck, players,
+    matchId,
+    stateVersion: 0,       // ★ 再戦時に必ず 0 から再開。旧バージョン残留による誤認防止。
     seed, seedStr: String(seed),
     rand,
     phase: 'init',
@@ -1969,7 +1975,7 @@ function simulatePlace(s, move, playerIdx) {
 function cpuPickMove(s, playerIdx, level, deadline) {
   const moves = listAllMoves(s, playerIdx);
   if (moves.length === 0) return null;
-  if (level <= 1) return moves[Math.floor(Math.random() * moves.length)];
+  if (level <= 1) return moves[Math.floor(s.rand() * moves.length)];
   if (deadline == null) deadline = Infinity;
 
   // ===== Phase 1: 1手読み + モビリティ評価 (Lv2/Lv3 共通) =====
@@ -1994,7 +2000,7 @@ function cpuPickMove(s, playerIdx, level, deadline) {
   if (level < 3) {
     const best = scored[0].score;
     const tied = scored.filter(x => x.score >= best - 0.001);
-    return tied[Math.floor(Math.random() * tied.length)].m;
+    return tied[Math.floor(s.rand() * tied.length)].m;
   }
 
   // ===== Phase 2: 2手読み (自分 → 相手の最善) =====
@@ -2066,7 +2072,7 @@ function cpuPickMove(s, playerIdx, level, deadline) {
   scored.sort((a, b) => b.score - a.score);
   const best = scored[0].score;
   const tied = scored.filter(x => x.score >= best - 0.001);
-  return tied[Math.floor(Math.random() * tied.length)].m;
+  return tied[Math.floor(s.rand() * tied.length)].m;
 }
 
 // ============================== CPU TURN DRIVER ==============================
@@ -2081,6 +2087,7 @@ function startCPUTurn() {
 
   // Lv3: 最低900ms待ってからプレイ（思考感を演出しつつ計算時間を確保）
   // Lv2: 300〜600ms の人間らしい間
+  // ★ minWaitMs は UI 演出タイミングのみ。ゲームロジックに影響しないため Math.random() を維持。
   const minWaitMs  = level >= 3 ? 900 : 300 + Math.floor(Math.random() * 300);
   const thinkMs    = level >= 3 ? 880 : 350; // deadlineはminWaitより短く設定し余裕をもたせる
   const callTime   = Date.now();
@@ -2205,13 +2212,13 @@ function cpuInitMove(s, playerIdx, level) {
   const player = s.players[playerIdx];
   if (!player.hand.length) return null;
   if (level <= 1) {
-    const card = player.hand[Math.floor(Math.random() * player.hand.length)];
+    const card = player.hand[Math.floor(s.rand() * player.hand.length)];
     const cells = [];
     for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) {
       if (!s.board[y][x].forbidden && !s.board[y][x].card) cells.push({x,y});
     }
     if (!cells.length) return null;
-    const pick = cells[Math.floor(Math.random() * cells.length)];
+    const pick = cells[Math.floor(s.rand() * cells.length)];
     return {card, x: pick.x, y: pick.y, isJammer: false};
   }
   let best = -Infinity, bestList = [];
@@ -2228,7 +2235,7 @@ function cpuInitMove(s, playerIdx, level) {
     }
   }
   if (!bestList.length) return null;
-  return bestList[Math.floor(Math.random() * bestList.length)];
+  return bestList[Math.floor(s.rand() * bestList.length)];
 }
 
 // ============================== NETWORK (PeerJS) ==============================
@@ -2248,6 +2255,8 @@ const Net = {
   ruleHash: '',
   reconnectToken: '',    // client-side: received from host
   joinAsSpectator: false,
+  currentMatchId: '',    // 試合識別子。newGame ごとに UUID 生成。パケット世代を区別する
+  acceptInput: true,     // 再戦直後の race 防止: false の間は clientSendAction を全拒否
   _lastStateVersion: 0,  // race condition 対策: 受理済み stateVersion の最大値
   // ===== 自動修復同期 =====
   isRecovering: false,   // true の間は client→host へ action を送らない
@@ -2256,9 +2265,22 @@ const Net = {
   syncState: 'idle',     // 'idle' | 'recovering' | 'desync-detected' | 'synced'
   _fullStateTimer: null, // host: 定期 fullState 送信タイマー
   _pendingFullReqAt: 0,  // client: 直近 requestFullState 送信時刻 (連投抑止)
+  _pendingActionQueue: [],  // client: isRecovering 中に入力された action を一時保留し、復帰後に再送する
+  // ===== 観戦者スケーリング対策 =====
+  _spectatorViewCache: null,      // host: 直近の観戦者向け view キャッシュ (全観戦者共通)
+  _spectatorViewVersion: -1,      // host: キャッシュが有効な stateVersion
+  _spectatorHeartbeatTimer: null, // host: 観戦者専用低頻度 heartbeat タイマー
+  _spectatorReqCooldown: new Map(), // host: peerId → last requestFullState 受理時刻 (resend 制限)
+  // ===== デッキ順序 desync 検知 (遅延型 desync 対策) =====
+  hostDeckFp: '',        // host が報告した deck フィンガープリント（先頭8枚のハッシュ）
+  localDeckFp: '',       // client が記録した直近の deck fp（host から受け取った値）
+  _lastDeckLen: -1,      // 直近 state の deck 枚数（fp 変化の理由判別用）
 };
 const FULLSTATE_INTERVAL_MS = 8000;   // host: 8秒ごとに fullState heartbeat
 const FULLSTATE_REQ_COOLDOWN = 1500;  // client: 同期要求の最短間隔
+const SPECTATOR_MAX = 8;              // host: 観戦者の最大接続数
+const SPECTATOR_HEARTBEAT_MS = 30000; // host: 観戦者専用 heartbeat 間隔 (30秒・低頻度)
+const SPECTATOR_REQ_COOLDOWN = 5000;  // host: 観戦者 1人あたりの requestFullState 最短間隔
 
 // ===== 安定シリアライズ + state hash =====
 // JSON.stringify はオブジェクトキー順が実装依存ではないが、配列の中身が
@@ -2285,8 +2307,35 @@ function fnv1aHash(str) {
   }
   return h.toString(16).padStart(8, '0');
 }
+// ===== デッキ順序フィンガープリント =====
+// deck 実データ（host のみ保持）の先頭 N 枚を FNV-1a でハッシュ化する。
+// client view では deck は null 配列になるため、このフィンガープリントは
+// host が計算して payload に添付し、client はそのまま保存・照合する。
+// これにより「山札枚数は同じだが順序がズレている」遅延型 desync を検出できる。
+function computeDeckFingerprint(deck) {
+  if (!Array.isArray(deck) || deck.length === 0) return 'empty';
+  // 先頭 min(8, len) 枚をフィンガープリント対象にする。
+  // 8 枚あれば数ターン分の引き順をカバーでき、かつ計算が軽量。
+  const n = Math.min(8, deck.length);
+  let fp = '';
+  for (let i = 0; i < n; i++) {
+    const c = deck[i];
+    fp += c ? (c.suit + c.rank) : '?';
+    fp += '|';
+  }
+  // 全長も含める（枚数だけズレるケースも同時検知）
+  fp += 'len:' + deck.length;
+  return fnv1aHash(fp);
+}
+
 // hash 対象: board, hands, deck length+order, turn 情報, scores系基盤, status
 // 対象外: animation/ui/overlay/effects/local timers/hover/log(長く揺らぐ)/replay/rand
+//
+// NOTE: deck 中身は client view では null 化されるため、deck 順序の desync は
+// computeStateHash 単体では検出できない（deckLen のみ比較）。
+// deck 順序の照合は computeDeckFingerprint + deckFp フィールドで行う。
+// → broadcastStateIfHost / sendFullStateTo で deckFp を添付し、
+//    client 受信時に Net.hostDeckFp と照合する。
 function computeStateHash(s) {
   if (!s) return '';
   const core = {
@@ -2300,6 +2349,7 @@ function computeStateHash(s) {
     deckLen: Array.isArray(s.deck) ? s.deck.length : 0,
     // deck 中身は client view では null 化されているため、host/client 比較不可。
     // よって長さのみを hash 対象に含める。
+    // ★ 山札順序の desync 検知は deckFp (別フィールド) で行う。
     board: (s.board || []).map(row => row.map(c => c && c.card
       ? {s: c.card.suit, r: c.card.rank, o: c.card.owner, j: !!c.card.isJammer}
       : 0)),
@@ -2386,6 +2436,7 @@ function onClientDisconnect(conn) {
   if (!player) {
     // 観戦者の切断: conns と spectators から除去
     Net.conns.delete(conn.peer);
+    Net._spectatorReqCooldown.delete(conn.peer); // ★ cooldown エントリも削除
     if (state && state.spectators) {
       state.spectators = state.spectators.filter(s => s.peerId !== conn.peer);
     }
@@ -2469,12 +2520,19 @@ function handleHostMessage(conn, msg) {
     }
     // ===== 観戦者 (spectator) =====
     if (msg.role === 'spectator' && state && state.phase !== 'end') {
-      const sp = {peerId: conn.peer, name: (msg.name||'観戦者').slice(0,16)};
       state.spectators = state.spectators || [];
+      // ★ 観戦者上限チェック
+      if (state.spectators.length >= SPECTATOR_MAX) {
+        conn.send({type:'reject', reason:'spectator-full'});
+        setTimeout(()=>conn.close(), 200);
+        return;
+      }
+      const sp = {peerId: conn.peer, name: (msg.name||'観戦者').slice(0,16)};
       state.spectators.push(sp);
       Net.conns.set(conn.peer, conn);
       conn.send({type:'welcome', yourIdx:-1, role:'spectator', ver:VERSION, config:Net.config, players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating}))});
-      sendFullStateTo(conn, -1, {spectator:true});
+      // ★ 観戦者用キャッシュ経路で初回 fullState を送信
+      sendFullStateToSpectator(conn);
       return;
     }
     if (state && state.phase !== 'end') { conn.send({type:'reject', reason:'game-started'}); setTimeout(()=>conn.close(), 200); return; }
@@ -2492,17 +2550,31 @@ function handleHostMessage(conn, msg) {
     renderLobby();
   } else if (msg.type === 'action') {
     if (!state || state.phase === 'end') return;
+    // ★ matchId チェック: 旧試合の残留 action packet を破棄する
+    if (msg.matchId && state.matchId && msg.matchId !== state.matchId) return;
     const player = Net.hostPlayers.find(p => p.peerId === conn.peer);
     if (!player) return;
     processOnlineAction(player.idx, msg.action);
   } else if (msg.type === 'requestFullState') {
     // クライアントが desync を検知して再送を要求してきた
     if (!state) return;
+    // ★ matchId チェック: 旧試合の client からの要求は無視する
+    if (msg.matchId && state.matchId && msg.matchId !== state.matchId) return;
     const player = Net.hostPlayers.find(p => p.peerId === conn.peer);
-    if (player) sendFullStateTo(conn, player.idx);
-    else {
+    if (player) {
+      sendFullStateTo(conn, player.idx);
+    } else {
       const sp = state.spectators && state.spectators.find(s => s.peerId === conn.peer);
-      if (sp) sendFullStateTo(conn, -1, {spectator:true});
+      if (sp) {
+        // ★ 観戦者の requestFullState に per-peer cooldown を適用（resend 地獄防止）
+        const now = Date.now();
+        const lastReq = Net._spectatorReqCooldown.get(conn.peer) || 0;
+        if (now - lastReq >= SPECTATOR_REQ_COOLDOWN) {
+          Net._spectatorReqCooldown.set(conn.peer, now);
+          sendFullStateToSpectator(conn);
+        }
+        // cooldown 内なら無視（観戦者は次の heartbeat で自然に同期される）
+      }
     }
   }
 }
@@ -2514,22 +2586,53 @@ function broadcastLobby() {
 function broadcastStateIfHost() {
   if (Net.mode !== 'online-host') return;
   // 単調増加バージョン番号をインクリメントしてから送信する。
-  // クライアント側がこの番号で古いメッセージを破棄できるようにする。
+  // クライアント側がこの番号で古いメッセージを捨てられるようにする。
   state.stateVersion = (state.stateVersion || 0) + 1;
   const hash = computeStateHash(state);
   state._lastHash = hash;
+  // ★ デッキ順序フィンガープリント: 山札実データ (host のみ保持) から計算。
+  const deckFp = computeDeckFingerprint(state.deck);
+  state._lastDeckFp = deckFp;
   if (Net.mode === 'online-host') {
     Net.localHash = hash; Net.hostHash = hash; Net.syncState = 'synced';
+    Net.localDeckFp = deckFp; Net.hostDeckFp = deckFp;
   }
+  const matchId = state.matchId || '';
+  // ★ 観戦者 view キャッシュを無効化（次の sendToSpectators で再生成）
+  Net._spectatorViewVersion = -1;
   for (const [peerId, conn] of Net.conns.entries()) {
     const player = Net.hostPlayers.find(p => p.peerId === peerId);
     if (player) {
-      try { conn.send({type:'state', view: buildClientView(state, player.idx), hash}); } catch(e){}
-    } else {
-      // 観戦者: hostPlayers に存在しないが conns には登録されている
-      const sp = state.spectators && state.spectators.find(s => s.peerId === peerId);
-      if (sp) try { conn.send({type:'state', view: buildClientView(state, -1, {spectator:true}), hash}); } catch(e){}
+      try { conn.send({type:'state', matchId, view: buildClientView(state, player.idx), hash, deckFp}); } catch(e){}
     }
+    // 観戦者は broadcastStateIfHost では送らない。
+    // 観戦者専用 heartbeat (SPECTATOR_HEARTBEAT_MS) と参加時初回 fullState だけで同期。
+  }
+  // 観戦者には低頻度で state を push する（heartbeatとは別に、アクション後即時送信）
+  _pushStateToSpectators(matchId, hash, deckFp);
+}
+
+// 観戦者全員に state を送る。view は全員共通なのでキャッシュして1回だけ buildClientView する。
+function _pushStateToSpectators(matchId, hash, deckFp) {
+  if (!state || Net.mode !== 'online-host') return;
+  const spectators = state.spectators;
+  if (!spectators || spectators.length === 0) return;
+  // キャッシュ確認（同一 stateVersion なら使い回す）
+  const ver = state.stateVersion || 0;
+  if (Net._spectatorViewVersion !== ver) {
+    Net._spectatorViewCache = buildClientView(state, -1, {spectator:true});
+    Net._spectatorViewVersion = ver;
+  }
+  const payload = {
+    type: 'state',
+    matchId: matchId || (state.matchId || ''),
+    view: Net._spectatorViewCache,
+    hash: hash || (state._lastHash || ''),
+    deckFp: deckFp || (state._lastDeckFp || ''),
+  };
+  for (const sp of spectators) {
+    const conn = Net.conns.get(sp.peerId);
+    if (conn) try { conn.send(payload); } catch(e){}
   }
 }
 
@@ -2541,27 +2644,60 @@ function sendFullStateTo(conn, viewerIdx, opts) {
   if (!state) return;
   const hash = computeStateHash(state);
   state._lastHash = hash;
+  // ★ fullState でも deckFp を送る。client はこれを正として hostDeckFp に保存する。
+  const deckFp = computeDeckFingerprint(state.deck);
+  state._lastDeckFp = deckFp;
+  const matchId = state.matchId || '';
   const view = buildClientView(state, viewerIdx, opts);
-  try { conn.send({type:'fullState', view, hash, version: state.stateVersion || 0}); } catch(e){}
+  try { conn.send({type:'fullState', matchId, view, hash, deckFp, version: state.stateVersion || 0}); } catch(e){}
 }
+
+// 観戦者に fullState を送る。view は全員共通なのでキャッシュを使い回す。
+function sendFullStateToSpectator(conn) {
+  if (!state) return;
+  const hash = state._lastHash || computeStateHash(state);
+  const deckFp = state._lastDeckFp || computeDeckFingerprint(state.deck);
+  const matchId = state.matchId || '';
+  const ver = state.stateVersion || 0;
+  // 観戦者 view キャッシュ（buildClientView コストを観戦者N人で1回に抑える）
+  if (Net._spectatorViewVersion !== ver) {
+    Net._spectatorViewCache = buildClientView(state, -1, {spectator:true});
+    Net._spectatorViewVersion = ver;
+  }
+  try { conn.send({type:'fullState', matchId, view: Net._spectatorViewCache, hash, deckFp, version: ver}); } catch(e){}
+}
+
 function broadcastFullStateIfHost() {
   if (Net.mode !== 'online-host') return;
   if (!state || state.phase === 'end') return;
   for (const [peerId, conn] of Net.conns.entries()) {
     const player = Net.hostPlayers.find(p => p.peerId === peerId);
+    // プレイヤーのみに fullState heartbeat を送る（観戦者は別タイマーで管理）
     if (player) sendFullStateTo(conn, player.idx);
-    else {
-      const sp = state.spectators && state.spectators.find(s => s.peerId === peerId);
-      if (sp) sendFullStateTo(conn, -1, {spectator:true});
-    }
   }
 }
+
+// 観戦者専用 heartbeat — 低頻度 (SPECTATOR_HEARTBEAT_MS) で state を push する
+function _spectatorHeartbeat() {
+  if (Net.mode !== 'online-host') return;
+  if (!state || state.phase === 'end') return;
+  const spectators = state.spectators;
+  if (!spectators || spectators.length === 0) return;
+  const matchId = state.matchId || '';
+  const hash = state._lastHash || computeStateHash(state);
+  const deckFp = state._lastDeckFp || computeDeckFingerprint(state.deck);
+  _pushStateToSpectators(matchId, hash, deckFp);
+}
+
 function startFullStateHeartbeat() {
   stopFullStateHeartbeat();
   Net._fullStateTimer = setInterval(broadcastFullStateIfHost, FULLSTATE_INTERVAL_MS);
+  // 観戦者専用低頻度タイマー
+  Net._spectatorHeartbeatTimer = setInterval(_spectatorHeartbeat, SPECTATOR_HEARTBEAT_MS);
 }
 function stopFullStateHeartbeat() {
   if (Net._fullStateTimer) { clearInterval(Net._fullStateTimer); Net._fullStateTimer = null; }
+  if (Net._spectatorHeartbeatTimer) { clearInterval(Net._spectatorHeartbeatTimer); Net._spectatorHeartbeatTimer = null; }
 }
 
 function netJoin({keyword, name}) {
@@ -2625,6 +2761,9 @@ function disposeOnlineGameState() {
   UI_EXCHANGE_PICKED.clear();
   ui.selectedCardId = null;
   cpuPending = false;
+  handoffShownFor = -2; // 再戦時は旧handoffを完全無効化
+  // ★ 入力ガード: fullState 適用まで入力を禁止 (再戦 race 防止)
+  Net.acceptInput = false;
   // 演出 banner
   try {
     const banner = document.getElementById('netexp-banner');
@@ -2633,25 +2772,60 @@ function disposeOnlineGameState() {
   // overlay: handoff / online-msg / menu を閉じる
   try { $('overlay-handoff').classList.add('hidden'); } catch(e){}
   try { $('overlay-menu').classList.add('hidden'); } catch(e){}
-  // host 側の heartbeat / 旧 stateVersion / hash cache をリセット
-  // (新ゲーム生成側で state.stateVersion=0 から再開する)
+  // host 側の heartbeat / 旧 stateVersion / hash cache / matchId をリセット
+  // (新ゲーム生成側で state.matchId と stateVersion=0 から再開する)
+  Net.currentMatchId = '';
   Net._lastStateVersion = 0;
   Net.localHash = '';
   Net.hostHash = '';
   Net.isRecovering = false;
   Net.syncState = 'idle';
   Net._pendingFullReqAt = 0;
+  Net._pendingActionQueue = [];  // ★ 試合リセット時にキューを破棄
+  // ★ 観戦者キャッシュ・cooldown リセット
+  Net._spectatorViewCache = null;
+  Net._spectatorViewVersion = -1;
+  Net._spectatorReqCooldown.clear();
+  // ★ deck fp リセット
+  Net.hostDeckFp = '';
+  Net.localDeckFp = '';
+  Net._lastDeckLen = -1;
   // 切断中フラグ等を保持する必要はないが、host の場合は次の game-start でクリア
   // 旧 state は呼び出し元の newGame で上書きされる
 }
 
 // クライアント→ホスト アクション送信の唯一の窓口。
-// isRecovering 中は送信を破棄して同期完了を待つ。
+// isRecovering 中は破棄せず _pendingActionQueue に退避し、復帰後に flushPendingActions() で再送する。
+// matchId を必ず付与し、host 側で旧試合の action を弾けるようにする。
 function clientSendAction(action) {
   if (Net.mode !== 'online-client') return false;
-  if (Net.isRecovering) return false;
   if (!Net.hostConn) return false;
-  try { Net.hostConn.send({type:'action', action}); return true; } catch(e){ return false; }
+  // ★ 再戦直後 (game-start 受信〜fullState 適用+READY ACK まで) は入力を拒否
+  if (!Net.acceptInput) return false;
+  const matchId = (state && state.matchId) ? state.matchId : '';
+  if (Net.isRecovering) {
+    // recover 完了後に再送する。同一 matchId の重複 action は host の turn 管理で弾かれる。
+    // キューに同種 action が既にある場合は上書き（例: place 連打のうち最後だけ有効）
+    const idx = Net._pendingActionQueue.findIndex(e => e.action.type === action.type);
+    const entry = {matchId, action};
+    if (idx >= 0) Net._pendingActionQueue[idx] = entry;
+    else Net._pendingActionQueue.push(entry);
+    return false; // まだ未送信
+  }
+  try { Net.hostConn.send({type:'action', matchId, action}); return true; } catch(e){ return false; }
+}
+
+// isRecovering 解除後に呼び出し、退避していた action を送信する。
+// キューは送信後に必ずクリアする。
+function flushPendingActions() {
+  if (!Net._pendingActionQueue || Net._pendingActionQueue.length === 0) return;
+  if (Net.mode !== 'online-client' || !Net.hostConn) { Net._pendingActionQueue = []; return; }
+  const queue = Net._pendingActionQueue.splice(0); // atomically drain
+  for (const entry of queue) {
+    // matchId が現在の試合と一致する場合のみ再送（古い試合の action は捨てる）
+    if (Net.currentMatchId && entry.matchId && entry.matchId !== Net.currentMatchId) continue;
+    try { Net.hostConn.send({type:'action', matchId: entry.matchId, action: entry.action}); } catch(e){}
+  }
 }
 
 // クライアント: 同期要求 — host へ fullState を求める
@@ -2662,7 +2836,8 @@ function requestFullStateFromHost(reason) {
   Net._pendingFullReqAt = now;
   Net.isRecovering = true;
   Net.syncState = 'recovering';
-  try { Net.hostConn?.send({type:'requestFullState', reason: reason||'desync'}); } catch(e){}
+  const reqMatchId = (state && state.matchId) ? state.matchId : (Net.currentMatchId || '');
+  try { Net.hostConn?.send({type:'requestFullState', matchId: reqMatchId, reason: reason||'desync'}); } catch(e){}
   renderNetIndicator();
   renderSyncDebug();
 }
@@ -2684,14 +2859,18 @@ function replaceGameState(view) {
   } catch(e){}
   // 2. timers 停止
   stopTurnTimer();
-  // 3. state を完全上書き
-  state = view;
+  // 3. state を完全上書き (structuredClone で旧参照を完全排除)
+  state = structuredClone(view);
   state.mode = 'online-client';
   // 4. 同期 metadata 更新
   Net._lastStateVersion = state.stateVersion || 0;
   Net.localHash = computeStateHash(state);
   Net.isRecovering = false;
   Net.syncState = 'synced';
+  // ★ 入力ガード解除: fullState 完全適用後に入力を受付開始
+  Net.acceptInput = true;
+  // ★ recover 中に退避していた action を再送する（入力食われ防止）
+  flushPendingActions();
   // 5. 描画と timer 再生成
   if (state.phase === 'end') { showResult(); return; }
   renderAll();
@@ -2732,6 +2911,7 @@ function handleClientMessage(msg) {
     if (msg.reason === 'rule-mismatch') txt = 'ルール設定不一致';
     if (msg.reason === 'game-started') txt = '既にゲーム開始済み';
     if (msg.reason === 'room-full') txt = 'ルーム満員';
+    if (msg.reason === 'spectator-full') txt = '観戦者上限 (最大' + SPECTATOR_MAX + '人) に達しています';
     setNetStatus('error', txt);
     showOnlineMsg('参加拒否', txt);
     try { Net.hostConn?.close(); } catch(e){}
@@ -2740,10 +2920,17 @@ function handleClientMessage(msg) {
     renderLobby();
   } else if (msg.type === 'game-start') {
     // 新規ゲーム開始 — local state を完全破棄して受け入れる
+    // ★ disposeOnlineGameState 内で Net.acceptInput = false にセット済み
+    // ★ 入力は続いて届く fullState の replaceGameState 完了後に解禁される
     disposeOnlineGameState();
-    state = msg.view;
+    // ★ structuredClone で旧参照を完全排除して初期 state を設定
+    state = structuredClone(msg.view);
     state.mode = 'online-client';
-    Net._lastStateVersion = state.stateVersion || 0;
+    // ★ 新試合の matchId を Net に登録。以降の state/fullState/action はこれで検証。
+    Net.currentMatchId = (msg.matchId || state.matchId || '');
+    // ★ stateVersion を必ず 0 から再開（旧試合の残留バージョンによる誤認を防ぐ）
+    state.stateVersion = 0;
+    Net._lastStateVersion = 0;
     Net.localHash = computeStateHash(state);
     Net.isRecovering = false;
     Net.syncState = 'synced';
@@ -2752,20 +2939,30 @@ function handleClientMessage(msg) {
     hidePlacePopup();
     UI_PENDING = null; UI_EXCHANGE_MODE = false; UI_EXCHANGE_PICKED.clear(); ui.selectedCardId = null; cpuPending = false;
     renderAll();
-    maybeStartTimerForLocalTurn();
+    // timer は fullState 受信後に maybeStartTimerForLocalTurn() で開始
     renderSyncDebug();
   } else if (msg.type === 'fullState') {
     // host authoritative な完全 state — そのまま上書き
     if (!msg.view) return;
+    // ★ matchId チェック: 旧試合の遅延 fullState を破棄
+    if (Net.currentMatchId && msg.matchId && msg.matchId !== Net.currentMatchId) return;
     if ($('screen-game').classList.contains('hidden')) showScreen('game');
     Net.hostHash = msg.hash || '';
+    // ★ fullState 受信時に hostDeckFp を正として更新する。
+    // これ以降の state パケットはこの fp と照合される。
+    if (msg.deckFp) { Net.hostDeckFp = msg.deckFp; Net.localDeckFp = msg.deckFp; }
     replaceGameState(msg.view);
   } else if (msg.type === 'state') {
     const incomingVer = msg.view ? (msg.view.stateVersion || 0) : 0;
     const hostHash = msg.hash || '';
     Net.hostHash = hostHash;
+    // ★ matchId チェック: 旧試合の遅延 state packet を破棄
+    // currentMatchId が未設定の場合は game-start 前の初回 state として受け入れる
+    if (Net.currentMatchId && msg.matchId && msg.matchId !== Net.currentMatchId) return;
     if (!state || state.mode !== 'online-client') {
       // game-start より state が先着 — 完全上書きで受け入れる
+      // この場合 matchId を Net に登録しておく
+      if (msg.matchId) Net.currentMatchId = msg.matchId;
       replaceGameState(msg.view);
       showScreen('game');
       renderSyncDebug();
@@ -2783,7 +2980,8 @@ function handleClientMessage(msg) {
       return;
     }
     Net._lastStateVersion = incomingVer;
-    state = msg.view;
+    // ★ structuredClone で旧 timer/array/参照を完全排除
+    state = structuredClone(msg.view);
     state.mode = 'online-client';
     UI_PENDING = null;
     UI_EXCHANGE_MODE = false;
@@ -2796,6 +2994,34 @@ function handleClientMessage(msg) {
       requestFullStateFromHost('hash-mismatch');
       renderSyncDebug();
       return;
+    }
+    // ★ デッキ順序 desync 検知 (遅延型 desync 対策)
+    // host が送ってきた deckFp と、前回 fullState/state で記録した hostDeckFp を照合する。
+    // state パケット間でデッキ順序が変わった場合（山札が引かれた/交換された）、
+    // host の deckFp が変化するが client 側の deck は null 配列なので追跡できない。
+    // そこで host から受け取った deckFp をそのまま保存し、次の state と比較する。
+    // deckFp が付いている場合のみチェック（旧バージョン互換性）。
+    if (msg.deckFp) {
+      const prevHostFp = Net.hostDeckFp || null;
+      Net.hostDeckFp = msg.deckFp;
+      Net.localDeckFp = msg.deckFp; // client は host の fp をそのまま持つ
+      // prevHostFp がある（= 前回 fullState/state で記録済み）かつ
+      // deckLen が変化していないのに fp が変わった場合は山札順序がズレている可能性。
+      // ただし deckLen が変化した場合は引き/交換が発生した正常な変化なので除外。
+      // ※ fp の不一致単体では誤検知があり得るため、deckLen 変化なし + fp 変化 の
+      //    組み合わせのみを desync と判定する。
+      if (prevHostFp && prevHostFp !== msg.deckFp) {
+        const prevDeckLen = Net._lastDeckLen != null ? Net._lastDeckLen : -1;
+        const curDeckLen = Array.isArray(state.deck) ? state.deck.length : 0;
+        if (prevDeckLen === curDeckLen && prevDeckLen >= 0) {
+          // 枚数が変わっていないのにデッキ fp が変化 → 山札順序 desync
+          Net.syncState = 'desync-detected';
+          requestFullStateFromHost('deck-order-desync');
+          renderSyncDebug();
+          return;
+        }
+      }
+      Net._lastDeckLen = Array.isArray(state.deck) ? state.deck.length : 0;
     }
     Net.syncState = 'synced';
     if (state.phase === 'end') { stopTurnTimer(); showResult(); return; }
@@ -2827,6 +3053,7 @@ function buildClientView(s, viewerIdx, opts) {
   // ごとにホスト側でインクリメントされる（呼び出し元で s.stateVersion を操作）。
   return {
     stateVersion: s.stateVersion || 0,
+    matchId: s.matchId || '',
     board: s.board.map(row => row.map(c => ({x:c.x, y:c.y, forbidden:c.forbidden, card: c.card ? {...c.card} : null}))),
     deck: new Array(s.deck.length).fill(null),
     publicDraw: (s.publicDraw||[]).map(c => c ? {suit:c.suit, rank:c.rank} : null),
@@ -2935,12 +3162,22 @@ function netLeave() {
   Net.hostPlayers = [];
   Net.myPlayerIdx = -1;
   Net.status = 'disconnected';
+  Net.currentMatchId = '';
   Net._lastStateVersion = 0;
   Net.isRecovering = false;
   Net.localHash = '';
   Net.hostHash = '';
   Net.syncState = 'idle';
   Net._pendingFullReqAt = 0;
+  Net._pendingActionQueue = [];  // ★ 退室時にキューを破棄
+  // ★ 観戦者キャッシュ・cooldown リセット
+  Net._spectatorViewCache = null;
+  Net._spectatorViewVersion = -1;
+  Net._spectatorReqCooldown.clear();
+  // ★ deck fp リセット
+  Net.hostDeckFp = '';
+  Net.localDeckFp = '';
+  Net._lastDeckLen = -1;
   state = null;
   $('online-pane-lobby').classList.add('hidden');
   $('online-pane-host').classList.remove('hidden');
@@ -3604,6 +3841,21 @@ function renderSyncDebug() {
   const rv = document.getElementById('sd-recv');
   rv.textContent = Net.isRecovering ? 'ON' : 'off';
   rv.className = 'sd-v ' + (Net.isRecovering ? 'warn' : 'ok');
+  // ★ pending action queue 表示
+  const pqEl = document.getElementById('sd-pendingq');
+  if (pqEl) {
+    const n = (Net._pendingActionQueue || []).length;
+    pqEl.textContent = n > 0 ? String(n) + '件待機' : '0';
+    pqEl.className = 'sd-v ' + (n > 0 ? 'warn' : 'ok');
+  }
+  // ★ deckFp 表示 (host は localDeckFp = hostDeckFp 常に一致)
+  const dfEl = document.getElementById('sd-deckfp');
+  if (dfEl) {
+    const fp = Net.hostDeckFp || '—';
+    dfEl.textContent = fp !== '—' ? fp.slice(0, 8) : '—'; // 先頭8桁のみ表示
+    const isMismatch = Net.hostDeckFp && Net.localDeckFp && Net.hostDeckFp !== Net.localDeckFp;
+    dfEl.className = 'sd-v ' + (isMismatch ? 'bad' : (fp !== '—' ? 'ok' : ''));
+  }
 }
 
 function renderScores() {
@@ -4173,7 +4425,7 @@ function onTurnTimeout() {
       for (const m of findLegalPlacements(state, c, pIdx)) moves.push({card:c, x:m.x, y:m.y, isJammer:m.isJammer});
     }
     if (moves.length > 0) {
-      const m = moves[Math.floor(Math.random() * moves.length)];
+      const m = moves[Math.floor(state.rand() * moves.length)];
       if (state.mode === 'online-client') {
         clientSendAction({type:'place', cardId:m.card.id, x:m.x, y:m.y, isJammer:m.isJammer});
         return;
@@ -4308,9 +4560,17 @@ function startOnlineGame() {
   stopFullStateHeartbeat();
   disposeOnlineGameState();
   const players = Net.hostPlayers.map(p => ({name: p.name, isCPU: false}));
-  opts = {players, seed:'', turnTime: Net.config.turnTime, mode:'online-host'};
+  // ★ host が必ず新 seed を生成。client ごとに乱数差が出るのを防ぐ。
+  const hostSeed = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? parseInt(crypto.randomUUID().replace(/-/g,'').slice(0, 8), 16)
+    : Math.floor(Math.random() * 0x100000000);
+  opts = {players, seed: hostSeed, turnTime: Net.config.turnTime, mode:'online-host'};
   newGame(opts);
   state.mode = 'online-host';
+  // ★ 新試合の matchId を Net に反映。以降の全送受信パケットはこの ID を持つ。
+  Net.currentMatchId = state.matchId;
+  // ★ host は常に入力を受け付ける
+  Net.acceptInput = true;
   // レート情報・reconnectToken を state.players へ注入
   for (const hp of Net.hostPlayers) {
     if (state.players[hp.idx]) {
@@ -4318,11 +4578,11 @@ function startOnlineGame() {
       if (hp.reconnectToken) state.players[hp.idx].reconnectToken = hp.reconnectToken;
     }
   }
-  // Broadcast game-start
+  // Broadcast game-start (matchId を同梱して旧試合の遅延 packet と区別させる)
   for (const [peerId, conn] of Net.conns.entries()) {
     const player = Net.hostPlayers.find(p => p.peerId === peerId);
     if (!player) continue;
-    try { conn.send({type:'game-start', view: buildClientView(state, player.idx)}); } catch(e){}
+    try { conn.send({type:'game-start', matchId: state.matchId, view: buildClientView(state, player.idx)}); } catch(e){}
   }
   showScreen('game');
   handoffShownFor = -2; // disable
@@ -4332,8 +4592,10 @@ function startOnlineGame() {
   renderAll();
   prepareNewTurn();
   broadcastStateIfHost();
-  // ホスト権威の保険として、定期的に fullState を送る
-  startFullStateHeartbeat();
+  // ★ 再戦直後 1 秒は heartbeat を止める。
+  //    game-start / state / fullState / reconnect が同時多発するため、
+  //    安定後に開始することで不要な再送を防ぐ。
+  setTimeout(() => { startFullStateHeartbeat(); }, 1000);
 }
 
 function renderLobby() {
