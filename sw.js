@@ -1,73 +1,152 @@
 // ============================================================
-// L-imiles 8×8  — Service Worker
+// L-imiles — Service Worker
 // ============================================================
-const CACHE_NAME = 'limiles-v2';
 
-// オフラインでも動くようにキャッシュするリソース
+// GitHub Actions で置換される
+const CACHE_NAME = '__CACHE_NAME__';
+
+// オフライン用の事前キャッシュ
 const PRECACHE = [
+  './',
   './index.html',
   './manifest.webmanifest',
   './icon.svg',
-  // PeerJS CDN（オンライン対戦用。失敗しても起動は止めない）
   'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js',
 ];
 
 // ============================================================
-// Install: 必須リソースを先読みキャッシュ
+// Install
 // ============================================================
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      // CDN は失敗しても install を止めない
-      const mustHave = PRECACHE.filter(u => !u.startsWith('http'));
-      const optional = PRECACHE.filter(u => u.startsWith('http'));
 
-      return cache.addAll(mustHave).then(() => {
-        return Promise.allSettled(optional.map(u => cache.add(u)));
-      });
-    }).then(() => self.skipWaiting())
+  event.waitUntil(
+
+    caches.open(CACHE_NAME).then(async cache => {
+
+      const localFiles = PRECACHE.filter(url => !url.startsWith('http'));
+      const externalFiles = PRECACHE.filter(url => url.startsWith('http'));
+
+      // ローカル必須ファイル
+      await cache.addAll(localFiles);
+
+      // CDN系は失敗しても続行
+      await Promise.allSettled(
+        externalFiles.map(url => cache.add(url))
+      );
+
+    })
+
   );
+
+  // 新SWを即有効化
+  self.skipWaiting();
+
 });
 
 // ============================================================
-// Activate: 古いキャッシュを削除
+// Activate
 // ============================================================
 self.addEventListener('activate', event => {
+
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
+
+    caches.keys().then(keys => {
+
+      return Promise.all(
+
         keys
-          .filter(k => k !== CACHE_NAME)
-          .map(k => caches.delete(k))
-      )
-    ).then(() => self.clients.claim())
+          .filter(key => key !== CACHE_NAME)
+          .map(key => caches.delete(key))
+
+      );
+
+    }).then(() => self.clients.claim())
+
   );
+
 });
 
 // ============================================================
-// Fetch: Cache-first（キャッシュになければネット取得 → キャッシュに追加）
+// Fetch
 // ============================================================
 self.addEventListener('fetch', event => {
-  // chrome-extension など HTTP(S) 以外は無視
+
+  // HTTP(S) 以外は無視
   if (!event.request.url.startsWith('http')) return;
 
-  event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) return cached;
+  const url = new URL(event.request.url);
 
-      return fetch(event.request).then(response => {
-        // 正常レスポンスのみキャッシュ（opaque は容量消費に注意）
-        if (response && response.status === 200) {
+  // ==========================================================
+  // HTML は Network First
+  // ==========================================================
+  if (
+    event.request.mode === 'navigate' ||
+    url.pathname.endsWith('.html')
+  ) {
+
+    event.respondWith(
+
+      fetch(event.request)
+
+        .then(response => {
+
+          // 最新HTMLを保存
           const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-        }
-        return response;
-      }).catch(() => {
-        // オフラインで index.html へのナビゲーション → キャッシュ版を返す
-        if (event.request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
-      });
-    })
+
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(event.request, clone);
+          });
+
+          return response;
+
+        })
+
+        // オフライン時はキャッシュ
+        .catch(() => {
+          return caches.match(event.request)
+            .then(cached => cached || caches.match('./index.html'));
+        })
+
+    );
+
+    return;
+  }
+
+  // ==========================================================
+  // その他は Cache First
+  // ==========================================================
+  event.respondWith(
+
+    caches.match(event.request)
+
+      .then(cached => {
+
+        if (cached) return cached;
+
+        return fetch(event.request)
+
+          .then(response => {
+
+            // 正常レスポンスだけ保存
+            if (
+              response &&
+              response.status === 200
+            ) {
+
+              const clone = response.clone();
+
+              caches.open(CACHE_NAME).then(cache => {
+                cache.put(event.request, clone);
+              });
+
+            }
+
+            return response;
+
+          });
+
+      })
+
   );
+
 });
