@@ -388,6 +388,17 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 .lobby-player .badge-host { background:var(--accent); color:#0a1220; font-size:10px; padding:2px 6px; border-radius:8px; font-weight:700; }
 .lobby-player .badge-disc { background:var(--danger); color:#3a0d0d; font-size:10px; padding:2px 6px; border-radius:8px; font-weight:700; }
 
+/* ===== PC: 下帯を細くして盤面を広く ===== */
+@media (min-width: 761px) {
+  .bottom-bar { padding:4px 8px; gap:3px; }
+  .hand-row { min-height:64px; padding:2px; gap:5px; }
+  .hand-card { width:46px; height:66px; }
+  .hand-card .rank { font-size:18px; }
+  .hand-card .suit-c { font-size:14px; }
+  .action-row { min-height:28px; }
+  #message { min-height:12px; font-size:10px; }
+}
+
 @media (max-width: 760px) {
   .main-area { flex-direction:column; }
   .side-panel { width:100%; border-left:none; border-top:1px solid var(--border); max-height:130px; }
@@ -2511,6 +2522,8 @@ function netLeave() {
 // ============================== UI ==============================
 // ===== NETWORK EXPANDED — 自己最大NW更新時の演出 =====
 function triggerNetworkExpanded(playerIdx, delta, total) {
+  // オンライン対戦時のみ表示
+  if (!state || (state.mode !== 'online-host' && state.mode !== 'online-client')) return;
   // 既存バナーがあれば破棄
   const old = document.getElementById('netexp-banner');
   if (old) old.remove();
