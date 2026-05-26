@@ -12,6 +12,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <title>L-imiles</title>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <style>
 :root {
   --bg: #0f1419;
@@ -1086,7 +1087,28 @@ function maybeRecordOnlineGameResult() {
     sc.sort((a,b) => b.edges - a.edges || b.cards - a.cards || b.totalConnections - a.totalConnections);
     ranking = sc.map(s => s.idx);
   }
-  const rank = ranking.indexOf(localIdx) + 1;
+  let rank = 1;
+  let prevKey = null;
+
+  for (let i = 0; i < ranking.length; i++) {
+    const idx = ranking[i];
+
+    const s = computeLargestNetworkScore(state, idx);
+
+    const key = [
+      s.edges,
+      s.cards,
+      s.totalConnections
+    ].join('-');
+
+    if (prevKey !== null && key !== prevKey) {
+      rank = i + 1;
+    }
+
+    if (idx === localIdx) break;
+
+    prevKey = key;
+  }
   if (rank <= 0) return;
   recordGameResult({rank, numPlayers: state.players.length, disconnected: false});
   state._rateRecorded = true;
@@ -1600,6 +1622,7 @@ function newGame(config) {
     currentTurnIdx: 0,
     round: 0,
     log: [],
+    replayTick: 0,         // 修正10: replay専用カウンタ。state.logのインデックスに依存しない。
     lastPlaced: null,
     turnTime: config.turnTime != null ? config.turnTime : DEFAULT_TURN_TIME,
     config,
@@ -1617,27 +1640,45 @@ function newGame(config) {
         playerColors: players.map(p => p.color),
       },
       actions: [],
-      snapshots: [], // 5ターンごとの軽量スナップショット (任意)
+      snapshots: [], // 5ターンごとの軽量スナップショット
       highlights: [], // ターン番号と種別
       startedAt: Date.now(),
     },
   };
   // 公開情報: 山札先頭 N枚 (= プレイヤー数)
   state.publicDraw = state.deck.slice(0, state.players.length).map(c => c ? {suit:c.suit, rank:c.rank} : null);
+  // 修正4/12: 初期状態を完全保存。seed/shuffle/CPU修正に依存せず完全再現可能にする。
+  state.replay.initialState = {
+    deck: state.deck.map(c => ({suit:c.suit, rank:c.rank, id:c.id, owner:c.owner, isJammer:c.isJammer})),
+    hands: state.players.map(p => p.hand.map(c => ({suit:c.suit, rank:c.rank, id:c.id}))),
+    forbidden: state.board.flatMap((row, y) => row.filter(c => c.forbidden).map(c => ({x:c.x, y}))),
+    initOrder: [...order],
+  };
   return state;
 }
 
 // ===== Replay recording =====
 function recordReplayAction(act) {
   if (!state || !state.replay) return;
-  if (state.mode === 'sim') return;
-  state.replay.actions.push({...act, t: state.log.length, round: state.round, phase: state.phase, ts: Date.now() - state.replay.startedAt});
+  // 修正2: sim/replay中は記録しない。replayがactionsを増殖するのを防ぐ。
+  if (state.mode === 'sim' || state.mode === 'replay') return;
+  // 修正6: ターンコンテキストも記録して再生時の検証に使う
+  const turnCtx = {
+    turnIndex: state.currentTurnIdx,
+    roundOrder: state.currentRoundOrder ? [...state.currentRoundOrder] : null,
+    round: state.round,
+  };
+  // 修正10: state.logではなくreplayTickを使う（log追加順変化でindexがズレない）
+  state.replayTick = (state.replayTick || 0) + 1;
+  state.replay.actions.push({...act, ...turnCtx, t: state.replayTick, phase: state.phase, ts: Date.now() - state.replay.startedAt});
 }
 function recordReplayEvent(type, extra) {
   if (!state || !state.replay) return;
-  if (state.mode === 'sim') return;
+  if (state.mode === 'sim' || state.mode === 'replay') return;
+  // 修正10: replayTickを使う
+  state.replayTick = (state.replayTick || 0) + 1;
   const t = state.replay.actions.length; // actionsインデックスで記録
-  state.replay.actions.push({type, ...(extra||{}), t: state.log.length, round: state.round, phase: state.phase, ts: Date.now() - state.replay.startedAt});
+  state.replay.actions.push({type, ...(extra||{}), t: state.replayTick, round: state.round, phase: state.phase, ts: Date.now() - state.replay.startedAt});
   state.replay.highlights.push({t, type});
 }
 function logEntry(e) {
@@ -1652,6 +1693,22 @@ function currentPlayerIdx() {
   return -1;
 }
 function aliveCount() { return state.players.filter(p => p.alive).length; }
+
+// 修正9: リプレイ専用配置関数。音・アニメ・stats・broadcast等を完全スキップ。
+function placeCardReplay(card, x, y, isJammer) {
+  const playerIdx = currentPlayerIdx();
+  const player = state.players[playerIdx];
+  card.owner = playerIdx;
+  card.isJammer = !!isJammer;
+  state.board[y][x].card = card;
+  const idx = player.hand.findIndex(c => c.id === card.id);
+  if (idx >= 0) player.hand.splice(idx, 1);
+  if (state.deck.length > 0) player.hand.push(state.deck.shift());
+  state.lastPlaced = {x, y, owner: playerIdx};
+  updatePublicDraw();
+  logEntry({type:'place', player:playerIdx, card:cardLogId(card), x, y, isJammer:!!isJammer});
+  // recordReplayActionは修正2のガードで自動スキップされるが明示的にreturn
+}
 
 function placeCard(card, x, y, isJammer) {
   const playerIdx = currentPlayerIdx();
@@ -1799,7 +1856,8 @@ function exchangeCards(playerIdx, cardIds) {
   for (const c of toReturn) state.deck.push(c);
   if (p.stats) p.stats.exchanges++;
   updatePublicDraw();
-  recordReplayAction({type:'exchange', player:playerIdx, cardIds:[...cardIds]});
+  // 修正1: idではなく{suit,rank}で記録。再生時に新ゲームのidと合わなくても復元可能。
+  recordReplayAction({type:'exchange', player:playerIdx, cards: toReturn.map(c => ({suit:c.suit, rank:c.rank}))});
   logEntry({type:'exchange', player:playerIdx, returned:toReturn.map(cardLogId), drawn:n});
 }
 
@@ -4487,7 +4545,32 @@ function showResult() {
     ranking = sc.map(s => s.idx);
   }
   const titles = state.titles || {};
-  ranking.forEach((idx, rank) => {
+  const ranked = [];
+  let displayRank = 1;
+  let prevKey = null;
+
+  ranking.forEach((idx, i) => {
+    const s = computeLargestNetworkScore(state, idx);
+
+    const key = [
+      s.edges,
+      s.cards,
+      s.totalConnections
+    ].join('-');
+
+    if (prevKey !== null && key !== prevKey) {
+      displayRank = i + 1;
+    }
+
+    ranked.push({
+      idx,
+      rank: displayRank
+    });
+
+    prevKey = key;
+  });
+
+  ranked.forEach(({idx, rank}) => {
     const p = state.players[idx];
     const score = computeLargestNetworkScore(state, idx);
     const winner = (state.winners || []).includes(idx);
@@ -4501,7 +4584,7 @@ function showResult() {
     else if (!p.alive) statusTxt = ' <span style="opacity:0.75; font-size:11px;">行動不能</span>';
     r.innerHTML =
       '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">'+
-        '<span style="font-size:14px; font-weight:800; min-width:24px;">'+(rank+1)+'位</span>'+
+        '<span style="font-size:14px; font-weight:800; min-width:24px;">'+rank+'位</span>'+
         (winner ? '<span style="font-size:18px;">🏆</span>' : '')+
         '<span class="color-dot" style="width:14px;height:14px;background:'+PLAYER_COLORS[idx].bg+'"></span>'+
         '<span style="font-weight:700">' + PLAYER_COLORS[idx].badge + ' ' + escapeHtml(p.name) + '</span>'+
@@ -4657,6 +4740,7 @@ function buildReplayPayload() {
     highlights: state.replay.highlights,
     winners: state.winners,
     finalRanking: state.finalRanking,
+    finalRanks: state.finalRanks,
   };
 }
 function downloadReplay() {
@@ -4671,16 +4755,33 @@ function downloadReplay() {
 }
 
 // ===== シェアURL: ?replay= に圧縮済みJSONを乗せる =====
-// 簡易圧縮: JSON → encodeURIComponent → btoa
+// 修正7: pako gzip圧縮でURL長を大幅削減
 function encodeReplayForUrl(payload) {
   try {
     const json = JSON.stringify(payload);
-    // UTF-8 safe base64
+    if (typeof pako !== 'undefined') {
+      // gzip圧縮 → base64url
+      const compressed = pako.deflate(json, {level: 9});
+      let bin = '';
+      for (let i = 0; i < compressed.length; i++) bin += String.fromCharCode(compressed[i]);
+      return 'z:' + btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    }
+    // fallback: 圧縮なし
     return btoa(unescape(encodeURIComponent(json))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   } catch(e) { return ''; }
 }
 function decodeReplayFromUrl(s) {
   try {
+    if (s.startsWith('z:')) {
+      // pako圧縮版
+      const b64 = s.slice(2).replace(/-/g,'+').replace(/_/g,'/');
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const json = (typeof pako !== 'undefined') ? pako.inflate(arr, {to:'string'}) : new TextDecoder().decode(arr);
+      return JSON.parse(json);
+    }
+    // 旧形式 (非圧縮) との互換
     const b = s.replace(/-/g,'+').replace(/_/g,'/');
     const json = decodeURIComponent(escape(atob(b)));
     return JSON.parse(json);
@@ -4722,8 +4823,9 @@ function loadReplay(data) {
   const players = (data.settings.playerNames || []).map((n, i) => ({name:n, isCPU:false, cpuLevel:2}));
   if (!players.length) { showOnlineMsg('リプレイ', 'プレイヤー情報なし'); return; }
   Net.mode = 'none';
-  opts = {players, seed: data.seed, turnTime: data.settings.turnTime || 0, mode:'replay'};
-  newGame(opts);
+  // 修正3/4: constで宣言してグローバルoptsを汚染しない
+  const replayInitOpts = {players, seed: data.seed, turnTime: data.settings.turnTime || 0, mode:'replay'};
+  newGame(replayInitOpts);
   state.mode = 'replay';
   handoffShownFor = -2;
   showScreen('game');
@@ -4757,14 +4859,16 @@ function applyReplayAction(act) {
     const pIdx = act.player;
     const cur = currentPlayerIdx();
     if (cur !== pIdx) {
-      // 状態がずれている — exhaustedなどでスキップが必要
-      console.warn('replay action player mismatch', cur, pIdx);
+      // 修正6: turnIndex/roundOrderで状態ズレを検証
+      console.warn('replay action player mismatch', cur, pIdx, 'expected turn:', act.turnIndex);
     }
     const player = state.players[pIdx];
     if (!player) return false;
+    // 修正1: suit/rankで検索（idは新ゲームと合わない）
     const card = player.hand.find(c => c && c.suit === act.card.suit && c.rank === act.card.rank);
     if (!card) { console.warn('replay: card not in hand', act); return false; }
-    placeCard(card, act.x, act.y, act.type === 'jammer');
+    // 修正9: リプレイ専用関数でSFX/animation等をスキップ
+    placeCardReplay(card, act.x, act.y, act.type === 'jammer');
     postActionAdvance();
     return true;
   }
@@ -4772,12 +4876,20 @@ function applyReplayAction(act) {
     const pIdx = act.player;
     const player = state.players[pIdx];
     if (!player) return false;
-    // 録画したcardIdsは新ゲームのidと合わないかもしれない → suit/rank で合わせる方が安全
+    // 修正1: suit/rankで交換カードを特定
     const idsToReturn = [];
-    for (const wantId of act.cardIds) {
-      // 元のidが残っているならそれを使う。違うシードでは合わない
-      const c = player.hand.find(c => c && c.id === wantId);
-      if (c) idsToReturn.push(c.id);
+    if (act.cards && Array.isArray(act.cards)) {
+      // 新形式: {suit, rank}配列
+      for (const want of act.cards) {
+        const c = player.hand.find(c => c && c.suit === want.suit && c.rank === want.rank);
+        if (c) idsToReturn.push(c.id);
+      }
+    } else if (act.cardIds && Array.isArray(act.cardIds)) {
+      // 旧形式互換: idで照合（同一ゲームセッションなら有効）
+      for (const wantId of act.cardIds) {
+        const c = player.hand.find(c => c && c.id === wantId);
+        if (c) idsToReturn.push(c.id);
+      }
     }
     if (!idsToReturn.length) return false;
     exchangeCards(pIdx, idsToReturn);
@@ -4798,9 +4910,19 @@ function applyReplayAction(act) {
 function replayStepBack() {
   if (!Replay.active || !Replay.data || Replay.cursor === 0) return;
   const target = Replay.cursor - 1;
-  replayReset();
-  while (Replay.cursor < target && Replay.cursor < Replay.data.actions.length) {
-    applyReplayAction(Replay.data.actions[Replay.cursor++]);
+  // 修正5: スナップショット活用で高速巻き戻し
+  const snap = findNearestSnapshot(target);
+  if (snap && snap.cursor > 0 && snap.cursor <= target) {
+    // スナップショットから復元
+    _restoreFromSnapshot(snap);
+    while (Replay.cursor < target && Replay.cursor < Replay.data.actions.length) {
+      applyReplayAction(Replay.data.actions[Replay.cursor++]);
+    }
+  } else {
+    replayReset();
+    while (Replay.cursor < target && Replay.cursor < Replay.data.actions.length) {
+      applyReplayAction(Replay.data.actions[Replay.cursor++]);
+    }
   }
   renderAll();
   updateReplayControls();
@@ -4816,7 +4938,17 @@ function replayStep(n) {
       return;
     }
     const act = Replay.data.actions[Replay.cursor++];
-    applyReplayAction(act);
+    // 修正11: 失敗したら停止してエラー表示
+    const ok = applyReplayAction(act);
+    if (ok === false) {
+      replayPause();
+      showOnlineMsg('リプレイエラー', 'アクション ' + Replay.cursor + ' の再生に失敗しました。データが破損している可能性があります。');
+      renderAll();
+      updateReplayControls();
+      return;
+    }
+    // 修正5: 5手ごとにスナップショット保存
+    maybeSaveReplaySnapshot();
   }
   renderAll();
   updateReplayControls();
@@ -4834,6 +4966,7 @@ function replayPlay() {
       if (state.phase === 'end') showResult();
       return;
     }
+    // 修正11: replayStep内でエラー検知・停止するので単純呼び出し
     replayStep(1);
   }, stepMs);
   updateReplayControls();
@@ -4865,19 +4998,82 @@ function replayJumpToHighlight(dir) {
     }
   }
   if (target < 0) return;
-  // ジャンプ: 状態再構築
-  replayReset();
+  // 修正5: スナップショット活用で高速ジャンプ
+  const snap = findNearestSnapshot(target);
+  if (snap && snap.cursor > 0 && snap.cursor <= target) {
+    _restoreFromSnapshot(snap);
+  } else {
+    replayReset();
+  }
   while (Replay.cursor < target && Replay.cursor < Replay.data.actions.length) {
     applyReplayAction(Replay.data.actions[Replay.cursor++]);
   }
   renderAll();
   updateReplayControls();
 }
+// ===== Replay: スナップショット保存（5手ごと）=====
+const REPLAY_SNAPSHOT_INTERVAL = 5;
+function maybeSaveReplaySnapshot() {
+  if (!state || !state.replay || state.mode !== 'replay') return;
+  // replayStepまたはapplyReplayAction後にcursorが5の倍数になった時点で保存
+  if (Replay.cursor > 0 && Replay.cursor % REPLAY_SNAPSHOT_INTERVAL === 0) {
+    // 既に同じcursorのsnapshotがあれば上書きしない
+    if (!state.replay.snapshots.find(s => s.cursor === Replay.cursor)) {
+      const snap = structuredClone({
+        cursor: Replay.cursor,
+        stateSnapshot: {
+          board: state.board,
+          deck: state.deck,
+          players: state.players,
+          phase: state.phase,
+          initOrder: state.initOrder,
+          initIdx: state.initIdx,
+          currentRoundOrder: state.currentRoundOrder,
+          nextRoundOrder: state.nextRoundOrder,
+          currentTurnIdx: state.currentTurnIdx,
+          round: state.round,
+          log: state.log,
+          lastPlaced: state.lastPlaced,
+        }
+      });
+      state.replay.snapshots.push(snap);
+    }
+  }
+}
+// 指定cursor以下で最も近いスナップショットを探す
+function findNearestSnapshot(targetCursor) {
+  if (!state || !state.replay) return null;
+  let best = null;
+  for (const s of state.replay.snapshots) {
+    if (s.cursor <= targetCursor) {
+      if (!best || s.cursor > best.cursor) best = s;
+    }
+  }
+  return best;
+}
+function _restoreFromSnapshot(snap) {
+  if (!snap || !snap.stateSnapshot) return;
+  const ss = structuredClone(snap.stateSnapshot);
+  state.board = ss.board;
+  state.deck = ss.deck;
+  state.players = ss.players;
+  state.phase = ss.phase;
+  state.initOrder = ss.initOrder;
+  state.initIdx = ss.initIdx;
+  state.currentRoundOrder = ss.currentRoundOrder;
+  state.nextRoundOrder = ss.nextRoundOrder;
+  state.currentTurnIdx = ss.currentTurnIdx;
+  state.round = ss.round;
+  state.log = ss.log;
+  state.lastPlaced = ss.lastPlaced;
+  Replay.cursor = snap.cursor;
+}
 function replayReset() {
   if (!Replay.data) return;
   const players = (Replay.data.settings.playerNames || []).map(n => ({name:n, isCPU:false, cpuLevel:2}));
-  opts = {players, seed: Replay.data.seed, turnTime: Replay.data.settings.turnTime || 0, mode:'replay'};
-  newGame(opts);
+  // 修正3: constで宣言してグローバルoptsを汚染しない
+  const replayOpts = {players, seed: Replay.data.seed, turnTime: Replay.data.settings.turnTime || 0, mode:'replay'};
+  newGame(replayOpts);
   state.mode = 'replay';
   Replay.cursor = 0;
   renderAll();
@@ -4906,9 +5102,13 @@ function updateReplayControls() {
 }
 function exitReplay() {
   replayPause();
+  // 修正8: Replay状態を完全初期化してゲームUIへの混入を防ぐ
   Replay.active = false;
   Replay.data = null;
   Replay.cursor = 0;
+  Replay.playing = false;
+  Replay.speed = 1;
+  if (Replay.timer) { clearInterval(Replay.timer); Replay.timer = null; }
   hideReplayControls();
   state = null;
   showScreen('title');
