@@ -3368,23 +3368,25 @@ function netLeave() {
   showScreen('title');
 }
 
-// ============================== AUTO MATCH (ランダムマッチング / Distributed P2P) ==============================
-// 設計: L-imiles 分散P2Pランダムマッチング設計書 v5.0 に準拠 (Phase1)。
-// - hot zone (0..9999) を優先探索し、衝突したら全域 (0..999999) へ pseudo random walk で展開
+// ============================== AUTO MATCH (順次探索マッチング / Distributed P2P) ==============================
+// 設計: L-imiles 分散P2Pランダムマッチング設計書 v6.0 (順次探索方式)。
+// - 全クライアントが ROOM000001 → ROOM000002 → ... と同じ順番で順次探索
+// - これにより2人しかオンラインに居なくても必ず有限時間で遭遇できる
+// - hot zone / pseudo random walk / collision jitter は廃止
 // - searchPeer は1度だけ生成して再利用 (Safari の zombie RTC 対策)
 // - connection serial で late event を遮断
 // - 4.5s 接続 timeout / 3s handshake timeout
-// - K回失敗で host化を試行。host claim jitter (300〜1500ms + retry*400ms) で race 緩和
+// - K回失敗で host化を試行。「最後に探索した room の次」を自分が host 化する
 // - PeerServer の unavailable-id でホスト衝突を権威的に解決 (split-host を構造的に排除)
 const AutoMatch = {
   active: false,
   state: 'idle',         // idle | searching | connecting | handshake | claiming | hosting | joined | done
   searchPeer: null,
   connectSeq: 0,
-  currentRoom: -1,
-  attemptedRooms: new Set(),
+  currentRoom: 0,
+  searchCursor: 1,
   attempts: 0,
-  maxJoinAttempts: 12,
+  maxJoinAttempts: 3,
   numPlayers: 2,
   turnTime: 30,
   myName: 'Auto',
@@ -3397,7 +3399,6 @@ const AUTO_PROTOCOL = PROTOCOL_VERSION;
 //    先頭を英字に固定し、設計書の "__LIMILES_AUTO__pN__" 形式は
 //    PeerJS 互換の "limiles-auto-pN-" 形式に置き換える。
 const AUTO_ROOM_PREFIX = 'limiles-auto-p' + AUTO_PROTOCOL + '-';
-const AUTO_HOT_ZONE = 10000;
 const AUTO_ROOM_MAX = 1000000;
 const AUTO_CONNECT_TIMEOUT_MS = 4500;
 const AUTO_HANDSHAKE_TIMEOUT_MS = 3000;
@@ -3410,24 +3411,14 @@ function _autoMsg(s) {
   if (el) el.textContent = s || '';
 }
 function _autoNextRoom() {
-  // 最初は hot zone を狙い、出会わなければ全域へ拡張
-  for (let tries = 0; tries < 80; tries++) {
-    let n;
-    if (AutoMatch.attempts < 6) {
-      n = Math.floor(Math.random() * AUTO_HOT_ZONE);
-    } else if (AutoMatch.currentRoom >= 0) {
-      // 線形合同風 walk
-      n = ((AutoMatch.currentRoom * 48271 + Math.floor(Math.random() * 1000)) >>> 0) % AUTO_ROOM_MAX;
-    } else {
-      n = Math.floor(Math.random() * AUTO_ROOM_MAX);
-    }
-    if (!AutoMatch.attemptedRooms.has(n)) {
-      AutoMatch.attemptedRooms.add(n);
-      AutoMatch.currentRoom = n;
-      return n;
-    }
+  // 順次探索: 全クライアントが同じ順序で ROOM000001 → 000002 → ... を探索
+  // これにより2人だけでも必ず有限時間で遭遇できる
+  const n = AutoMatch.searchCursor++;
+  if (AutoMatch.searchCursor > AUTO_ROOM_MAX) {
+    AutoMatch.searchCursor = 1;
   }
-  return Math.floor(Math.random() * AUTO_ROOM_MAX);
+  AutoMatch.currentRoom = n;
+  return n;
 }
 
 function startAutoMatch({numPlayers, turnTime, name}) {
@@ -3440,9 +3431,9 @@ function startAutoMatch({numPlayers, turnTime, name}) {
   AutoMatch.turnTime = turnTime || 30;
   AutoMatch.myName = (name || 'Auto').slice(0, 16);
   AutoMatch.attempts = 0;
-  AutoMatch.attemptedRooms.clear();
+  AutoMatch.currentRoom = 0;
+  AutoMatch.searchCursor = 1;
   AutoMatch.connectSeq = 0;
-  AutoMatch.currentRoom = -1;
   AutoMatch.retryCount = 0;
 
   // UI へ pane を表示
@@ -3456,7 +3447,7 @@ function startAutoMatch({numPlayers, turnTime, name}) {
   catch(e) { _autoMsg('Peer 生成失敗'); AutoMatch.active = false; return; }
   AutoMatch.searchPeer.on('open', () => {
     if (!AutoMatch.active) return;
-    _autoMsg('探索中…');
+    _autoMsg('ROOM ' + String(AutoMatch.searchCursor).padStart(6,'0') + ' 探索中…');
     _autoTryNext();
   });
   AutoMatch.searchPeer.on('error', err => {
@@ -3647,7 +3638,10 @@ function _autoBeginHostClaim() {
 
 function _autoTryHostNow() {
   if (!AutoMatch.active) return;
-  const roomNum = Math.floor(Math.random() * AUTO_ROOM_MAX);
+  // 「最後に探索した room の次」を自分が host 化する (ランダム禁止)
+  const roomNum = AutoMatch.searchCursor;
+  AutoMatch.searchCursor++;
+  if (AutoMatch.searchCursor > AUTO_ROOM_MAX) AutoMatch.searchCursor = 1;
   const roomId = autoRoomId(roomNum);
   _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' でホスト化試行…');
   try { AutoMatch.searchPeer?.destroy(); } catch(e){}
@@ -3671,18 +3665,20 @@ function _autoTryHostNow() {
   Net.peer.on('open', () => {
     setNetStatus('hosting', 'ランダムマッチ待機中…');
     AutoMatch.state = 'hosting';
-    _autoMsg('ホスト確立: ' + Net.roomCode + ' 参加待ち (' + (Net.hostPlayers.length) + '/' + numPlayers + ')');
+    _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' ホスト確立 参加待ち (' + (Net.hostPlayers.length) + '/' + numPlayers + ')');
     _autoMatchFinalizeAsHost();
   });
   Net.peer.on('error', err => {
     if (err && err.type === 'unavailable-id') {
-      // 同じ ROOM_ID が既に使われている → 別 ID で再試行
-      _autoMsg('ID衝突。別ROOMで再試行');
+      // 同じ ROOM_ID が既に使われている → 順次カーソルを進めて再試行 (ランダム禁止)
+      _autoMsg('ID衝突。次ROOMで再試行');
       try { Net.peer?.destroy(); } catch(e){}
       Net.peer = null;
       Net.mode = 'none';
       Net.hostPlayers = [];
-      setTimeout(_autoTryHostNow, 250 + Math.floor(Math.random()*350));
+      AutoMatch.searchCursor++;
+      if (AutoMatch.searchCursor > AUTO_ROOM_MAX) AutoMatch.searchCursor = 1;
+      setTimeout(_autoTryHostNow, 250);
       return;
     }
     let msg = err && err.type || 'error';
