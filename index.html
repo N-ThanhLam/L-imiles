@@ -709,6 +709,7 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
       <div class="tab-row">
         <button id="tab-host-btn" class="active" data-action="online-tab-host">ホスト作成</button>
         <button id="tab-join-btn" data-action="online-tab-join">参加</button>
+        <button id="tab-auto-btn" data-action="online-tab-auto">ランダム</button>
       </div>
 
       <div id="online-pane-host">
@@ -766,6 +767,50 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
           <button data-action="back-to-title">戻る</button>
           <button data-action="join-spectator" title="観戦のみ。手札は見えません">観戦参加</button>
           <button class="primary" data-action="online-join">参加</button>
+        </div>
+      </div>
+
+      <div id="online-pane-auto" class="hidden">
+        <div class="setup-row" style="background:var(--panel-2); border-radius:6px; padding:6px 10px; margin-bottom:12px;">
+          <label style="min-width:auto;">あなたのレート</label>
+          <span id="my-rating-auto" class="rate-badge" style="font-size:13px; padding:3px 10px;">R0</span>
+          <span style="font-size:11px; color:var(--text-dim);">合言葉不要・自動マッチ</span>
+        </div>
+        <div class="setup-row">
+          <label>あなたの名前</label>
+          <input type="text" id="online-auto-name" placeholder="プレイヤー名" maxlength="6" value="Auto">
+        </div>
+        <div class="setup-row">
+          <label>プレイヤー数</label>
+          <select id="online-auto-num">
+            <option value="2" selected>2人</option>
+            <option value="3">3人</option>
+            <option value="4">4人</option>
+          </select>
+          <span style="font-size:11px; color:var(--text-dim);">ホスト化時のみ有効</span>
+        </div>
+        <div class="setup-row">
+          <label>ターン制限</label>
+          <select id="online-auto-time">
+            <option value="30" selected>30秒</option>
+            <option value="60">60秒</option>
+            <option value="120">120秒</option>
+            <option value="0">無制限</option>
+          </select>
+          <span style="font-size:11px; color:var(--text-dim);">ホスト化時のみ有効</span>
+        </div>
+        <div class="setup-row" style="background:var(--panel-2); border-radius:6px; padding:6px 10px;">
+          <label style="min-width:auto;">状態</label>
+          <span id="automatch-status" style="font-size:12px; color:var(--text-dim);">未開始</span>
+        </div>
+        <p style="font-size:11px; color:var(--text-dim); line-height:1.5; margin:8px 0;">
+          空いている部屋を探索し、見つからなければ自動でホスト化します。<br>
+          相手と version / protocol / ルールが一致すれば参加できます。
+        </p>
+        <div class="actions-bar">
+          <button data-action="back-to-title">戻る</button>
+          <button data-action="online-auto-cancel" class="danger">キャンセル</button>
+          <button class="primary" data-action="online-auto-start">マッチング開始</button>
         </div>
       </div>
 
@@ -1126,7 +1171,7 @@ function recordOnlineDisconnectLoss() {
 function updateMyRatingDisplay() {
   const r = computeRating();
   const ratingTxt = 'R' + r;
-  for (const id of ['my-rating-host', 'my-rating-join']) {
+  for (const id of ['my-rating-host', 'my-rating-join', 'my-rating-auto']) {
     const el = $(id);
     if (!el) continue;
     el.textContent = ratingTxt;
@@ -1695,9 +1740,12 @@ function currentPlayerIdx() {
 function aliveCount() { return state.players.filter(p => p.alive).length; }
 
 // 修正9: リプレイ専用配置関数。音・アニメ・stats・broadcast等を完全スキップ。
-function placeCardReplay(card, x, y, isJammer) {
-  const playerIdx = currentPlayerIdx();
+// ★ playerIdx は明示引数で受け取る。currentPlayerIdx() に依存すると
+//    手番順の解釈ズレ (旧データ・version drift) でカード所有が壊れる。
+function placeCardReplay(card, x, y, isJammer, playerIdx) {
+  if (playerIdx == null) playerIdx = currentPlayerIdx();
   const player = state.players[playerIdx];
+  if (!player) return;
   card.owner = playerIdx;
   card.isJammer = !!isJammer;
   state.board[y][x].card = card;
@@ -1707,7 +1755,6 @@ function placeCardReplay(card, x, y, isJammer) {
   state.lastPlaced = {x, y, owner: playerIdx};
   updatePublicDraw();
   logEntry({type:'place', player:playerIdx, card:cardLogId(card), x, y, isJammer:!!isJammer});
-  // recordReplayActionは修正2のガードで自動スキップされるが明示的にreturn
 }
 
 function placeCard(card, x, y, isJammer) {
@@ -2343,6 +2390,80 @@ const SPECTATOR_MAX = 8;              // host: 観戦者の最大接続数
 const SPECTATOR_HEARTBEAT_MS = 30000; // host: 観戦者専用 heartbeat 間隔 (30秒・低頻度)
 const SPECTATOR_REQ_COOLDOWN = 5000;  // host: 観戦者 1人あたりの requestFullState 最短間隔
 
+// ===== Protocol / packet versioning =====
+// appVersion (VERSION) とは別に protocolVersion / packetVersion を分離する。
+// UI修正だけで version-mismatch が起きないようにし、通信互換性を独立管理する。
+const PROTOCOL_VERSION = 3;
+const PACKET_VERSION = 1;
+
+// ===== パケット安全限界 =====
+// PeerJS は JSON を自動デシリアライズするが、巨大 / 異常 packet による
+// memory 爆増・Safari freeze を防ぐため、サイズ概算 + 型ガードを通す。
+const PACKET_SIZE_LIMIT = 64 * 1024;   // 8KB は state push に小さすぎるため 64KB に設定
+const SEND_BUFFER_SOFT_LIMIT = 256 * 1024; // 256KB を超えたら send を deferred queue に積む
+
+// safeSend(conn, msg): 送信失敗・bufferSize 過剰時の保護つき send。
+// bufferSize が SOFT_LIMIT を超えていれば一旦キューに積み、rAF で flush する。
+function safeSend(conn, msg) {
+  if (!conn) return false;
+  try {
+    // PeerJS の DataConnection は bufferSize getter を持つ。
+    const bs = (typeof conn.bufferSize === 'number') ? conn.bufferSize : 0;
+    if (bs > SEND_BUFFER_SOFT_LIMIT) {
+      conn.__sendQueue = conn.__sendQueue || [];
+      conn.__sendQueue.push(msg);
+      _scheduleFlush(conn);
+      return false;
+    }
+    if (conn.__sendQueue && conn.__sendQueue.length) {
+      // 既にキューがあれば順序を保つため末尾に積んで flush 経由で送る
+      conn.__sendQueue.push(msg);
+      _scheduleFlush(conn);
+      return false;
+    }
+    conn.send(msg);
+    return true;
+  } catch (e) { return false; }
+}
+function _scheduleFlush(conn) {
+  if (conn.__flushScheduled) return;
+  conn.__flushScheduled = true;
+  const tick = () => {
+    conn.__flushScheduled = false;
+    try {
+      while (conn.__sendQueue && conn.__sendQueue.length) {
+        const bs = (typeof conn.bufferSize === 'number') ? conn.bufferSize : 0;
+        if (bs > SEND_BUFFER_SOFT_LIMIT) {
+          // バッファがまだ詰まっている → 次フレームで再試行
+          conn.__flushScheduled = true;
+          requestAnimationFrame(tick);
+          return;
+        }
+        const next = conn.__sendQueue.shift();
+        try { conn.send(next); } catch(e) { /* 切断中ならドロップ */ }
+      }
+    } catch(e) {}
+  };
+  requestAnimationFrame(tick);
+}
+
+// validatePacket(msg): 受信パケットの基本検証。
+// - object であること
+// - type が string であること
+// - JSON 文字列化サイズが PACKET_SIZE_LIMIT 以下であること
+// 戻り値 false なら呼び出し側で即 return すること。
+function validatePacket(msg) {
+  if (!msg || typeof msg !== 'object') return false;
+  if (typeof msg.type !== 'string' || msg.type.length === 0 || msg.type.length > 64) return false;
+  try {
+    // 概算サイズ。PeerJS が deserialize 後の object を渡してくるので
+    // 厳密ではないが目安として使う。stringify で OOM を起こさないよう try で囲む。
+    const sz = JSON.stringify(msg).length;
+    if (sz > PACKET_SIZE_LIMIT) return false;
+  } catch(e) { return false; }
+  return true;
+}
+
 // ===== 安定シリアライズ + state hash =====
 // JSON.stringify はオブジェクトキー順が実装依存ではないが、配列の中身が
 // オブジェクトの場合キー順に依存する。ここでは明示的にキーをソートして
@@ -2537,7 +2658,7 @@ function onClientDisconnect(conn) {
 }
 
 function handleHostMessage(conn, msg) {
-  if (!msg || typeof msg !== 'object') return;
+  if (!validatePacket(msg)) return;
   if (msg.type === 'hello') {
     if (msg.ver !== VERSION) { conn.send({type:'reject', reason:'version-mismatch', expected:VERSION}); setTimeout(()=>conn.close(), 200); return; }
     if (msg.ruleHash !== null && msg.ruleHash !== Net.ruleHash) { conn.send({type:'reject', reason:'rule-mismatch', expected:Net.ruleHash}); setTimeout(()=>conn.close(), 200); return; }
@@ -2642,7 +2763,7 @@ function handleHostMessage(conn, msg) {
 
 function broadcastLobby() {
   const payload = {type:'lobby-update', players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating}))};
-  for (const conn of Net.conns.values()) { try { conn.send(payload); } catch(e){} }
+  for (const conn of Net.conns.values()) safeSend(conn, payload);
 }
 function broadcastStateIfHost() {
   if (Net.mode !== 'online-host') return;
@@ -2664,7 +2785,7 @@ function broadcastStateIfHost() {
   for (const [peerId, conn] of Net.conns.entries()) {
     const player = Net.hostPlayers.find(p => p.peerId === peerId);
     if (player) {
-      try { conn.send({type:'state', matchId, view: buildClientView(state, player.idx), hash, deckFp}); } catch(e){}
+      safeSend(conn, {type:'state', matchId, view: buildClientView(state, player.idx), hash, deckFp});
     }
     // 観戦者は broadcastStateIfHost では送らない。
     // 観戦者専用 heartbeat (SPECTATOR_HEARTBEAT_MS) と参加時初回 fullState だけで同期。
@@ -2693,7 +2814,7 @@ function _pushStateToSpectators(matchId, hash, deckFp) {
   };
   for (const sp of spectators) {
     const conn = Net.conns.get(sp.peerId);
-    if (conn) try { conn.send(payload); } catch(e){}
+    if (conn) safeSend(conn, payload);
   }
 }
 
@@ -2710,7 +2831,7 @@ function sendFullStateTo(conn, viewerIdx, opts) {
   state._lastDeckFp = deckFp;
   const matchId = state.matchId || '';
   const view = buildClientView(state, viewerIdx, opts);
-  try { conn.send({type:'fullState', matchId, view, hash, deckFp, version: state.stateVersion || 0}); } catch(e){}
+  safeSend(conn, {type:'fullState', matchId, view, hash, deckFp, version: state.stateVersion || 0});
 }
 
 // 観戦者に fullState を送る。view は全員共通なのでキャッシュを使い回す。
@@ -2725,7 +2846,7 @@ function sendFullStateToSpectator(conn) {
     Net._spectatorViewCache = buildClientView(state, -1, {spectator:true});
     Net._spectatorViewVersion = ver;
   }
-  try { conn.send({type:'fullState', matchId, view: Net._spectatorViewCache, hash, deckFp, version: ver}); } catch(e){}
+  safeSend(conn, {type:'fullState', matchId, view: Net._spectatorViewCache, hash, deckFp, version: ver});
 }
 
 function broadcastFullStateIfHost() {
@@ -2873,7 +2994,7 @@ function clientSendAction(action) {
     else Net._pendingActionQueue.push(entry);
     return false; // まだ未送信
   }
-  try { Net.hostConn.send({type:'action', matchId, action}); return true; } catch(e){ return false; }
+  return safeSend(Net.hostConn, {type:'action', matchId, action});
 }
 
 // isRecovering 解除後に呼び出し、退避していた action を送信する。
@@ -2885,7 +3006,7 @@ function flushPendingActions() {
   for (const entry of queue) {
     // matchId が現在の試合と一致する場合のみ再送（古い試合の action は捨てる）
     if (Net.currentMatchId && entry.matchId && entry.matchId !== Net.currentMatchId) continue;
-    try { Net.hostConn.send({type:'action', matchId: entry.matchId, action: entry.action}); } catch(e){}
+    safeSend(Net.hostConn, {type:'action', matchId: entry.matchId, action: entry.action});
   }
 }
 
@@ -2940,7 +3061,7 @@ function replaceGameState(view) {
 }
 
 function handleClientMessage(msg) {
-  if (!msg || typeof msg !== 'object') return;
+  if (!validatePacket(msg)) return;
   if (msg.type === 'welcome') {
     // Verify host's rule hash matches what client expects? Host is authoritative.
     Net.myPlayerIdx = msg.yourIdx;
@@ -3243,8 +3364,432 @@ function netLeave() {
   $('online-pane-lobby').classList.add('hidden');
   $('online-pane-host').classList.remove('hidden');
   $('online-pane-join').classList.add('hidden');
+  { const p = $('online-pane-auto'); if (p) p.classList.add('hidden'); }
   showScreen('title');
 }
+
+// ============================== AUTO MATCH (ランダムマッチング / Distributed P2P) ==============================
+// 設計: L-imiles 分散P2Pランダムマッチング設計書 v5.0 に準拠 (Phase1)。
+// - hot zone (0..9999) を優先探索し、衝突したら全域 (0..999999) へ pseudo random walk で展開
+// - searchPeer は1度だけ生成して再利用 (Safari の zombie RTC 対策)
+// - connection serial で late event を遮断
+// - 4.5s 接続 timeout / 3s handshake timeout
+// - K回失敗で host化を試行。host claim jitter (300〜1500ms + retry*400ms) で race 緩和
+// - PeerServer の unavailable-id でホスト衝突を権威的に解決 (split-host を構造的に排除)
+const AutoMatch = {
+  active: false,
+  state: 'idle',         // idle | searching | connecting | handshake | claiming | hosting | joined | done
+  searchPeer: null,
+  connectSeq: 0,
+  currentRoom: -1,
+  attemptedRooms: new Set(),
+  attempts: 0,
+  maxJoinAttempts: 12,
+  numPlayers: 2,
+  turnTime: 30,
+  myName: 'Auto',
+  searchTimer: null,
+  hostClaimTimer: null,
+  retryCount: 0,
+};
+const AUTO_PROTOCOL = PROTOCOL_VERSION;
+// ★ PeerJS の id 正規表現 (^[A-Za-z0-9]+(?:[ _-][A-Za-z0-9]+)*$) を満たすために
+//    先頭を英字に固定し、設計書の "__LIMILES_AUTO__pN__" 形式は
+//    PeerJS 互換の "limiles-auto-pN-" 形式に置き換える。
+const AUTO_ROOM_PREFIX = 'limiles-auto-p' + AUTO_PROTOCOL + '-';
+const AUTO_HOT_ZONE = 10000;
+const AUTO_ROOM_MAX = 1000000;
+const AUTO_CONNECT_TIMEOUT_MS = 4500;
+const AUTO_HANDSHAKE_TIMEOUT_MS = 3000;
+const AUTO_HOST_CLAIM_JITTER_MIN = 300;
+const AUTO_HOST_CLAIM_JITTER_MAX = 1500;
+
+function autoRoomId(n) { return AUTO_ROOM_PREFIX + String(n).padStart(6, '0'); }
+function _autoMsg(s) {
+  const el = document.getElementById('automatch-status');
+  if (el) el.textContent = s || '';
+}
+function _autoNextRoom() {
+  // 最初は hot zone を狙い、出会わなければ全域へ拡張
+  for (let tries = 0; tries < 80; tries++) {
+    let n;
+    if (AutoMatch.attempts < 6) {
+      n = Math.floor(Math.random() * AUTO_HOT_ZONE);
+    } else if (AutoMatch.currentRoom >= 0) {
+      // 線形合同風 walk
+      n = ((AutoMatch.currentRoom * 48271 + Math.floor(Math.random() * 1000)) >>> 0) % AUTO_ROOM_MAX;
+    } else {
+      n = Math.floor(Math.random() * AUTO_ROOM_MAX);
+    }
+    if (!AutoMatch.attemptedRooms.has(n)) {
+      AutoMatch.attemptedRooms.add(n);
+      AutoMatch.currentRoom = n;
+      return n;
+    }
+  }
+  return Math.floor(Math.random() * AUTO_ROOM_MAX);
+}
+
+function startAutoMatch({numPlayers, turnTime, name}) {
+  if (AutoMatch.active) return;
+  // 既存のオンライン接続が残っていれば破棄
+  if (Net.mode !== 'none') { try { netLeave(); } catch(e){} }
+  AutoMatch.active = true;
+  AutoMatch.state = 'searching';
+  AutoMatch.numPlayers = numPlayers || 2;
+  AutoMatch.turnTime = turnTime || 30;
+  AutoMatch.myName = (name || 'Auto').slice(0, 16);
+  AutoMatch.attempts = 0;
+  AutoMatch.attemptedRooms.clear();
+  AutoMatch.connectSeq = 0;
+  AutoMatch.currentRoom = -1;
+  AutoMatch.retryCount = 0;
+
+  // UI へ pane を表示
+  const pane = document.getElementById('online-pane-auto');
+  if (pane) pane.classList.remove('hidden');
+  _autoMsg('シグナリングサーバ接続中…');
+
+  try { if (AutoMatch.searchPeer) AutoMatch.searchPeer.destroy(); } catch(e){}
+  const myId = 'lm-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36).slice(-6);
+  try { AutoMatch.searchPeer = new Peer(myId, {debug: 0}); }
+  catch(e) { _autoMsg('Peer 生成失敗'); AutoMatch.active = false; return; }
+  AutoMatch.searchPeer.on('open', () => {
+    if (!AutoMatch.active) return;
+    _autoMsg('探索中…');
+    _autoTryNext();
+  });
+  AutoMatch.searchPeer.on('error', err => {
+    if (!AutoMatch.active) return;
+    if (err && err.type === 'peer-unavailable') {
+      // 試行中の room が空き → 即次の room へ
+      if (AutoMatch.state === 'connecting' || AutoMatch.state === 'handshake') {
+        AutoMatch.connectSeq++;
+        if (AutoMatch.searchTimer) { clearTimeout(AutoMatch.searchTimer); AutoMatch.searchTimer = null; }
+        setTimeout(_autoTryNext, 60);
+      }
+      return;
+    }
+    if (err && (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'disconnected' || err.type === 'unavailable-id')) {
+      _autoMsg('シグナリング再接続中…');
+      setTimeout(_autoRestartSearchPeer, 1500);
+    }
+  });
+}
+
+function cancelAutoMatch() {
+  // active / 進行中 / host化済 / ホスト化中 のいずれでもなければ no-op
+  if (!AutoMatch.active && AutoMatch.state === 'idle') return;
+  AutoMatch.active = false;
+  if (AutoMatch.searchTimer) { clearTimeout(AutoMatch.searchTimer); AutoMatch.searchTimer = null; }
+  if (AutoMatch.hostClaimTimer) { clearTimeout(AutoMatch.hostClaimTimer); AutoMatch.hostClaimTimer = null; }
+  try { AutoMatch.searchPeer?.destroy(); } catch(e){}
+  AutoMatch.searchPeer = null;
+  AutoMatch.state = 'idle';
+  AutoMatch.connectSeq++;
+  _autoMsg('停止しました');
+  const pane = document.getElementById('online-pane-auto');
+  if (pane) pane.classList.add('hidden');
+  // host化済みなら Net も解放
+  if (Net.mode !== 'none') { try { netLeave(); } catch(e){} }
+}
+
+function _autoRestartSearchPeer() {
+  if (!AutoMatch.active) return;
+  try { AutoMatch.searchPeer?.destroy(); } catch(e){}
+  const myId = 'lm-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36).slice(-6);
+  AutoMatch.searchPeer = new Peer(myId, {debug: 0});
+  AutoMatch.searchPeer.on('open', () => { if (AutoMatch.active) { _autoMsg('探索再開'); _autoTryNext(); } });
+  AutoMatch.searchPeer.on('error', err => {
+    if (!AutoMatch.active) return;
+    if (err && err.type === 'peer-unavailable') return;
+    if (err && (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'disconnected')) {
+      setTimeout(_autoRestartSearchPeer, 3000);
+    }
+  });
+}
+
+function _autoTryNext() {
+  if (!AutoMatch.active) return;
+  if (AutoMatch.state === 'hosting' || AutoMatch.state === 'joined' || AutoMatch.state === 'done') return;
+  AutoMatch.attempts++;
+  if (AutoMatch.attempts > AutoMatch.maxJoinAttempts) {
+    _autoBeginHostClaim();
+    return;
+  }
+  const roomNum = _autoNextRoom();
+  const targetId = autoRoomId(roomNum);
+  AutoMatch.state = 'connecting';
+  _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' 探索中… (試行 ' + AutoMatch.attempts + '/' + AutoMatch.maxJoinAttempts + ')');
+  const seq = ++AutoMatch.connectSeq;
+  let conn;
+  try {
+    conn = AutoMatch.searchPeer.connect(targetId, {reliable: true});
+  } catch(e) {
+    setTimeout(_autoTryNext, 200); return;
+  }
+  let opened = false, finalized = false;
+  const finalize = (success) => {
+    if (finalized) return;
+    finalized = true;
+    if (AutoMatch.searchTimer) { clearTimeout(AutoMatch.searchTimer); AutoMatch.searchTimer = null; }
+    if (!success) {
+      try { conn.close(); } catch(e){}
+      setTimeout(_autoTryNext, 50);
+    }
+  };
+  AutoMatch.searchTimer = setTimeout(() => {
+    if (seq !== AutoMatch.connectSeq) return;
+    finalize(false);
+  }, AUTO_CONNECT_TIMEOUT_MS);
+  conn.on('open', () => {
+    if (seq !== AutoMatch.connectSeq) { try { conn.close(); } catch(e){} return; }
+    if (!AutoMatch.active) { try { conn.close(); } catch(e){} return; }
+    opened = true;
+    AutoMatch.state = 'handshake';
+    _autoMsg('ハンドシェイク中… (R' + AutoMatch.currentRoom + ')');
+    try {
+      conn.send({
+        type:'hello', ver:VERSION, protocolVersion: PROTOCOL_VERSION, packetVersion: PACKET_VERSION,
+        name: AutoMatch.myName, ruleHash: null, rating: computeRating(),
+      });
+    } catch(e) { finalize(false); return; }
+    if (AutoMatch.searchTimer) clearTimeout(AutoMatch.searchTimer);
+    AutoMatch.searchTimer = setTimeout(() => {
+      if (seq !== AutoMatch.connectSeq) return;
+      finalize(false);
+    }, AUTO_HANDSHAKE_TIMEOUT_MS);
+  });
+  conn.on('data', d => {
+    if (seq !== AutoMatch.connectSeq) return;
+    if (!validatePacket(d)) return;
+    if (d.type === 'reject') {
+      // room-full / version-mismatch / game-started → 次へ
+      finalize(false);
+    } else if (d.type === 'welcome') {
+      finalized = true;
+      if (AutoMatch.searchTimer) { clearTimeout(AutoMatch.searchTimer); AutoMatch.searchTimer = null; }
+      AutoMatch.state = 'joined';
+      _autoAdoptAsClient(conn, d);
+    }
+  });
+  conn.on('close', () => {
+    if (seq !== AutoMatch.connectSeq) return;
+    if (!finalized) finalize(false);
+  });
+  conn.on('error', () => {
+    if (seq !== AutoMatch.connectSeq) return;
+    finalize(false);
+  });
+}
+
+// AutoMatch で join 成立した conn を既存 Net (online-client) に昇格させる
+function _autoAdoptAsClient(conn, welcomeMsg) {
+  if (AutoMatch.searchTimer) { clearTimeout(AutoMatch.searchTimer); AutoMatch.searchTimer = null; }
+  if (AutoMatch.hostClaimTimer) { clearTimeout(AutoMatch.hostClaimTimer); AutoMatch.hostClaimTimer = null; }
+  AutoMatch.active = false;
+  AutoMatch.state = 'done';
+
+  Net.mode = 'online-client';
+  Net.peer = AutoMatch.searchPeer;
+  AutoMatch.searchPeer = null;
+  Net.hostConn = conn;
+  Net.roomCode = 'AUTO:' + (AutoMatch.currentRoom != null ? AutoMatch.currentRoom : '?');
+  Net.roomId = conn.peer;
+  Net.myName = AutoMatch.myName;
+  Net.myPlayerIdx = -1;
+  Net.hostPlayers = [];
+  Net._lastStateVersion = 0;
+  Net.acceptInput = true;
+
+  // welcome を既存ハンドラへ流す (Net.config / Net.hostPlayers などが設定される)
+  handleClientMessage(welcomeMsg);
+  // 以降のメッセージを既存ハンドラへ
+  conn.on('data', d => handleClientMessage(d));
+  conn.on('close', () => {
+    recordOnlineDisconnectLoss();
+    setNetStatus('disconnected', '接続が切断されました');
+  });
+  conn.on('error', () => setNetStatus('error', '接続エラー'));
+
+  // peer 全体のエラーも既存と同じ扱いに上書き
+  try {
+    if (Net.peer) {
+      Net.peer.on('error', err => {
+        let msg = err && err.type || 'error';
+        if (msg === 'peer-unavailable') return;
+        if (msg === 'network') msg = 'ネットワーク接続失敗';
+        setNetStatus('error', msg);
+      });
+    }
+  } catch(e){}
+
+  setNetStatus('lobby', 'ランダムマッチ参加成功');
+  _autoMsg('参加成功 (' + Net.roomCode + ')');
+  const pane = document.getElementById('online-pane-auto');
+  if (pane) pane.classList.add('hidden');
+  renderLobby();
+}
+
+function _autoBeginHostClaim() {
+  if (!AutoMatch.active) return;
+  AutoMatch.state = 'claiming';
+  AutoMatch.retryCount++;
+  const jitter = AUTO_HOST_CLAIM_JITTER_MIN
+    + Math.floor(Math.random() * (AUTO_HOST_CLAIM_JITTER_MAX - AUTO_HOST_CLAIM_JITTER_MIN))
+    + AutoMatch.retryCount * 400;
+  _autoMsg('ホスト化試行 (待機 ' + jitter + 'ms)…');
+  AutoMatch.hostClaimTimer = setTimeout(() => {
+    AutoMatch.hostClaimTimer = null;
+    if (AutoMatch.active) _autoTryHostNow();
+  }, jitter);
+}
+
+function _autoTryHostNow() {
+  if (!AutoMatch.active) return;
+  const roomNum = Math.floor(Math.random() * AUTO_ROOM_MAX);
+  const roomId = autoRoomId(roomNum);
+  _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' でホスト化試行…');
+  try { AutoMatch.searchPeer?.destroy(); } catch(e){}
+  AutoMatch.searchPeer = null;
+
+  const numPlayers = AutoMatch.numPlayers;
+  const turnTime = AutoMatch.turnTime;
+  Net.mode = 'online-host';
+  Net.roomCode = 'AUTO:' + roomNum;
+  Net.roomId = roomId;
+  Net.myName = AutoMatch.myName;
+  Net.myPlayerIdx = 0;
+  Net.config = {numPlayers, turnTime};
+  Net.ruleHash = computeRuleHash(Net.config);
+  Net.hostPlayers = [{idx:0, name: Net.myName, peerId: 'HOST', isHost:true, connected:true, rating: computeRating()}];
+  Net.conns.clear();
+  Net.acceptInput = true;
+
+  try { if (Net.peer) Net.peer.destroy(); } catch(e){}
+  Net.peer = new Peer(roomId, {debug: 0});
+  Net.peer.on('open', () => {
+    setNetStatus('hosting', 'ランダムマッチ待機中…');
+    AutoMatch.state = 'hosting';
+    _autoMsg('ホスト確立: ' + Net.roomCode + ' 参加待ち (' + (Net.hostPlayers.length) + '/' + numPlayers + ')');
+    _autoMatchFinalizeAsHost();
+  });
+  Net.peer.on('error', err => {
+    if (err && err.type === 'unavailable-id') {
+      // 同じ ROOM_ID が既に使われている → 別 ID で再試行
+      _autoMsg('ID衝突。別ROOMで再試行');
+      try { Net.peer?.destroy(); } catch(e){}
+      Net.peer = null;
+      Net.mode = 'none';
+      Net.hostPlayers = [];
+      setTimeout(_autoTryHostNow, 250 + Math.floor(Math.random()*350));
+      return;
+    }
+    let msg = err && err.type || 'error';
+    if (msg === 'network') msg = 'ネットワーク接続失敗';
+    if (msg === 'server-error') msg = 'シグナリングサーバ応答なし';
+    setNetStatus('error', msg);
+    _autoMsg('エラー: ' + msg);
+  });
+  Net.peer.on('disconnected', () => { setNetStatus('error', 'シグナリング切断'); });
+  Net.peer.on('connection', conn => {
+    conn.on('open', () => {
+      if (state && state.phase !== 'end') {
+        try { conn.send({type:'reject', reason:'game-started'}); } catch(e){}
+        setTimeout(() => { try { conn.close(); } catch(e){} }, 100);
+        return;
+      }
+      if (Net.hostPlayers.length >= Net.config.numPlayers) {
+        try { conn.send({type:'reject', reason:'room-full'}); } catch(e){}
+        setTimeout(() => { try { conn.close(); } catch(e){} }, 100);
+        return;
+      }
+      conn.on('data', d => handleHostMessage(conn, d));
+      conn.on('close', () => onClientDisconnect(conn));
+      conn.on('error', () => onClientDisconnect(conn));
+    });
+  });
+}
+
+// numPlayers に到達したら自動でゲーム開始
+function _autoMatchFinalizeAsHost() {
+  AutoMatch.active = false;
+  AutoMatch.state = 'done';
+  const pane = document.getElementById('online-pane-auto');
+  if (pane) pane.classList.add('hidden');
+  renderLobby();
+
+  const tickStart = () => {
+    if (Net.mode !== 'online-host') return;
+    if (state) return; // 既に開始済み
+    const need = Net.config?.numPlayers || 2;
+    const have = Net.hostPlayers.length;
+    _autoMsg('ホスト待機 ' + have + '/' + need);
+    if (have >= need) {
+      // 全員揃ったので少し待ってから開始 (相手側 lobby-update / connection 確立猶予)
+      setTimeout(() => {
+        if (Net.mode === 'online-host' && !state && Net.hostPlayers.length >= need) startOnlineGame();
+      }, 800);
+      return;
+    }
+    setTimeout(tickStart, 1500);
+  };
+  tickStart();
+}
+
+// ============================== LIFECYCLE (visibility / pagehide / freeze) ==============================
+// モバイル Safari は visibilitychange が来ないケース (swipe close / 着信 / Control Center / low memory) があるため、
+// pagehide / freeze / resume も併せて監視する。
+// hide 時:
+//   - turn timer を pause (オンラインのとき pauseTurnTimer)
+//   - host: fullState heartbeat を止めて余計な broadcast を抑制
+// show / resume 時:
+//   - host: heartbeat を再開し fullState を即broadcast (相手の同期を確実にする)
+//   - client / spectator: host へ requestFullState を投げ、自分の state を再同期する
+//   - 自分のターンならタイマーを resume
+let _netLifecycleHidden = false;
+function _onNetLifecycleHide() {
+  if (_netLifecycleHidden) return;
+  _netLifecycleHidden = true;
+  try {
+    if (typeof pauseTurnTimer === 'function') pauseTurnTimer();
+  } catch(e){}
+  if (Net.mode === 'online-host') {
+    try { stopFullStateHeartbeat(); } catch(e){}
+  }
+}
+function _onNetLifecycleShow() {
+  if (!_netLifecycleHidden) return;
+  _netLifecycleHidden = false;
+  if (Net.mode === 'online-host') {
+    try {
+      startFullStateHeartbeat();
+      // 復帰直後に最新状態を全クライアントへ送る (相手の取りこぼし救済)
+      broadcastFullStateIfHost();
+    } catch(e){}
+  } else if (Net.mode === 'online-client' || Net.mode === 'spectator') {
+    // 復帰直後は自分の state が古い可能性が高いので、host から fullState を取り直す
+    try { requestFullStateFromHost('lifecycle-resume'); } catch(e){}
+  }
+  // 自分のターンならタイマー再開 (state がまだ無いケースは内部 guard で no-op)
+  try {
+    if (state && state.phase === 'play' && currentPlayerIdx() === localPlayerIdx()) {
+      if (typeof startTurnTimer === 'function') startTurnTimer();
+    }
+  } catch(e){}
+}
+function _installNetLifecycle() {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) _onNetLifecycleHide();
+    else _onNetLifecycleShow();
+  });
+  window.addEventListener('pagehide', _onNetLifecycleHide);
+  window.addEventListener('pageshow', _onNetLifecycleShow);
+  // Chrome の Page Lifecycle: freeze/resume はタブが背景化で discard 直前/復帰直後に発火する
+  window.addEventListener('freeze', _onNetLifecycleHide);
+  window.addEventListener('resume', _onNetLifecycleShow);
+}
+_installNetLifecycle();
 
 // ============================== UI ==============================
 // ===== NETWORK EXPANDED — 自己最大NW更新時の演出 =====
@@ -4671,7 +5216,7 @@ function startOnlineGame() {
   for (const [peerId, conn] of Net.conns.entries()) {
     const player = Net.hostPlayers.find(p => p.peerId === peerId);
     if (!player) continue;
-    try { conn.send({type:'game-start', matchId: state.matchId, view: buildClientView(state, player.idx)}); } catch(e){}
+    safeSend(conn, {type:'game-start', matchId: state.matchId, view: buildClientView(state, player.idx)});
   }
   showScreen('game');
   handoffShownFor = -2; // disable
@@ -4692,6 +5237,7 @@ function renderLobby() {
   // Switch UI to lobby pane
   $('online-pane-host').classList.add('hidden');
   $('online-pane-join').classList.add('hidden');
+  { const p = $('online-pane-auto'); if (p) p.classList.add('hidden'); }
   $('online-pane-lobby').classList.remove('hidden');
   showScreen('online');
 
@@ -4736,6 +5282,11 @@ function buildReplayPayload() {
     version: VERSION,
     seed: state.seedStr,
     settings: state.replay.settings,
+    // ★ 初期状態を payload に含める。
+    //    seed + newGame() 再現に依存しないため、
+    //    shuffle / 禁止マス / 初期配布ロジックが将来変わっても
+    //    既存リプレイが破損しない。
+    initialState: state.replay.initialState || null,
     actions: state.replay.actions,
     highlights: state.replay.highlights,
     winners: state.winners,
@@ -4827,11 +5378,60 @@ function loadReplay(data) {
   const replayInitOpts = {players, seed: data.seed, turnTime: data.settings.turnTime || 0, mode:'replay'};
   newGame(replayInitOpts);
   state.mode = 'replay';
+  // ★ payload に initialState があればそれで上書き。
+  //    seed-based 再現に依存せず、shuffle仕様変更を跨いで再生できる。
+  applyReplayInitialState(data.initialState);
   handoffShownFor = -2;
   showScreen('game');
   Replay.active = true;
   renderAll();
   showReplayControls();
+}
+
+// payload.initialState を現在の state に適用する。
+// 旧 payload（initialState なし）の場合は何もせず seed-based 再現に任せる。
+function applyReplayInitialState(init) {
+  if (!init || !state) return;
+  try {
+    // deck を完全に再構築。各カードの id も復元する。
+    if (Array.isArray(init.deck)) {
+      state.deck = init.deck.map(c => ({
+        suit: c.suit, rank: c.rank,
+        id: c.id != null ? c.id : (c.suit + c.rank + '_' + Math.random().toString(36).slice(2,6)),
+        owner: c.owner != null ? c.owner : -1,
+        isJammer: !!c.isJammer,
+      }));
+    }
+    // 各プレイヤーの hand を初期手札で上書き。
+    if (Array.isArray(init.hands)) {
+      for (let i = 0; i < init.hands.length && i < state.players.length; i++) {
+        const arr = init.hands[i] || [];
+        state.players[i].hand = arr.map(c => ({
+          suit: c.suit, rank: c.rank,
+          id: c.id != null ? c.id : (c.suit + c.rank + '_' + Math.random().toString(36).slice(2,6)),
+          owner: -1, isJammer: false,
+        }));
+      }
+    }
+    // 禁止マスを復元。
+    if (Array.isArray(init.forbidden) && state.board) {
+      for (let y = 0; y < state.board.length; y++) {
+        for (let x = 0; x < state.board[y].length; x++) {
+          state.board[y][x].forbidden = false;
+        }
+      }
+      for (const f of init.forbidden) {
+        if (state.board[f.y] && state.board[f.y][f.x]) state.board[f.y][f.x].forbidden = true;
+      }
+    }
+    // 初期配置順序を復元。
+    if (Array.isArray(init.initOrder)) {
+      state.initOrder = [...init.initOrder];
+      state.initIdx = 0;
+      state.phase = 'init';
+    }
+    updatePublicDraw();
+  } catch (e) { console.warn('applyReplayInitialState failed', e); }
 }
 // ファイルから読み込み
 function openReplayFile() {
@@ -4868,8 +5468,10 @@ function applyReplayAction(act) {
     const card = player.hand.find(c => c && c.suit === act.card.suit && c.rank === act.card.rank);
     if (!card) { console.warn('replay: card not in hand', act); return false; }
     // 修正9: リプレイ専用関数でSFX/animation等をスキップ
-    placeCardReplay(card, act.x, act.y, act.type === 'jammer');
-    postActionAdvance();
+    // ★ playerIdx を明示的に渡す。currentPlayerIdx 任せだと旧データで誤所有が起きる。
+    placeCardReplay(card, act.x, act.y, act.type === 'jammer', pIdx);
+    // postActionAdvance が壊れないよう、ターン idx が記録と一致しなければ補正
+    if (currentPlayerIdx() === pIdx) postActionAdvance();
     return true;
   }
   if (act.type === 'exchange') {
@@ -5034,6 +5636,9 @@ function maybeSaveReplaySnapshot() {
           round: state.round,
           log: state.log,
           lastPlaced: state.lastPlaced,
+          publicDraw: state.publicDraw,   // ★ 山札先頭プレビューも snapshot に含める
+          replayTick: state.replayTick,   // ★ replayTick も復元しないと record系がズレる
+          winners: state.winners,         // ★ 終局スナップショットの巻き戻し
         }
       });
       state.replay.snapshots.push(snap);
@@ -5066,6 +5671,9 @@ function _restoreFromSnapshot(snap) {
   state.round = ss.round;
   state.log = ss.log;
   state.lastPlaced = ss.lastPlaced;
+  if (ss.publicDraw !== undefined) state.publicDraw = ss.publicDraw;
+  if (ss.replayTick !== undefined) state.replayTick = ss.replayTick;
+  if (ss.winners !== undefined) state.winners = ss.winners;
   Replay.cursor = snap.cursor;
 }
 function replayReset() {
@@ -5075,6 +5683,8 @@ function replayReset() {
   const replayOpts = {players, seed: Replay.data.seed, turnTime: Replay.data.settings.turnTime || 0, mode:'replay'};
   newGame(replayOpts);
   state.mode = 'replay';
+  // ★ 巻き戻しのときも payload.initialState を適用しないと再現がズレる。
+  applyReplayInitialState(Replay.data.initialState);
   Replay.cursor = 0;
   renderAll();
 }
@@ -5135,23 +5745,46 @@ function handleAction(a) {
       showScreen('online');
       $('online-pane-host').classList.remove('hidden');
       $('online-pane-join').classList.add('hidden');
+      { const p = $('online-pane-auto'); if (p) p.classList.add('hidden'); }
       $('online-pane-lobby').classList.add('hidden');
       $('tab-host-btn').classList.add('active');
       $('tab-join-btn').classList.remove('active');
+      { const b = $('tab-auto-btn'); if (b) b.classList.remove('active'); }
       updateMyRatingDisplay();
       break;
     case 'online-tab-host':
       $('online-pane-host').classList.remove('hidden');
       $('online-pane-join').classList.add('hidden');
+      { const p = $('online-pane-auto'); if (p) p.classList.add('hidden'); }
       $('tab-host-btn').classList.add('active');
       $('tab-join-btn').classList.remove('active');
+      { const b = $('tab-auto-btn'); if (b) b.classList.remove('active'); }
       break;
     case 'online-tab-join':
       $('online-pane-host').classList.add('hidden');
       $('online-pane-join').classList.remove('hidden');
+      { const p = $('online-pane-auto'); if (p) p.classList.add('hidden'); }
       $('tab-host-btn').classList.remove('active');
       $('tab-join-btn').classList.add('active');
+      { const b = $('tab-auto-btn'); if (b) b.classList.remove('active'); }
       break;
+    case 'online-tab-auto':
+      $('online-pane-host').classList.add('hidden');
+      $('online-pane-join').classList.add('hidden');
+      { const p = $('online-pane-auto'); if (p) p.classList.remove('hidden'); }
+      $('tab-host-btn').classList.remove('active');
+      $('tab-join-btn').classList.remove('active');
+      { const b = $('tab-auto-btn'); if (b) b.classList.add('active'); }
+      updateMyRatingDisplay();
+      break;
+    case 'online-auto-start': {
+      const name = ($('online-auto-name')?.value || 'Auto').trim();
+      const numPlayers = +($('online-auto-num')?.value || 2);
+      const turnTime = +($('online-auto-time')?.value || 30);
+      startAutoMatch({numPlayers, turnTime, name});
+      break;
+    }
+    case 'online-auto-cancel': cancelAutoMatch(); break;
     case 'online-host-create': {
       saveSettings();
       const keyword = $('online-host-keyword').value.trim();
@@ -5177,6 +5810,8 @@ function handleAction(a) {
     case 'random-seed': $('setup-seed').value = Math.floor(Math.random() * 1000000); break;
     case 'back-to-title':
       stopTurnTimer();
+      // ★ AutoMatch 探索中の場合も忘れず停止
+      if (AutoMatch && (AutoMatch.active || AutoMatch.state === 'claiming' || AutoMatch.state === 'hosting')) cancelAutoMatch();
       if (Net.mode !== 'none') netLeave();
       else { state = null; showScreen('title'); }
       break;
@@ -5207,6 +5842,7 @@ function handleAction(a) {
     case 'abort-game':
       $('overlay-menu').classList.add('hidden');
       stopTurnTimer();
+      if (AutoMatch && (AutoMatch.active || AutoMatch.state === 'claiming' || AutoMatch.state === 'hosting')) cancelAutoMatch();
       if (Net.mode !== 'none') netLeave();
       else { state = null; showScreen('title'); }
       break;
