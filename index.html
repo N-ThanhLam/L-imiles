@@ -3279,7 +3279,28 @@ function handleClientMessage(msg) {
     UI_PENDING = null;
     UI_EXCHANGE_MODE = false;
     UI_EXCHANGE_PICKED.clear();
-    ui.selectedCardId = null;
+    // ★ state受信時のカード選択リセット競合対策:
+    // 自分のターン継続中かつ pending なしの場合は selectedCardId を保持する。
+    // ターンが変わった / pending確定済み の場合のみリセット。
+    {
+      const _incomingTurn = msg.view && msg.view.currentPlayer;
+      const _localIdx = localPlayerIdx();
+      const _keepSel = (
+        _localIdx >= 0 &&
+        _incomingTurn === _localIdx &&
+        UI_PENDING == null
+      );
+      if (_keepSel && ui.selectedCardId != null) {
+        // 手札にそのカードがまだ存在するか確認（交換・使用済みなら破棄）
+        const _hand = msg.view?.players?.[_localIdx]?.hand || [];
+        if (!_hand.find(c => c && c.id === ui.selectedCardId)) {
+          ui.selectedCardId = null;
+        }
+        // _keepSel かつ手札にある → 何もしない（選択維持）
+      } else if (!_keepSel) {
+        ui.selectedCardId = null;
+      }
+    }
     // ★ Client Prediction: pending中のカードをhostのstate上に再適用（pending表示維持）
     // hash不一致チェックの前に行い、pendingカードはhost stateに重ねる
     // （次のstate or ackで確定/rollbackされる）
@@ -3348,9 +3369,11 @@ function handleClientMessage(msg) {
     renderSyncDebug();
   } else if (msg.type === 'action-ack') {
     // ★ Client Prediction: host が承認 → pending から削除（確定）
-    if (msg.actionId != null) {
+    // state パケットより ack が遅れた場合、state 受信側で既に pending 削除＆renderAll() 済み。
+    // 二重描画を避けるため、pending が実際に存在していた場合のみ削除＆再描画する。
+    if (msg.actionId != null && Net._clientPending.has(msg.actionId)) {
       Net._clientPending.delete(msg.actionId);
-      renderAll(); // pending表示を通常表示へ
+      renderAll(); // pending表示を通常表示へ（ack が state より先着した場合のみ）
     }
   } else if (msg.type === 'error') {
     if (msg.actionId != null && Net._clientPending.has(msg.actionId)) {
@@ -3469,7 +3492,7 @@ function processOnlineAction(playerIdx, action, actionId) {
     sendAckTo(playerIdx, actionId);
     postActionAdvance();
     broadcastStateIfHost();
-    renderAll();
+    // renderAll() は postActionAdvance() → prepareNewTurn() 内で呼ばれるため不要
   } else if (action.type === 'exchange') {
     if (state.phase !== 'play') { sendErrorTo(playerIdx, 'wrong-phase'); return; }
     if (anyLegalPlacement(state, playerIdx)) { sendErrorTo(playerIdx, 'placement-available'); return; }
@@ -3480,7 +3503,7 @@ function processOnlineAction(playerIdx, action, actionId) {
     exchangeCards(playerIdx, action.cardIds);
     if (anyLegalPlacement(state, playerIdx)) {
       broadcastStateIfHost();
-      renderAll();
+      renderAll(); // ターン継続: prepareNewTurn を呼ばないためここで描画
       // ★ 交換後に同ターンが継続する場合のみタイマー再起動。
       //    playerIdx === 0 (ホスト自身のターン) のときだけ対象。
       //    クライアントのターンならホストにタイマーは不要。
@@ -3489,7 +3512,7 @@ function processOnlineAction(playerIdx, action, actionId) {
       markActionUnable(playerIdx);
       postActionAdvance();
       broadcastStateIfHost();
-      renderAll();
+      // renderAll() は postActionAdvance() → prepareNewTurn() 内で呼ばれるため不要
     }
   } else if (action.type === 'give-up') {
     if (state.phase !== 'play') { sendErrorTo(playerIdx, 'wrong-phase'); return; }
@@ -3498,13 +3521,20 @@ function processOnlineAction(playerIdx, action, actionId) {
     markActionUnable(playerIdx);
     postActionAdvance();
     broadcastStateIfHost();
-    renderAll();
+    // renderAll() は postActionAdvance() → prepareNewTurn() 内で呼ばれるため不要
   } else if (action.type === 'surrender') {
     surrenderPlayer(playerIdx);
-    if (currentPlayerIdx() === playerIdx) postActionAdvance();
-    else if (aliveCount() === 0) { endGame(); showResult(); }
+    if (currentPlayerIdx() === playerIdx) {
+      postActionAdvance();
+      // renderAll() は postActionAdvance() → prepareNewTurn() 内で呼ばれるため不要
+    } else if (aliveCount() === 0) {
+      endGame(); showResult();
+      // renderAll() は showResult() が不要
+    } else {
+      // 非当番プレイヤーが降参 & 生存者あり: prepareNewTurn も showResult も呼ばれないためここで描画
+      renderAll();
+    }
     broadcastStateIfHost();
-    renderAll();
   } else if (action.type === 'reconnect-claim') {
     // 既に handleHostMessage 側で処理済みなのでここでは無視
   }
@@ -4975,7 +5005,7 @@ function confirmExchange() {
   if (state.mode === 'online-client') {
     clientSendAction({type:'exchange', cardIds});
     UI_EXCHANGE_MODE = false; UI_EXCHANGE_PICKED.clear();
-    renderAll();
+    updateActionButtons(); // state変化なし: ボタン状態のみ更新（盤面再描画は次のstate受信で行う）
     return;
   }
   exchangeCards(localIdx, cardIds);
@@ -4995,7 +5025,7 @@ function giveUpTurn() {
   stopTurnTimer();
   if (state.mode === 'online-client') {
     clientSendAction({type:'give-up'});
-    renderAll();
+    updateActionButtons(); // state変化なし: ボタン状態のみ更新（盤面再描画は次のstate受信で行う）
     return;
   }
   markActionUnable(localIdx);
@@ -5010,7 +5040,7 @@ function surrenderAction() {
   stopTurnTimer();
   if (state.mode === 'online-client') {
     clientSendAction({type:'surrender'});
-    renderAll();
+    updateActionButtons(); // state変化なし: ボタン状態のみ更新（盤面再描画は次のstate受信で行う）
     return;
   }
   surrenderPlayer(localIdx);
