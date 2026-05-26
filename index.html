@@ -90,22 +90,23 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 .timer.danger { background:var(--danger); color:#3a0d0d; animation: blink 0.5s infinite alternate; }
 @keyframes blink { from { opacity:0.6; } to { opacity:1; } }
 
-/* ===== 合法手なし — 静かな絶望演出 ===== */
+/* ===== 合法手なし — 静かな注意喚起 (opacityのみで軽量) ===== */
 @keyframes slowBreath {
-  0%   { box-shadow: 0 0 0px 0px rgba(245,185,65,0); transform: scale(1); }
-  50%  { box-shadow: 0 0 10px 3px rgba(245,185,65,0.45); transform: scale(1.03); }
-  100% { box-shadow: 0 0 0px 0px rgba(245,185,65,0); transform: scale(1); }
+  0%   { opacity: 0.72; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.72; }
 }
 @keyframes handDim {
-  0%   { filter: brightness(1); }
-  100% { filter: brightness(0.48) saturate(0.4); }
+  0%   { opacity: 1; }
+  100% { opacity: 0.5; }
 }
 .hand-card.no-legal-dim {
   animation: handDim 0.6s ease-out forwards;
 }
 #btn-exchange.no-legal-breath {
-  animation: slowBreath 1.2s ease-in-out infinite;
+  animation: slowBreath 1.4s ease-in-out infinite;
 }
+html.lowspec #btn-exchange.no-legal-breath { animation: none; opacity: 0.85; }
 .order-row { display:flex; gap:4px; align-items:center; }
 .order-row .label { font-size:11px; color:var(--text-dim); font-weight:700; letter-spacing:0.06em; }
 .order-row .dot { width:12px; height:12px; border-radius:50%; display:inline-block; }
@@ -180,132 +181,128 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 
 
 /* ===== 配置確定 演出 ===== */
-/* ★ Client Prediction: pending中カード（未確定・host承認待ち）*/
+/* ★ Client Prediction: pending中カード（未確定・host承認待ち）— 静的表示のみ */
 .card.pending-card {
-  opacity: 0.72;
-  animation: pendingPulse 1.1s ease-in-out infinite;
-  box-shadow: 0 0 0 2px #5ea8ff, 0 0 12px 3px rgba(94,168,255,0.55) !important;
-}
-@keyframes pendingPulse {
-  0%   { box-shadow: 0 0 0 2px #5ea8ff, 0 0 8px 2px rgba(94,168,255,0.4); opacity: 0.72; }
-  50%  { box-shadow: 0 0 0 2px #8ecfff, 0 0 18px 6px rgba(94,168,255,0.75); opacity: 0.88; }
-  100% { box-shadow: 0 0 0 2px #5ea8ff, 0 0 8px 2px rgba(94,168,255,0.4); opacity: 0.72; }
+  opacity: 0.78;
+  box-shadow: 0 0 0 2px #5ea8ff !important;
 }
 .card.place-pop {
-  animation: placePop 0.18s ease-out forwards;
+  animation: placePop 0.16s ease-out forwards;
 }
 @keyframes placePop {
-  0%   { transform: scale(0.82); filter: brightness(2.8); }
-  60%  { transform: scale(1.06); filter: brightness(1.2); }
-  100% { transform: scale(1);    filter: brightness(1); }
+  0%   { transform: scale(0.86); }
+  60%  { transform: scale(1.05); }
+  100% { transform: scale(1); }
 }
 .cell.place-flash::after {
   content: '';
   position: absolute;
-  inset: -3px;
+  inset: -2px;
   border-radius: 5px;
-  box-shadow: 0 0 0 3px rgba(255,255,255,0.9), 0 0 18px 4px rgba(255,255,255,0.5);
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.85);
   pointer-events: none;
-  animation: cellFlash 0.22s ease-out forwards;
+  animation: cellFlash 0.18s ease-out forwards;
   z-index: 10;
 }
 @keyframes cellFlash {
   0%   { opacity: 1; }
   100% { opacity: 0; }
 }
-/* ===== 接続外周縁ライン ===== */
-/* card要素にdata-edge-*属性でon/offを付与し、対応する辺を光らせる */
-/* border は既存の --owner 色を使う。card本来のborder(2px solid var(--owner))を上書きするため */
-/* 方向別: top / right / bottom / left */
+/* 配置確定時: 接続方向フラッシュ (短辺の枠だけ一瞬光る) */
+.card.dir-flash-top::before,
+.card.dir-flash-right::before,
+.card.dir-flash-bottom::before,
+.card.dir-flash-left::before {
+  content:''; position:absolute; pointer-events:none;
+  background: var(--owner, #fff);
+  opacity: 0; animation: dirFlash 0.16s ease-out forwards;
+}
+.card.dir-flash-top::before    { top:-2px; left:0; right:0; height:3px; }
+.card.dir-flash-bottom::before { bottom:-2px; left:0; right:0; height:3px; }
+.card.dir-flash-left::before   { left:-2px; top:0; bottom:0; width:3px; }
+.card.dir-flash-right::before  { right:-2px; top:0; bottom:0; width:3px; }
+@keyframes dirFlash {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+html.lowspec .card.place-pop { animation: none; }
+html.lowspec .cell.place-flash::after { display: none; }
+html.lowspec .card[class*="dir-flash"]::before { display: none; }
+/* ===== 接続外周縁ライン (静的表示のみ) =====
+   - filter / drop-shadow / 常時アニメは禁止
+   - 接続済みの辺は border のみで表現 (静止)
+*/
 .card[data-edge-top="1"]    { border-top-width:    3px; border-top-color:    var(--edge-color, var(--owner)); }
 .card[data-edge-right="1"]  { border-right-width:  3px; border-right-color:  var(--edge-color, var(--owner)); }
 .card[data-edge-bottom="1"] { border-bottom-width: 3px; border-bottom-color: var(--edge-color, var(--owner)); }
 .card[data-edge-left="1"]   { border-left-width:   3px; border-left-color:   var(--edge-color, var(--owner)); }
 
-/* 外周縁のglow（filter は親セルに適用するとボードがぼける可能性があるのでbox-shadowで）*/
-.card.has-outer-edge {
-  filter: drop-shadow(0 0 2.5px var(--owner));
+/* ===== 接続面 (connection face) — 静的表示 + 一瞬の覚醒のみ ===== */
+
+/* 13+到達: 全接続面が短時間だけ強発光する一瞬の覚醒演出 (max 2 pulse) */
+@keyframes facePulseOnce {
+  0%   { opacity: var(--face-op, 0.85); }
+  35%  { opacity: 1; }
+  65%  { opacity: var(--face-op, 0.85); }
+  100% { opacity: var(--face-op, 0.85); }
 }
-/* 13+: 外周縁が呼吸 */
-@keyframes outerEdgePulse {
-  0%   { filter: drop-shadow(0 0 1px var(--owner)); }
-  50%  { filter: drop-shadow(0 0 5px var(--owner)); }
-  100% { filter: drop-shadow(0 0 1px var(--owner)); }
-}
-.card.has-outer-edge.resonance-glow {
-  animation: outerEdgePulse 1.6s ease-in-out infinite;
+.conn-face-awaken {
+  animation: facePulseOnce 0.5s ease-in-out 2;
 }
 
-
-/* ===== 接続面 (connection face) ===== */
-/* 13+接続時: 面の強脈動 */
-@keyframes facePulse {
-  0%   { opacity: 0.70; }
-  50%  { opacity: 1.00; }
-  100% { opacity: 0.70; }
-}
-.conn-face-pulse {
-  animation: facePulse 1.6s ease-in-out infinite;
-}
-
-/* 全接続面: 常時ゆらぎ呼吸 (opacityのみ — GPU完結・軽量) */
-@keyframes faceBreathe {
-  0%   { opacity: var(--face-op-lo, 0.52); }
-  50%  { opacity: var(--face-op-hi, 0.82); }
-  100% { opacity: var(--face-op-lo, 0.52); }
-}
-.conn-face-live {
-  animation: faceBreathe var(--face-dur, 2.4s) ease-in-out infinite;
-  animation-delay: var(--face-delay, 0s);
-  will-change: opacity;
-}
-
-/* カード縁常時淡発光 (13+接続時) — 外周縁がある場合はouterEdgePulseで上書きされる */
-@keyframes cardEdgeGlow {
-  0%   { filter: drop-shadow(0 0 2px var(--owner)); }
-  50%  { filter: drop-shadow(0 0 8px var(--owner)); }
-  100% { filter: drop-shadow(0 0 2px var(--owner)); }
-}
-.card.resonance-glow:not(.has-outer-edge) {
-  animation: cardEdgeGlow 1.6s ease-in-out infinite;
-}
-
-/* 波紋 ripple — 周辺カードへの伝播 (8〜12接続時) */
-@keyframes cardRipple {
-  0%   { transform: scale(1);    filter: brightness(1.6); }
-  40%  { transform: scale(1.03); filter: brightness(1.25); }
-  100% { transform: scale(1);    filter: brightness(1); }
-}
-.card.resonance-ripple {
-  animation: cardRipple 0.32s ease-out forwards;
-}
-
-/* 接続面 新規出現アニメ */
+/* 接続面 新規出現アニメ — 配置直後のみ */
 @keyframes faceAppear {
   0%   { opacity: 0; }
   100% { opacity: 1; }
 }
 .conn-face-new {
-  animation: faceAppear 0.22s ease-out forwards;
+  animation: faceAppear 0.18s ease-out forwards;
 }
 
-/* NETWORK EXPANDED バナー */
+/* 波紋 ripple — 配置時のみ短く一発 */
+@keyframes cardRipple {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+.card.resonance-ripple {
+  animation: cardRipple 0.20s ease-out forwards;
+}
+
+/* 13+ 到達時の盤面フラッシュ (0.2秒一発) */
+@keyframes boardAwaken {
+  0%   { box-shadow: inset 0 0 0 4px var(--awaken-color, #fff); opacity: 1; }
+  100% { box-shadow: inset 0 0 0 0px var(--awaken-color, #fff); opacity: 0; }
+}
+.board-area.board-awaken::after {
+  content: '';
+  position: absolute; inset: 0;
+  pointer-events: none;
+  border-radius: 4px;
+  animation: boardAwaken 0.20s ease-out forwards;
+  z-index: 60;
+}
+
+/* 低スペモード: 発光・pulse・ripple OFF, SVG線は描画ロジック側で常時静止 */
+html.lowspec .conn-face-awaken,
+html.lowspec .conn-face-new,
+html.lowspec .card.resonance-ripple,
+html.lowspec .board-area.board-awaken::after { animation: none !important; }
+
+/* NETWORK EXPANDED バナー (短命のみ — backdrop-filter / blur は禁止) */
 .netexp-banner {
   position: fixed; left: 50%; top: 22%;
   transform: translateX(-50%) scale(0.85);
   z-index: 250; pointer-events: none;
   padding: 14px 28px; border-radius: 12px;
-  background: rgba(15,20,25,0.85);
+  background: rgba(15,20,25,0.95);
   border: 2px solid var(--owner, #5ea8ff);
-  box-shadow: 0 0 24px 4px var(--owner, #5ea8ff), 0 12px 40px rgba(0,0,0,0.6);
   text-align: center;
-  animation: netexpPop 0.45s cubic-bezier(0.2,1.4,0.4,1) forwards;
-  backdrop-filter: blur(4px);
+  animation: netexpPop 0.32s cubic-bezier(0.2,1.4,0.4,1) forwards;
 }
 .netexp-banner .netexp-title {
   font-size: 22px; font-weight: 900; letter-spacing: 0.18em;
   color: var(--owner, #5ea8ff);
-  text-shadow: 0 0 12px var(--owner, #5ea8ff);
 }
 .netexp-banner .netexp-sub {
   margin-top: 4px; font-size: 13px; font-weight: 700; color: #fff;
@@ -324,15 +321,16 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
   100% { opacity: 0; transform: translateX(-50%) scale(1.1) translateY(-10px); }
 }
 
-/* リザルト演出: 敗者は暗転 */
-.result-row.loser { opacity: 0.55; filter: saturate(0.7); }
+/* リザルト演出: 敗者は暗転 / 勝者は opacity 呼吸 (filter / 大きいbox-shadow禁止) */
+.result-row.loser { opacity: 0.55; }
 .result-row.winner-anim {
-  animation: winnerPulse 0.8s ease-in-out infinite alternate;
+  animation: winnerPulse 1.2s ease-in-out infinite alternate;
 }
 @keyframes winnerPulse {
-  0% { box-shadow: 0 4px 16px rgba(245,185,65,0.4); }
-  100% { box-shadow: 0 4px 28px rgba(245,185,65,0.85), 0 0 32px rgba(255,206,94,0.5); }
+  0%   { opacity: 0.92; }
+  100% { opacity: 1; }
 }
+html.lowspec .result-row.winner-anim { animation: none; }
 
 
 .card { width:100%; height:100%; background:#f8f9fa; color:#111; border-radius:3px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:800; line-height:1; position:relative; border:2px solid var(--owner, #888); box-shadow: 0 1px 3px rgba(0,0,0,0.5); overflow:hidden; }
@@ -383,16 +381,16 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 .status-tag.tag-exh  { background:var(--panel-2); color:var(--text-dim); border:1px solid var(--border); }
 @keyframes discBlink { 0%,100%{opacity:0.55;} 50%{opacity:1;} }
 
-/* ===== 最大ネットワーク所属カードのハイライト ===== */
+/* ===== 最大ネットワーク所属カードのハイライト (静的・filter禁止) ===== */
 .card.main-net {
-  filter: drop-shadow(0 0 4px var(--owner)) drop-shadow(0 0 9px var(--owner));
   z-index: 2;
+  box-shadow: 0 0 0 2px var(--owner), 0 0 0 3px rgba(255,255,255,0.55);
 }
 .card.main-net::before {
   content:'';
-  position:absolute; inset:-1px;
+  position:absolute; inset:0;
   border-radius:3px;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.85), inset 0 0 6px 0 var(--owner);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6);
   pointer-events:none;
   z-index: 1;
 }
@@ -508,7 +506,7 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
   transform-origin: left center;
   transition: none;
 }
-#replay-controls { position:fixed; bottom:0; left:0; right:0; background:linear-gradient(180deg, rgba(15,20,25,0.4), rgba(15,20,25,0.95)); border-top:1px solid var(--border); padding:8px 12px; z-index:200; backdrop-filter: blur(6px); }
+#replay-controls { position:fixed; bottom:0; left:0; right:0; background:rgba(15,20,25,0.96); border-top:1px solid var(--border); padding:8px 12px; z-index:200; }
 #replay-controls .replay-row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; max-width:920px; margin:0 auto; }
 #replay-controls .replay-label { font-weight:900; letter-spacing:0.15em; color:var(--accent); font-size:11px; }
 #replay-controls button { padding:5px 10px; font-size:12px; }
@@ -765,7 +763,7 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
         <div class="setup-row" style="background:var(--panel-2); border-radius:6px; padding:6px 10px; margin-bottom:12px;">
           <label style="min-width:auto;">あなたのレート</label>
           <span id="my-rating-join" class="rate-badge" style="font-size:13px; padding:3px 10px;">R0</span>
-          <span style="font-size:11px; color:var(--text-dim);">直近100戦 · 平均100 · 最大200</span>
+          <span style="font-size:11px; color:var(--text-dim);">直近100戦 最大200</span>
         </div>
         <div class="setup-row">
           <label>合言葉</label>
@@ -838,8 +836,13 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
           <span id="lobby-status-msg" style="font-size:11px; color:var(--text-dim);"></span>
         </div>
         <div class="setup-row" style="margin-bottom:6px;">
-          <label>隣接人数</label>
+          <label>参加人数</label>
           <span id="lobby-count">0 / 0</span>
+        </div>
+        <div class="setup-row" style="margin-bottom:6px;">
+          <label>観戦人数</label>
+          <span id="lobby-spec-count" style="font-variant-numeric:tabular-nums;">0</span>
+          <span style="font-size:11px; color:var(--text-dim);">参加人数とは独立</span>
         </div>
         <div class="lobby-grid" id="lobby-players"></div>
         <div class="actions-bar">
@@ -1040,6 +1043,10 @@ function saveSettings() {
       onlineHostTime: $('online-host-time')?.value || '30',
       onlineJoinKeyword: $('online-join-keyword')?.value || '',
       onlineJoinName: $('online-join-name')?.value || 'Guest',
+      // ランダムマッチ設定も保存 (名前・人数・ターン時間)
+      onlineAutoName: $('online-auto-name')?.value || 'Auto',
+      onlineAutoNum:  $('online-auto-num')?.value  || '2',
+      onlineAutoTime: $('online-auto-time')?.value || '30',
     };
     localStorage.setItem(LS_KEY, JSON.stringify(settings));
   } catch (e) {}
@@ -1066,6 +1073,10 @@ function loadSettings() {
     if ($('online-host-time') && s.onlineHostTime) $('online-host-time').value = s.onlineHostTime;
     if ($('online-join-keyword') && s.onlineJoinKeyword) $('online-join-keyword').value = s.onlineJoinKeyword;
     if ($('online-join-name') && s.onlineJoinName) $('online-join-name').value = s.onlineJoinName;
+    // ランダムマッチ設定の復元
+    if ($('online-auto-name') && s.onlineAutoName) $('online-auto-name').value = s.onlineAutoName;
+    if ($('online-auto-num')  && s.onlineAutoNum)  $('online-auto-num').value  = s.onlineAutoNum;
+    if ($('online-auto-time') && s.onlineAutoTime) $('online-auto-time').value = s.onlineAutoTime;
     // プレイヤー個別設定（renderSetupが呼ばれた後に適用するため_pendingPlayerSettingsに保持）
     if (s.players) window._pendingPlayerSettings = { numPlayers: s.numPlayers, players: s.players };
   } catch (e) {}
@@ -2374,6 +2385,7 @@ const Net = {
   status: 'disconnected',
   statusMsg: '',
   hostPlayers: [],       // host-side authoritative lobby
+  lobbySpectators: [],   // host-side: ロビー段階で接続中の観戦者 ({peerId, name}). startOnlineGame で state.spectators に移管。
   config: null,          // host: {numPlayers, turnTime}
   ruleHash: '',
   reconnectToken: '',    // client-side: received from host
@@ -2408,7 +2420,9 @@ const Net = {
   _clientPending: new Map(),              // client: actionId → {card, x, y, isJammer, savedState} pending中の配置
   _actionIdCounter: 0,                    // client: pending action の一意ID生成用
 };
-const FULLSTATE_INTERVAL_MS = 8000;   // host: 8秒ごとに fullState heartbeat
+// ★ 過剰防御の見直し: heartbeat を低頻度化してモバイルでの帯域/GC圧迫を抑える。
+//    state/action は変化時にすぐbroadcastされるので、heartbeat は単なる安全網として 15s 間隔で十分。
+const FULLSTATE_INTERVAL_MS = 15000;  // host: 15秒ごとに fullState heartbeat (旧8s)
 const FULLSTATE_REQ_COOLDOWN = 1500;  // client: 同期要求の最短間隔
 const SPECTATOR_MAX = 8;              // host: 観戦者の最大接続数
 const SPECTATOR_HEARTBEAT_MS = 30000; // host: 観戦者専用 heartbeat 間隔 (30秒・低頻度)
@@ -2608,6 +2622,16 @@ function loadReconnectToken(room) {
     return o;
   } catch(e) { return null; }
 }
+// ★ 同じ合言葉の部屋へ再入室するときに古いトークンを使ってしまうバグ対策。
+//    明示的な退室・終了時にトークンを破棄する。
+function clearReconnectToken(room) {
+  try {
+    const raw = localStorage.getItem(RECONNECT_KEY);
+    if (!raw) { return; }
+    const o = JSON.parse(raw);
+    if (!room || o.room === room) localStorage.removeItem(RECONNECT_KEY);
+  } catch(e) {}
+}
 function computeRuleHash(cfg) { return `p${cfg.numPlayers}|t${cfg.turnTime}`; }
 function setNetStatus(s, msg) { Net.status = s; Net.statusMsg = msg || ''; renderLobby(); renderNetIndicator(); }
 function showOnlineMsg(title, body) {
@@ -2627,34 +2651,67 @@ function netHostCreate({keyword, name, numPlayers, turnTime}) {
   Net.config = {numPlayers, turnTime};
   Net.ruleHash = computeRuleHash(Net.config);
   Net.hostPlayers = [{idx:0, name: Net.myName, peerId: 'HOST', isHost:true, connected:true, rating: computeRating()}];
+  Net.lobbySpectators = [];
   Net.conns.clear();
+  // ★ 自分が同じ合言葉で過去に client/spectator として入った時のトークン残骸を破棄する。
+  //    残ったままだと「hostなのに過去のclientトークンを抱えている」異常状態になる。
+  clearReconnectToken(keyword);
   setNetStatus('creating', 'PeerServerに登録中…');
 
-  try { if (Net.peer) Net.peer.destroy(); } catch(e){}
-  Net.peer = new Peer(Net.roomId, {debug: 0});
-  Net.peer.on('open', id => { setNetStatus('hosting', '待機中。合言葉を共有してください'); });
-  Net.peer.on('error', err => {
-    let msg = err.type || 'error';
-    if (err.type === 'unavailable-id') msg = 'この合言葉は既に使用中です';
-    if (err.type === 'network') msg = 'ネットワーク接続失敗';
-    if (err.type === 'server-error') msg = 'シグナリングサーバ応答なし';
-    setNetStatus('error', msg);
-  });
-  Net.peer.on('disconnected', () => {
-    setNetStatus('error', 'シグナリング切断 (再接続試行中…)');
-    // ★ PeerJS の慣例: disconnected (= signaling WebSocket 切断) 時は reconnect() を呼ばないと
-    //   新規 client/spectator が join できなくなる。既存 DataConnection は維持されるので進行中対戦は影響なし。
-    try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
-  });
-  Net.peer.on('connection', conn => {
-    conn.on('open', () => {
-      // ★ ここでは game-started / room-full を reject しない。
-      //    再接続トークン付きの hello が来るまで分からないため、
-      //    判断は handleHostMessage の hello 受信後に行う。
-      conn.on('data', d => handleHostMessage(conn, d));
-      conn.on('close', () => onClientDisconnect(conn));
-      conn.on('error', () => onClientDisconnect(conn));
+  // ★ 古い peer の完全破棄を保証してから新しい peer を作る (rejoin バグ対策の本丸)。
+  //    PeerJS の destroy() はシグナリングサーバへの登録解除を非同期に行うので、
+  //    間を置かずに同じ ID で new Peer すると 'unavailable-id' が出る。
+  _resetPeerInstance().then(() => _createHostPeer(0));
+
+  function _createHostPeer(retry) {
+    if (Net.mode !== 'online-host') return; // 退室済み
+    try { Net.peer = new Peer(Net.roomId, {debug: 0}); } catch(e) {
+      setNetStatus('error', 'Peer 生成失敗'); return;
+    }
+    Net.peer.on('open', id => { setNetStatus('hosting', '待機中。合言葉を共有してください'); });
+    Net.peer.on('error', err => {
+      let msg = err.type || 'error';
+      if (err.type === 'unavailable-id') {
+        // ★ 旧セッションが PeerJS サーバに残っている可能性 →
+        //   破棄→待機→リトライ。最大 3 回 (3.5s) まで頑張る。
+        if (retry < 3) {
+          setNetStatus('creating', '前回セッションを解放中… ('+(retry+1)+'/3)');
+          try { Net.peer.destroy(); } catch(e){}
+          Net.peer = null;
+          setTimeout(() => _createHostPeer(retry + 1), 700 + retry * 400);
+          return;
+        }
+        msg = 'この合言葉は他で使用中です。少し時間を置いて再試行してください';
+      }
+      if (err.type === 'network') msg = 'ネットワーク接続失敗';
+      if (err.type === 'server-error') msg = 'シグナリングサーバ応答なし';
+      setNetStatus('error', msg);
     });
+    Net.peer.on('disconnected', () => {
+      setNetStatus('error', 'シグナリング切断 (再接続試行中…)');
+      try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
+    });
+    Net.peer.on('connection', conn => {
+      conn.on('open', () => {
+        conn.on('data', d => handleHostMessage(conn, d));
+        conn.on('close', () => onClientDisconnect(conn));
+        conn.on('error', () => onClientDisconnect(conn));
+      });
+    });
+  }
+}
+
+// 既存 Net.peer を確実に破棄する。サーバへの登録解除イベントが返るのを少し待つ。
+function _resetPeerInstance() {
+  return new Promise(resolve => {
+    if (!Net.peer) { resolve(); return; }
+    try {
+      const old = Net.peer;
+      Net.peer = null;
+      try { old.destroy(); } catch(e) {}
+      // PeerJS サーバが ID を解放するまで短時間待機。
+      setTimeout(resolve, 300);
+    } catch(e) { resolve(); }
   });
 }
 
@@ -2665,12 +2722,21 @@ function onClientDisconnect(conn) {
   if (Net.conns.get(conn.peer) !== conn) return;
   const player = Net.hostPlayers.find(p => p.peerId === conn.peer);
   if (!player) {
-    // 観戦者の切断: conns と spectators から除去
+    // 観戦者の切断: conns と spectators / lobbySpectators から除去
     Net.conns.delete(conn.peer);
     Net._spectatorReqCooldown.delete(conn.peer); // ★ cooldown エントリも削除
+    let removed = false;
     if (state && state.spectators) {
+      const before = state.spectators.length;
       state.spectators = state.spectators.filter(s => s.peerId !== conn.peer);
+      removed = removed || (state.spectators.length !== before);
     }
+    if (Net.lobbySpectators && Net.lobbySpectators.length) {
+      const before = Net.lobbySpectators.length;
+      Net.lobbySpectators = Net.lobbySpectators.filter(s => s.peerId !== conn.peer);
+      removed = removed || (Net.lobbySpectators.length !== before);
+    }
+    if (removed) { broadcastLobby(); renderLobby(); }
     return;
   }
   Net.conns.delete(conn.peer);
@@ -2755,21 +2821,36 @@ function handleHostMessage(conn, msg) {
         }
       }
     }
-    // ===== 観戦者 (spectator) =====
-    if (msg.role === 'spectator' && state && state.phase !== 'end') {
-      state.spectators = state.spectators || [];
-      // ★ 観戦者上限チェック
-      if (state.spectators.length >= SPECTATOR_MAX) {
+    // ===== 観戦者 (spectator) — 独立枠で参加人数とは無関係に受け入れる =====
+    if (msg.role === 'spectator') {
+      // 試合終了済みは拒否
+      if (state && state.phase === 'end') {
+        conn.send({type:'reject', reason:'game-started'});
+        setTimeout(()=>conn.close(), 200);
+        return;
+      }
+      const spList = state ? (state.spectators = state.spectators || []) : Net.lobbySpectators;
+      if (spList.length >= SPECTATOR_MAX) {
         conn.send({type:'reject', reason:'spectator-full'});
         setTimeout(()=>conn.close(), 200);
         return;
       }
       const sp = {peerId: conn.peer, name: (msg.name||'観戦者').slice(0,16)};
-      state.spectators.push(sp);
+      spList.push(sp);
       Net.conns.set(conn.peer, conn);
-      conn.send({type:'welcome', yourIdx:-1, role:'spectator', ver:VERSION, config:Net.config, players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating}))});
-      // ★ 観戦者用キャッシュ経路で初回 fullState を送信
-      sendFullStateToSpectator(conn);
+      conn.send({
+        type:'welcome', yourIdx:-1, role:'spectator', ver:VERSION, config:Net.config,
+        players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating})),
+        spectatorCount: spList.length,
+      });
+      if (state) {
+        // 既に試合中 → fullState を送って即同期
+        sendFullStateToSpectator(conn);
+      } else {
+        // ロビー段階 → lobby-update もbroadcastして他参加者に観戦者がいることを知らせる
+        broadcastLobby();
+      }
+      renderLobby();
       return;
     }
     if (state && state.phase !== 'end') { conn.send({type:'reject', reason:'game-started'}); setTimeout(()=>conn.close(), 200); return; }
@@ -2826,7 +2907,13 @@ function handleHostMessage(conn, msg) {
 }
 
 function broadcastLobby() {
-  const payload = {type:'lobby-update', players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating}))};
+  // ★ 観戦者数も同送 (state未生成のlobby段階で観戦者を把握できるよう)
+  const specCount = state && state.spectators ? state.spectators.length : (Net.lobbySpectators?.length || 0);
+  const payload = {
+    type:'lobby-update',
+    players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating})),
+    spectatorCount: specCount,
+  };
   for (const conn of Net.conns.values()) safeSend(conn, payload);
 }
 function broadcastStateIfHost() {
@@ -2968,8 +3055,12 @@ function netJoin({keyword, name}) {
   Net._actionSeq = 0;
   setNetStatus('connecting', 'PeerServerに登録中…');
 
-  try { if (Net.peer) Net.peer.destroy(); } catch(e){}
-  Net.peer = new Peer(undefined, {debug: 0});
+  // ★ rejoin バグ対策: 古い peer の完全破棄を待ってから新規 peer を建てる。
+  _resetPeerInstance().then(() => _createClientPeer());
+
+  function _createClientPeer() {
+    if (Net.mode !== 'online-client') return;
+    Net.peer = new Peer(undefined, {debug: 0});
   Net.peer.on('open', () => {
     setNetStatus('connecting', 'ホストに接続中…');
     const conn = Net.peer.connect(Net.roomId, {reliable: true});
@@ -3007,6 +3098,7 @@ function netJoin({keyword, name}) {
   Net.peer.on('disconnected', () => {
     try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
   });
+  }
 }
 
 // オンライン対戦の state/timer/UI を完全に破棄する。rematch・game-start の前に呼ぶ。
@@ -3164,6 +3256,7 @@ function handleClientMessage(msg) {
     Net.hostPlayers = msg.players;
     Net.config = msg.config;
     Net.ruleHash = computeRuleHash(msg.config);
+    if (typeof msg.spectatorCount === 'number') Net._lobbySpectatorCount = msg.spectatorCount;
     // Save reconnect token
     if (msg.reconnectToken) {
       Net.reconnectToken = msg.reconnectToken;
@@ -3197,15 +3290,23 @@ function handleClientMessage(msg) {
     try { Net.hostConn?.close(); } catch(e){}
   } else if (msg.type === 'lobby-update') {
     Net.hostPlayers = msg.players;
+    if (typeof msg.spectatorCount === 'number') Net._lobbySpectatorCount = msg.spectatorCount;
     renderLobby();
   } else if (msg.type === 'game-start') {
     // 新規ゲーム開始 — local state を完全破棄して受け入れる
     // ★ disposeOnlineGameState 内で Net.acceptInput = false にセット済み
     // ★ 直後に acceptInput = true で暫定解除。fullState 到着時の replaceGameState が再セットする。
     disposeOnlineGameState();
+    // ★ 観戦者として game-start を受け取った場合は spectator モードへ
+    if (msg.role === 'spectator') {
+      Net.mode = 'spectator';
+      Net.myPlayerIdx = -1;
+    }
     // ★ structuredClone で旧参照を完全排除して初期 state を設定
     state = structuredClone(msg.view);
     state.mode = 'online-client';
+    // ★ spectatorフラグも保持
+    if (Net.mode === 'spectator') state.isSpectator = true;
     // ★ client 側 PRNG フォールバック (Bug A/B 対策)
     state.rand = Math.random;
     // ★ 新試合の matchId を Net に登録。以降の state/fullState/action はこれで検証。
@@ -3320,35 +3421,13 @@ function handleClientMessage(msg) {
       renderSyncDebug();
       return;
     }
-    // ★ デッキ順序 desync 検知 (遅延型 desync 対策)
-    // host が送ってきた deckFp と、前回 fullState/state で記録した hostDeckFp を照合する。
-    // state パケット間でデッキ順序が変わった場合（山札が引かれた/交換された）、
-    // host の deckFp が変化するが client 側の deck は null 配列なので追跡できない。
-    // そこで host から受け取った deckFp をそのまま保存し、次の state と比較する。
-    // deckFp が付いている場合のみチェック（旧バージョン互換性）。
+    // ★ 過剰防御の見直し: deckFp による desync 検知は撤去。
+    //    state hash 一致と matchId / stateVersion / actionSeq だけで充分。
+    //    デッキ順序のズレは hash check に既に含まれているので二重チェックは不要。
+    //    field は forward-compat のために保持するだけ。
     if (msg.deckFp) {
-      const prevHostFp = Net.hostDeckFp || null;
       Net.hostDeckFp = msg.deckFp;
-      Net.localDeckFp = msg.deckFp; // client は host の fp をそのまま持つ
-      // prevHostFp がある（= 前回 fullState/state で記録済み）かつ
-      // deckLen が変化していないのに fp が変わった場合は山札順序がズレている可能性。
-      // ただし deckLen が変化した場合は引き/交換が発生した正常な変化なので除外。
-      // ※ fp の不一致単体では誤検知があり得るため、deckLen 変化なし + fp 変化 の
-      //    組み合わせのみを desync と判定する。
-      if (prevHostFp && prevHostFp !== msg.deckFp) {
-        const prevDeckLen = Net._lastDeckLen != null ? Net._lastDeckLen : -1;
-        const curDeckLen = Array.isArray(state.deck) ? state.deck.length : 0;
-        if (prevDeckLen === curDeckLen && prevDeckLen >= 0) {
-          // 枚数が変わっていないのにデッキ fp が変化 → 山札順序 desync
-          // ★ Client Prediction: pending中はデッキ fp が一時ズレる可能性があるのでスキップ
-          if (Net._clientPending.size === 0) {
-            Net.syncState = 'desync-detected';
-            requestFullStateFromHost('deck-order-desync');
-            renderSyncDebug();
-            return;
-          }
-        }
-      }
+      Net.localDeckFp = msg.deckFp;
       Net._lastDeckLen = Array.isArray(state.deck) ? state.deck.length : 0;
     }
     Net.syncState = 'synced';
@@ -3601,6 +3680,12 @@ function rollbackPendingAction(actionId) {
 function netLeave() {
   // ゲーム途中の退出はレートに「負け」として記録
   recordOnlineDisconnectLoss();
+  // ★ 明示的退室時は再接続トークンを破棄する。
+  //    同じ合言葉で部屋を作り直すケース (rejoin バグの主原因) で
+  //    旧トークンを誤って host へ提示しないようにする。
+  if (Net.roomCode) clearReconnectToken(Net.roomCode);
+  Net.reconnectToken = '';
+  Net.joinAsSpectator = false;
   stopTurnTimer();
   stopFullStateHeartbeat();
   try {
@@ -3613,6 +3698,8 @@ function netLeave() {
   Net.hostConn = null;
   Net.conns.clear();
   Net.hostPlayers = [];
+  Net.lobbySpectators = [];
+  Net._lobbySpectatorCount = 0;
   Net.myPlayerIdx = -1;
   Net.status = 'disconnected';
   Net.currentMatchId = '';
@@ -4010,6 +4097,60 @@ function _installNetLifecycle() {
 }
 _installNetLifecycle();
 
+// ============================== FPS / LOW-SPEC MODE ==============================
+// FPS を rAF で計測し、連続して 45fps を下回ったら html.lowspec を付与して
+// 発光・pulse・ripple を一斉 OFF にする。SVG接続線は静的opacityで残るので視認性は維持。
+// 戻ってきたら (60fps連続維持で) lowspec を外す。
+const FPS = {
+  frames: 0,
+  lastTime: 0,
+  lowspec: false,
+  badStreak: 0,
+  goodStreak: 0,
+};
+function _fpsTick(now) {
+  if (FPS.lastTime === 0) FPS.lastTime = now;
+  FPS.frames++;
+  const dt = now - FPS.lastTime;
+  if (dt >= 1000) {
+    const fps = FPS.frames * 1000 / dt;
+    FPS.frames = 0;
+    FPS.lastTime = now;
+    // 1秒平均で 45fps 未満が 3秒連続 → 低スペモード
+    if (fps < 45) {
+      FPS.badStreak++; FPS.goodStreak = 0;
+      if (!FPS.lowspec && FPS.badStreak >= 3) {
+        FPS.lowspec = true;
+        document.documentElement.classList.add('lowspec');
+      }
+    } else if (fps >= 58) {
+      FPS.goodStreak++; FPS.badStreak = 0;
+      // 58fps以上が 5秒連続 → 通常モード復帰
+      if (FPS.lowspec && FPS.goodStreak >= 5) {
+        FPS.lowspec = false;
+        document.documentElement.classList.remove('lowspec');
+      }
+    } else {
+      FPS.badStreak = 0; FPS.goodStreak = 0;
+    }
+  }
+  requestAnimationFrame(_fpsTick);
+}
+// 端末の hint: 古いiOSや低RAMは初期から低スペ判定
+(function _initLowSpecHint(){
+  try {
+    const ua = navigator.userAgent || '';
+    const isOldIOS = /iPhone OS (1[0-3]_|14_[0-3])/.test(ua);
+    const lowMem = (navigator.deviceMemory && navigator.deviceMemory <= 2);
+    const lowCores = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2);
+    if (isOldIOS || lowMem || lowCores) {
+      FPS.lowspec = true;
+      document.documentElement.classList.add('lowspec');
+    }
+  } catch(e){}
+})();
+requestAnimationFrame(_fpsTick);
+
 // ============================== UI ==============================
 // ===== NETWORK EXPANDED — 自己最大NW更新時の演出 =====
 function triggerNetworkExpanded(playerIdx, delta, total) {
@@ -4057,58 +4198,84 @@ function triggerPlaceEffect(x, y, hasNewConn) {
     setTimeout(() => SFX.shu(), 80);
   }
 
-  // === 盤面カード演出 ===
+  // === 盤面カード演出: 配置マスのフラッシュ + ポップ + 接続方向フラッシュ ===
+  // ★ 低スペモード時は scale popのみ。それ以外の派手演出はOFF。
   const boardEl = $('board');
   if (boardEl) {
     const cells = boardEl.querySelectorAll('.cell');
-    cells.forEach(cell => {
-      const cx = +cell.dataset.x, cy = +cell.dataset.y;
-      const isPlaced = cx === x && cy === y;
+    const cellMap = {};
+    cells.forEach(c => { cellMap[c.dataset.x + ',' + c.dataset.y] = c; });
+    const placedCell = cellMap[x + ',' + y];
+    if (placedCell) {
+      placedCell.classList.add('place-flash');
+      setTimeout(() => placedCell.classList.remove('place-flash'), 240);
+      const cardEl = placedCell.querySelector('.card');
+      if (cardEl) {
+        cardEl.classList.remove('place-pop');
+        void cardEl.offsetWidth;
+        cardEl.classList.add('place-pop');
+        cardEl.addEventListener('animationend', () => cardEl.classList.remove('place-pop'), {once: true});
 
-      if (isPlaced) {
-        // 配置マス: フラッシュ + ポップ
-        cell.classList.add('place-flash');
-        setTimeout(() => cell.classList.remove('place-flash'), 300);
-        const cardEl = cell.querySelector('.card');
-        if (cardEl) {
-          cardEl.classList.remove('place-pop');
-          void cardEl.offsetWidth;
-          cardEl.classList.add('place-pop');
-          cardEl.addEventListener('animationend', () => cardEl.classList.remove('place-pop'), {once: true});
-        }
-
-        // tier3/4: 波紋 — 周辺カードへ連鎖スケール
-        if (tier >= 3) {
-          const dist1 = [];
-          cells.forEach(nc => {
-            const nx = +nc.dataset.x, ny = +nc.dataset.y;
-            const d = Math.abs(nx - x) + Math.abs(ny - y);
-            if (d >= 1 && d <= 2) {
-              const ncCard = nc.querySelector('.card');
-              if (ncCard && state.board[ny] && state.board[ny][nx] && state.board[ny][nx].card &&
-                  state.board[ny][nx].card.owner === pIdx) {
-                dist1.push({el: ncCard, d});
+        // 接続方向フラッシュ: 接続のある辺だけ一瞬光る
+        if (!document.documentElement.classList.contains('lowspec')) {
+          const dirs = [
+            {dx: 0, dy:-1, cls:'dir-flash-top'},
+            {dx: 1, dy: 0, cls:'dir-flash-right'},
+            {dx: 0, dy: 1, cls:'dir-flash-bottom'},
+            {dx:-1, dy: 0, cls:'dir-flash-left'},
+          ];
+          for (const d of dirs) {
+            const nx = x + d.dx, ny = y + d.dy;
+            if (state.board[ny] && state.board[ny][nx] && state.board[ny][nx].card) {
+              const nc = state.board[ny][nx].card;
+              if (nc.owner === pIdx && !nc.isJammer) {
+                cardEl.classList.add(d.cls);
+                setTimeout(() => cardEl.classList.remove(d.cls), 180);
+                // 接続先カードに波紋
+                const nCell = cellMap[nx + ',' + ny];
+                if (nCell) {
+                  const nCardEl = nCell.querySelector('.card');
+                  if (nCardEl) {
+                    nCardEl.classList.remove('resonance-ripple');
+                    void nCardEl.offsetWidth;
+                    nCardEl.classList.add('resonance-ripple');
+                    nCardEl.addEventListener('animationend', () => nCardEl.classList.remove('resonance-ripple'), {once: true});
+                  }
+                }
               }
             }
-          });
-          dist1.forEach(({el, d}) => {
-            setTimeout(() => {
-              el.classList.remove('resonance-ripple');
-              void el.offsetWidth;
-              el.classList.add('resonance-ripple');
-              el.addEventListener('animationend', () => el.classList.remove('resonance-ripple'), {once: true});
-            }, d * 55);
-          });
+          }
         }
       }
-    });
+    }
   }
 
-  // === 接続線 + 盤面常時演出を更新 ===
+  // === 13+ ネットワーク到達瞬間: 一瞬のみ覚醒演出 ===
+  // tier4 == 13+。連続再生防止のため flag をたてる。
+  if (tier === 4 && hasNewConn && !document.documentElement.classList.contains('lowspec')) {
+    const boardArea = document.querySelector('.board-area');
+    if (boardArea && !boardArea.classList.contains('board-awaken')) {
+      const color = PLAYER_COLORS[pIdx] ? PLAYER_COLORS[pIdx].bg : '#fff';
+      boardArea.style.setProperty('--awaken-color', color);
+      boardArea.classList.add('board-awaken');
+      setTimeout(() => boardArea.classList.remove('board-awaken'), 220);
+    }
+    // SVG 接続面全体を 0.5s * 2 で一瞬覚醒
+    const svg = $('lines-svg');
+    if (svg) {
+      svg.querySelectorAll('[data-player="'+pIdx+'"]').forEach(el => {
+        el.classList.remove('conn-face-awaken');
+        void el.getBBox; // reflow
+        el.classList.add('conn-face-awaken');
+        setTimeout(() => el.classList.remove('conn-face-awaken'), 1050);
+      });
+    }
+  }
+
+  // === 接続線再描画 (新規接続あり時のみ) ===
   if (hasNewConn) {
     requestAnimationFrame(() => drawConnectionLines(true));
   }
-  // 常時発光・脈動はdrawConnectionLines内で制御
   requestAnimationFrame(() => applyResonanceToBoard());
 }
 
@@ -4162,7 +4329,7 @@ function applyResonanceToBoard() {
     if (!cardEl) return;
     const cn = connMap[cd.owner] || 0;
 
-    // 最大ネットワーク所属カードをハイライト
+    // 最大ネットワーク所属カードをハイライト (静的)
     if (mainNetCells.has(cx+','+cy+'|'+cd.owner)) {
       cardEl.classList.add('main-net');
     } else {
@@ -4172,64 +4339,30 @@ function applyResonanceToBoard() {
     // 接続が1本もない（孤立カード）は外周演出なし
     if (cn === 0) {
       clearEdges(cardEl);
-      cardEl.classList.remove('resonance-glow', 'has-outer-edge');
       return;
     }
 
     // このカード自身が接続グループに参加しているか確認
-    // （接続が1本でもある = countConnections > 0 だが、
-    //   このカード個別に接続があるかチェック）
     let selfConnected = false;
     for (const {dx, dy} of EDGE_DIRS) {
       if (hasConnectedNeighbor(cx, cy, dx, dy, cd.owner)) { selfConnected = true; break; }
     }
 
     if (!selfConnected) {
-      // 孤立カード（他のペアが接続してるがこのカードは無関係）
       clearEdges(cardEl);
-      cardEl.classList.remove('resonance-glow', 'has-outer-edge');
       return;
     }
 
     // 外周辺検出: 方向に接続済みネイバーがいない辺 = 外周
-    let hasAnyEdge = false;
     for (const {dx, dy, name} of EDGE_DIRS) {
       const isInner = hasConnectedNeighbor(cx, cy, dx, dy, cd.owner);
       cardEl.setAttribute('data-edge-' + name, isInner ? '0' : '1');
-      if (!isInner) hasAnyEdge = true;
     }
-
-    if (hasAnyEdge) {
-      cardEl.classList.add('has-outer-edge');
-    } else {
-      cardEl.classList.remove('has-outer-edge');
-    }
-
-    // 常時発光・脈動 (13+)
-    if (cn >= 13) {
-      cardEl.classList.add('resonance-glow');
-    } else {
-      cardEl.classList.remove('resonance-glow');
-    }
+    // ★ 常時 filter / drop-shadow / 常時 pulse はもう使わない (有名: 接続したら静止)
   });
 
-  // SVG接続面の脈動・輝度も更新
-  const svg = $('lines-svg');
-  if (!svg) return;
-  svg.querySelectorAll('[data-player]').forEach(el => {
-    const pIdx = +el.getAttribute('data-player');
-    const cn = connMap[pIdx] || 0;
-    if (cn >= 13) {
-      el.classList.add('conn-face-pulse');
-      el.setAttribute('opacity', el.hasAttribute('data-key') ? '0.92' : '0.32');
-    } else if (cn >= 4) {
-      el.classList.remove('conn-face-pulse');
-      el.setAttribute('opacity', el.hasAttribute('data-key') ? '0.84' : '0.29');
-    } else {
-      el.classList.remove('conn-face-pulse');
-      el.setAttribute('opacity', el.hasAttribute('data-key') ? '0.70' : '0.24');
-    }
-  });
+  // SVG接続面の輝度更新は drawConnectionLines が opacity を直接書くため不要
+  // 接続数の変化はカード描画と次回の drawConnectionLines で反映される
 }
 
 function clearEdges(cardEl) {
@@ -4369,32 +4502,8 @@ function drawConnectionLines(animateNew) {
 
   svg.innerHTML = '';
 
-  // ===== SVG Glowフィルター定義 =====
-  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  for (let pi = 0; pi < 4; pi++) {
-    if (!PLAYER_COLORS[pi]) continue;
-    // 通常glow
-    const f = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
-    f.setAttribute('id', 'conn-glow-'+pi);
-    f.setAttribute('x', '-60%'); f.setAttribute('y', '-60%');
-    f.setAttribute('width', '220%'); f.setAttribute('height', '220%');
-    f.innerHTML =
-      '<feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur"/>'+
-      '<feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 2.8 0" result="glow"/>'+
-      '<feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>';
-    defs.appendChild(f);
-    // 強pulse glow
-    const fp = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
-    fp.setAttribute('id', 'conn-glow-pulse-'+pi);
-    fp.setAttribute('x', '-80%'); fp.setAttribute('y', '-80%');
-    fp.setAttribute('width', '260%'); fp.setAttribute('height', '260%');
-    fp.innerHTML =
-      '<feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>'+
-      '<feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 3.8 0" result="glow"/>'+
-      '<feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>';
-    defs.appendChild(fp);
-  }
-  svg.appendChild(defs);
+  // ★ SVG filter (feGaussianBlur) は禁止 — モバイルSafari激重化要因。
+  //    接続線はメイン面 + 中央のハイライトの2枚 (opacity static) のみで構成する。
 
   const bRect = board.getBoundingClientRect();
   const cells = board.querySelectorAll('.cell');
@@ -4415,15 +4524,10 @@ function drawConnectionLines(animateNew) {
     const conns = computeConnections(state, p.idx);
     const connCount = conns.length;
     const color = PLAYER_COLORS[p.idx].bg;
-    const isPulse = connCount >= 13;
-    const isWarm  = connCount >= 4 && !isPulse;
-    const glowId  = isPulse ? 'conn-glow-pulse-'+p.idx : 'conn-glow-'+p.idx;
-    const baseOpacity = isPulse ? 0.92 : (isWarm ? 0.84 : 0.70);
-    // 呼吸アニメ: プレイヤーごとに周期と位相をずらす（軽量）
-    const breathDur   = [2.6, 2.2, 2.8, 2.4][p.idx] || 2.4;
-    const breathDelay = [0, -0.9, -1.6, -0.4][p.idx] || 0;
-    const opHi = baseOpacity;
-    const opLo = baseOpacity * (isPulse ? 0.72 : 0.62);
+    const isMax  = connCount >= 13;       // 13+ ネットワーク (覚醒ティア)
+    const isWarm = connCount >= 4 && !isMax;
+    // 静的 opacity のみ。常時アニメーション・filter は使わない。
+    const baseOpacity = isMax ? 0.95 : (isWarm ? 0.85 : 0.72);
 
     for (const c of conns) {
       const r1 = cellRects[c.x1+','+c.y1];
@@ -4434,57 +4538,28 @@ function drawConnectionLines(animateNew) {
       const isNew = animateNew && !existingKeys.has(connKey);
       const isHoriz = c.x2 > c.x1;
 
-      // ===== ジョイント形状 =====
-      // カードのどちら側も数字に届かない「爪」として描画。
-      //  overlap  : カード内に食い込む量（数字手前で止まる）= セルサイズの 23%
-      //  crossSize: 短辺方向の太さ = セルサイズの 38%  (ピル型)
-      //  ギャップを含む全長 = overlap*2 + gap
-
       const cellSize = isHoriz ? r1.w : r1.h;
-      const overlap  = cellSize * 0.23;   // カードへの食い込み量
-      const thick    = (isHoriz ? r1.h : r1.w) * 0.38;  // 短辺の太さ
+      const overlap  = cellSize * 0.23;
+      const thick    = (isHoriz ? r1.h : r1.w) * 0.38;
 
       let rx, ry, rw, rh;
       if (isHoriz) {
-        rw = (r2.left - r1.right) + overlap * 2;   // gap + 両側の爪
+        rw = (r2.left - r1.right) + overlap * 2;
         rh = thick;
         rx = r1.right - overlap;
-        ry = r1.top + (r1.h - rh) / 2;            // 垂直センタリング
+        ry = r1.top + (r1.h - rh) / 2;
       } else {
         rw = thick;
         rh = (r2.top - r1.bottom) + overlap * 2;
-        rx = r1.left + (r1.w - rw) / 2;           // 水平センタリング
+        rx = r1.left + (r1.w - rw) / 2;
         ry = r1.bottom - overlap;
       }
       if (rw <= 0 || rh <= 0) continue;
-      const brad = Math.min(rw, rh) / 2;           // ピル型（完全丸め）
+      const brad = Math.min(rw, rh) / 2;
 
       const NS = 'http://www.w3.org/2000/svg';
 
-      // ① 拡散グロー層（ジョイントより少し大きく均等拡張）
-      const glowPad = brad * 0.9;
-      const gx = rx - glowPad;
-      const gy = ry - glowPad;
-      const gw = rw + glowPad * 2;
-      const gh = rh + glowPad * 2;
-      const glowEl = document.createElementNS(NS, 'rect');
-      glowEl.setAttribute('x', gx); glowEl.setAttribute('y', gy);
-      glowEl.setAttribute('width', gw); glowEl.setAttribute('height', gh);
-      glowEl.setAttribute('rx', brad * 1.2);
-      glowEl.setAttribute('fill', color);
-      glowEl.setAttribute('opacity', baseOpacity * 0.35);
-      glowEl.setAttribute('filter', 'url(#'+glowId+')');
-      glowEl.setAttribute('data-player', p.idx);
-      glowEl.classList.add('conn-face-live');
-      glowEl.style.setProperty('--face-op-hi', baseOpacity * 0.38);
-      glowEl.style.setProperty('--face-op-lo', baseOpacity * 0.18);
-      glowEl.style.setProperty('--face-dur', breathDur+'s');
-      glowEl.style.setProperty('--face-delay', breathDelay+'s');
-      if (isPulse) glowEl.classList.add('conn-face-pulse');
-      if (isNew)   glowEl.classList.add('conn-face-new');
-      svg.appendChild(glowEl);
-
-      // ② メイン接続面
+      // メイン接続面 (静的)
       const mainEl = document.createElementNS(NS, 'rect');
       mainEl.setAttribute('x', rx); mainEl.setAttribute('y', ry);
       mainEl.setAttribute('width', rw); mainEl.setAttribute('height', rh);
@@ -4494,18 +4569,13 @@ function drawConnectionLines(animateNew) {
       mainEl.setAttribute('data-key', connKey);
       mainEl.setAttribute('data-player', p.idx);
       mainEl.setAttribute('data-kind', c.kind || 'unknown');
-      mainEl.classList.add('conn-face-live');
-      mainEl.style.setProperty('--face-op-hi', opHi);
-      mainEl.style.setProperty('--face-op-lo', opLo);
-      mainEl.style.setProperty('--face-dur', breathDur+'s');
-      mainEl.style.setProperty('--face-delay', breathDelay+'s');
-      if (isPulse) mainEl.classList.add('conn-face-pulse');
-      if (isNew)   mainEl.classList.add('conn-face-new');
+      mainEl.style.setProperty('--face-op', baseOpacity);
+      if (isNew) mainEl.classList.add('conn-face-new');
       svg.appendChild(mainEl);
 
-      // ③ 光芯ハイライト（ジョイント長手方向に細いスジ）
-      const hMarginLong  = isHoriz ? rw * 0.12 : rh * 0.12;  // 長辺の余白
-      const hMarginShort = isHoriz ? rh * 0.30 : rw * 0.30;  // 短辺の余白
+      // 中央ハイライト (静的・低スペでも残す要素)
+      const hMarginLong  = isHoriz ? rw * 0.12 : rh * 0.12;
+      const hMarginShort = isHoriz ? rh * 0.30 : rw * 0.30;
       const hlEl = document.createElementNS(NS, 'rect');
       hlEl.setAttribute('x',      isHoriz ? rx + hMarginLong  : rx + hMarginShort);
       hlEl.setAttribute('y',      isHoriz ? ry + hMarginShort : ry + hMarginLong);
@@ -4513,7 +4583,7 @@ function drawConnectionLines(animateNew) {
       hlEl.setAttribute('height', isHoriz ? Math.max(rh - hMarginShort * 2, 1) : Math.max(rh - hMarginLong  * 2, 1));
       hlEl.setAttribute('rx', brad * 0.5);
       hlEl.setAttribute('fill', 'white');
-      hlEl.setAttribute('opacity', '0.26');
+      hlEl.setAttribute('opacity', '0.22');
       hlEl.setAttribute('pointer-events', 'none');
       if (isNew) hlEl.classList.add('conn-face-new');
       svg.appendChild(hlEl);
@@ -5490,11 +5560,24 @@ function startOnlineGame() {
       if (hp.reconnectToken) state.players[hp.idx].reconnectToken = hp.reconnectToken;
     }
   }
+  // ★ ロビー段階で接続した観戦者を state.spectators に移管
+  state.spectators = state.spectators || [];
+  if (Net.lobbySpectators && Net.lobbySpectators.length) {
+    for (const sp of Net.lobbySpectators) state.spectators.push(sp);
+    Net.lobbySpectators = [];
+  }
   // Broadcast game-start (matchId を同梱して旧試合の遅延 packet と区別させる)
+  // プレイヤー / 観戦者の両方に送る (観戦者は spectator view を受け取る)
   for (const [peerId, conn] of Net.conns.entries()) {
     const player = Net.hostPlayers.find(p => p.peerId === peerId);
-    if (!player) continue;
-    safeSend(conn, {type:'game-start', matchId: state.matchId, view: buildClientView(state, player.idx)});
+    if (player) {
+      safeSend(conn, {type:'game-start', matchId: state.matchId, view: buildClientView(state, player.idx)});
+      continue;
+    }
+    const isSpec = state.spectators.some(s => s.peerId === peerId);
+    if (isSpec) {
+      safeSend(conn, {type:'game-start', matchId: state.matchId, role:'spectator', view: buildClientView(state, -1, {spectator:true})});
+    }
   }
   showScreen('game');
   handoffShownFor = -2; // disable
@@ -5531,6 +5614,15 @@ function renderLobby() {
 
   const total = Net.config ? Net.config.numPlayers : Net.hostPlayers.length;
   $('lobby-count').textContent = Net.hostPlayers.length + ' / ' + total;
+  // 観戦者数 (host: state.spectators or lobbySpectators / client: lobby-update で受信)
+  let specCount = 0;
+  if (Net.mode === 'online-host') {
+    specCount = (state && state.spectators) ? state.spectators.length : (Net.lobbySpectators?.length || 0);
+  } else {
+    specCount = Net._lobbySpectatorCount || 0;
+  }
+  const sce = $('lobby-spec-count');
+  if (sce) sce.textContent = String(specCount);
 
   const lp = $('lobby-players');
   lp.innerHTML = '';
@@ -6059,6 +6151,7 @@ function handleAction(a) {
       const name = ($('online-auto-name')?.value || 'Auto').trim();
       const numPlayers = +($('online-auto-num')?.value || 2);
       const turnTime = +($('online-auto-time')?.value || 30);
+      saveSettings(); // ★ ランダムマッチ項目もlocalStorageに保存
       startAutoMatch({numPlayers, turnTime, name});
       break;
     }
