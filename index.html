@@ -651,6 +651,153 @@ html.lowspec .result-row.winner-anim { animation: none; }
     height: 27px;
   }
 }
+
+/* ============================== PUZZLE SCORE MODE ============================== */
+#screen-puzzle { background:var(--bg); flex-direction:row; }
+#screen-puzzle .puzzle-board { display:grid; grid-template-columns:repeat(8,1fr); grid-template-rows:repeat(8,1fr); gap:var(--gap); background:var(--board-bg); padding:var(--gap); border:none; border-radius:0; position:relative; width:100%; height:100%; }
+#puzzle-fx-layer { position:absolute; inset:0; pointer-events:none; z-index:30; overflow:visible; }
+
+/* Puzzle mode cards — suit colours match battle-mode player colours */
+.card.puzzle-card { border-color:#1a1a1a; }
+.card.puzzle-card.suit-H { color:#e74c3c; }  /* ハート  = P0 赤   */
+.card.puzzle-card.suit-S { color:#3498db; }  /* スペード = P1 水色 */
+.card.puzzle-card.suit-C { color:#2ecc71; }  /* クラブ  = P2 黄緑 */
+.card.puzzle-card.suit-D { color:#f1c40f; }  /* ダイヤ  = P3 黄色 */
+.card.puzzle-card .rank { color:#111 !important; text-shadow:0 1px 0 rgba(255,255,255,0.4); }
+.hand-card.puzzle-card { border-color:#1a1a1a; }
+.hand-card.puzzle-card.suit-H { color:#e74c3c; }
+.hand-card.puzzle-card.suit-S { color:#3498db; }
+.hand-card.puzzle-card.suit-C { color:#2ecc71; }
+.hand-card.puzzle-card.suit-D { color:#f1c40f; }
+.hand-card.puzzle-card .rank { color:#111 !important; text-shadow:0 1px 0 rgba(255,255,255,0.4); }
+
+.cell.legal-puzzle { box-shadow: inset 0 0 0 2px #5ea8ff; cursor:pointer; background:#142235; }
+.cell.role-flash::after {
+  content:''; position:absolute; inset:-2px; border-radius:5px;
+  box-shadow: 0 0 0 3px var(--role-color, #fff), 0 0 14px 2px var(--role-color, #fff);
+  pointer-events:none; z-index:8;
+  animation: roleCellFlash 0.55s ease-out forwards;
+}
+@keyframes roleCellFlash {
+  0%   { opacity:1; }
+  100% { opacity:0; }
+}
+
+.puzzle-top { background:var(--panel-2); border-bottom:1px solid var(--border); padding:6px 10px; display:flex; flex-direction:column; gap:4px; }
+.puzzle-top-row { display:flex; align-items:center; gap:10px; }
+.puzzle-top-row .spacer { flex:1; }
+.puzzle-score-block { display:flex; flex-direction:column; line-height:1; }
+.puzzle-score-label { color:var(--text-dim); font-size:10px; font-weight:700; letter-spacing:0.18em; }
+.puzzle-score-num { font-size:28px; font-weight:900; font-variant-numeric:tabular-nums; color:var(--warn); margin-top:2px; }
+.puzzle-score-num.score-bump { animation: scoreBump 0.45s ease-out; }
+@keyframes scoreBump {
+  0%   { transform:scale(1); color:var(--warn); }
+  25%  { transform:scale(1.28); color:#fff; text-shadow:0 0 12px var(--warn); }
+  100% { transform:scale(1); color:var(--warn); text-shadow:none; }
+}
+.puzzle-info-block { display:flex; flex-direction:column; gap:3px; font-size:11px; color:var(--text-dim); font-weight:700; line-height:1.3; }
+.puzzle-info-block b { color:var(--text); font-weight:800; margin-left:4px; font-variant-numeric:tabular-nums; }
+
+.puzzle-log { padding:6px 10px; display:flex; flex-direction:column; gap:3px; font-size:12px; }
+.puzzle-log-empty { color:var(--text-dim); font-size:11px; padding:8px 4px; text-align:center; opacity:0.7; }
+.puzzle-log-entry { display:flex; justify-content:space-between; gap:8px; padding:4px 8px; border-radius:5px; background:rgba(255,255,255,0.04); border-left:3px solid var(--role-cat-color, var(--border)); }
+.puzzle-log-entry.recent { background:rgba(245,185,65,0.18); animation: logRecent 0.5s ease-out; }
+@keyframes logRecent {
+  0% { background:rgba(245,185,65,0.55); }
+  100% { background:rgba(245,185,65,0.18); }
+}
+.puzzle-log-entry .pl-name { font-weight:700; }
+.puzzle-log-entry .pl-pts { color:var(--warn); font-weight:800; font-variant-numeric:tabular-nums; }
+
+.puzzle-msg { font-size:11px; color:var(--text-dim); min-height:14px; }
+
+.puzzle-diff-row { display:flex; flex-direction:column; gap:8px; margin:10px 0 14px; }
+.puzzle-diff-btn { padding:12px 14px; font-size:14px; text-align:left; display:flex; flex-direction:column; gap:3px; align-items:flex-start; cursor:pointer; }
+.puzzle-diff-name { font-size:16px; font-weight:800; }
+.puzzle-diff-detail { font-size:11px; opacity:0.85; font-weight:600; }
+.puzzle-diff-btn.primary .puzzle-diff-detail { color:rgba(10,18,32,0.75); }
+
+.puzzle-end-card { background:var(--panel-2); border:1px solid var(--border); border-radius:12px; padding:24px 16px; text-align:center; margin:14px 0; }
+.puzzle-end-rank { font-size:84px; font-weight:900; line-height:1; background:linear-gradient(135deg,#ffce5e,#ff8cb8,#a98cff); -webkit-background-clip:text; background-clip:text; color:transparent; letter-spacing:-0.04em; }
+.puzzle-end-score { display:flex; flex-direction:column; align-items:center; margin-top:12px; gap:2px; }
+.puzzle-end-label { color:var(--text-dim); font-size:10px; letter-spacing:0.22em; font-weight:700; }
+.puzzle-end-num { font-size:44px; font-weight:900; font-variant-numeric:tabular-nums; color:var(--warn); line-height:1; }
+.puzzle-end-detail { margin-top:14px; font-size:12px; color:var(--text-dim); line-height:1.8; text-align:left; padding:0 8px; }
+.puzzle-end-detail b { color:var(--text); }
+
+/* role popup that floats above the placed card */
+.role-popup {
+  position:absolute; pointer-events:none;
+  padding:6px 14px; border-radius:8px;
+  font-size:13px; font-weight:800; letter-spacing:0.04em;
+  background:rgba(10,14,22,0.92); color:#fff;
+  border:2px solid var(--role-color, #fff);
+  box-shadow: 0 0 16px 0px var(--role-color, transparent), 0 4px 10px rgba(0,0,0,0.6);
+  white-space:nowrap;
+  animation: rolePopAppear 1.0s ease-out forwards;
+  z-index:50;
+  transform: translate(-50%, -50%);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+}
+.role-popup .role-pts { color:var(--role-color, var(--warn)); margin-left:8px; font-size:14px; font-weight:900; }
+@keyframes rolePopAppear {
+  0%   { opacity:0; transform: translate(-50%, -30%) scale(0.65); }
+  25%  { opacity:1; transform: translate(-50%, -55%) scale(1.12); }
+  70%  { opacity:1; transform: translate(-50%, -75%) scale(1); }
+  100% { opacity:0; transform: translate(-50%, -100%) scale(0.95); }
+}
+
+.score-floater {
+  position:absolute; pointer-events:none;
+  font-size:20px; font-weight:900;
+  color:var(--warn);
+  text-shadow: 0 0 6px rgba(0,0,0,0.85), 0 1px 2px rgba(0,0,0,0.9);
+  animation: scoreFloat 1.2s ease-out forwards;
+  z-index:55;
+  transform: translate(-50%, -50%);
+  font-variant-numeric: tabular-nums;
+}
+@keyframes scoreFloat {
+  0%   { opacity:0; transform: translate(-50%, -20%) scale(0.6); }
+  20%  { opacity:1; transform: translate(-50%, -50%) scale(1.25); }
+  80%  { opacity:1; transform: translate(-50%, -95%) scale(1); }
+  100% { opacity:0; transform: translate(-50%, -130%) scale(0.9); }
+}
+
+.combo-banner {
+  position:absolute; left:50%; top:20%;
+  transform:translateX(-50%) scale(0.85);
+  pointer-events:none; z-index:60;
+  padding:8px 18px; border-radius:10px;
+  background:rgba(15,20,30,0.92);
+  border:2px solid var(--warn);
+  font-size:15px; font-weight:900; letter-spacing:0.1em; color:var(--warn);
+  text-shadow:0 0 8px rgba(245,185,65,0.6);
+  animation: comboPop 1.4s ease-out forwards;
+}
+@keyframes comboPop {
+  0%   { opacity:0; transform:translateX(-50%) scale(0.6); }
+  20%  { opacity:1; transform:translateX(-50%) scale(1.1); }
+  80%  { opacity:1; transform:translateX(-50%) scale(1); }
+  100% { opacity:0; transform:translateX(-50%) scale(0.95) translateY(-10px); }
+}
+
+#screen-puzzle .hand-card { cursor:pointer; }
+#screen-puzzle .hand-card.selected { transform: translateY(-6px); border-color:var(--warn) !important; box-shadow:0 6px 16px rgba(245,185,65,0.5); }
+
+#screen-puzzle-end { align-items:center; padding:16px; overflow-y:auto; justify-content:flex-start; }
+#screen-puzzle-end > div { background:var(--panel); border:1px solid var(--border); border-radius:12px; }
+
+@media (orientation: portrait), (max-width: 760px) {
+  #screen-puzzle { flex-direction: column; }
+  #screen-puzzle .side-panel { border-left:none; border-top:1px solid var(--border); flex:1 1 0; min-height:0; }
+  /* Puzzle: handsize varies (4/5/6) — size cards so they fit the row, with 6 as the worst-case denominator */
+  #puzzle-hand .hand-card { --hc-size: calc((100dvw - 40px) / 6); }
+}
+@media (orientation: landscape) and (min-width: 761px) {
+  #puzzle-hand .hand-card { --hc-size: 88px; }
+  .puzzle-score-num { font-size:34px; }
+}
 </style>
 </head>
 <body>
@@ -661,7 +808,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
     <div class="title-sub">CONNECTION  NETWORK  STRATEGY</div>
     <div class="title-menu">
       <button class="primary" data-action="new-game">ローカル / ホットシート</button>
-      <button data-action="solo-quick">ソロ プレイ (CPU L2)</button>
+      <button data-action="puzzle-start">パズルスコア (ソロ)</button>
       <button data-action="online">オンライン対戦</button>
       <button data-action="rules">ルール</button>
       <button data-action="open-replay">リプレイ再生</button>
@@ -925,6 +1072,109 @@ html.lowspec .result-row.winner-anim { animation: none; }
         <button data-action="share-replay-url">URL共有</button>
         <button data-action="back-to-title">タイトルへ</button>
         <button class="primary" data-action="rematch">もう一度</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== PUZZLE SCORE MODE ============================== -->
+  <div id="screen-puzzle" class="screen hidden">
+    <div class="board-area">
+      <div class="board-container">
+        <div class="puzzle-board" id="puzzle-board"></div>
+        <div id="puzzle-fx-layer"></div>
+      </div>
+    </div>
+    <div class="side-panel">
+      <div class="puzzle-top">
+        <div class="puzzle-top-row">
+          <div class="puzzle-score-block">
+            <div class="puzzle-score-label">SCORE</div>
+            <div class="puzzle-score-num" id="puzzle-score">0</div>
+          </div>
+          <div class="puzzle-info-block">
+            <div>山<b id="puzzle-deck">0</b></div>
+            <div>手<b id="puzzle-hand-count">0</b>/<b id="puzzle-hand-max">3</b></div>
+            <div>BEST <b id="puzzle-hiscore-live" style="color:var(--warn);">0</b></div>
+          </div>
+          <div class="spacer"></div>
+          <button class="menu-btn" data-action="puzzle-rules">役一覧</button>
+          <button class="menu-btn" data-action="puzzle-quit">終了</button>
+        </div>
+      </div>
+      <div class="side-panel-scroll">
+        <div class="puzzle-log" id="puzzle-log"></div>
+      </div>
+      <div class="bottom-bar">
+        <div class="hand-row" id="puzzle-hand"></div>
+        <div class="action-row">
+          <span id="puzzle-msg" class="puzzle-msg"></span>
+          <div class="spacer"></div>
+          <button class="danger" data-action="puzzle-restart">リスタート</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Puzzle setup overlay -->
+  <div id="overlay-puzzle-setup" class="overlay hidden">
+    <div class="overlay-content" style="max-width:420px; text-align:center;">
+      <h2>パズルスコア モード</h2>
+      <div style="color:var(--text-dim); font-size:13px; line-height:1.6; margin-bottom:16px;">
+        山札が尽きるまでカードを配置し、役を作って高スコアを目指す。<br>
+        配置カード 3枚 / 手持ち 3枚
+      </div>
+      <div id="puzzle-setup-hiscore-block" style="margin-bottom:16px; display:none;">
+        <div style="font-size:11px; color:var(--text-dim); letter-spacing:0.1em; font-weight:700;">BEST SCORE</div>
+        <div id="puzzle-setup-hiscore-num" style="font-size:32px; font-weight:900; color:var(--warn); font-variant-numeric:tabular-nums;">0</div>
+        <div id="puzzle-setup-hiscore-rank" style="font-size:14px; color:var(--text-dim); font-weight:700;"></div>
+      </div>
+      <div class="confirm-buttons" style="justify-content:center; gap:12px;">
+        <button data-action="puzzle-setup-cancel">キャンセル</button>
+        <button class="primary" data-action="puzzle-diff-hard" style="padding:14px 32px; font-size:15px;">スタート</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Puzzle end screen -->
+  <div id="screen-puzzle-end" class="screen hidden">
+    <div style="padding:20px; max-width:480px; margin:14px auto; width:calc(100% - 24px);">
+      <h2 style="text-align:center;">PUZZLE 結果</h2>
+      <div class="puzzle-end-card">
+        <div class="puzzle-end-rank" id="puzzle-end-rank">—</div>
+        <div class="puzzle-end-score">
+          <span class="puzzle-end-label">FINAL SCORE</span>
+          <span class="puzzle-end-num" id="puzzle-end-score">0</span>
+        </div>
+        <div id="puzzle-end-detail" class="puzzle-end-detail"></div>
+      </div>
+      <div class="actions-bar">
+        <button data-action="puzzle-quit">タイトルへ</button>
+        <button class="primary" data-action="puzzle-restart">もう一度</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Puzzle roles cheat-sheet overlay -->
+  <div id="overlay-puzzle-rules" class="overlay hidden">
+    <div class="overlay-content">
+      <h2>パズル 役一覧</h2>
+      <div style="font-size:12px; line-height:1.7;">
+        <h3 style="color:#ff9933;">数字系（同じ数字が隣接）</h3>
+        <p>ペアリンク（同2枚）+50 / トリプルノード（同3枚NW）+150 / フォースポット（同4枚NW）+400</p>
+        <h3 style="color:#ffd34d;">連番系（数字±1のパス・部分列も全カウント）</h3>
+        <p>ランチェーン（3連）+80 / ストリート（5連）+250 / ロングロード（7連）+600 / パーフェクトライン（A→K 全13連）+5000</p>
+        <h3 style="color:#7ec8ff;">スート系（同スートの繋がり）</h3>
+        <p>カラーウェブ（4枚）+200 / スートストーム（7枚）+500 / モノクローム（10枚）+1500</p>
+        <h3 style="color:#a3d9c8;">ネットワーク規模系（NW内カード数）</h3>
+        <p>クラスター（5枚）+100 / メガネット（10枚）+300 / ギャラクシー（20枚）+800</p>
+        <h3 style="color:#c39cff;">特殊系</h3>
+        <p>ロイヤルブリッジ（A↔K隣接）+300 / ミッドクロス（7が中心で4方向全埋）+500 / フルハウスノード（同NW内に同数字ペアが2種以上）+350</p>
+        <h3>配置ルール</h3>
+        <p><b>隣接条件:</b> カード同士は「同スート」「同数字」「数字が±1の連番」のいずれかを満たすときのみ隣接とみなされる。それ以外のカードに隣接するマスには置けない。</p>
+        <p>2枚目以降は既存カードに隣接する空きマスにのみ配置可。禁止マス（×）には置けない。配置すると山札から1枚補充。手札全部を置き切るかゲーム継続不能でゲーム終了。</p>
+      </div>
+      <div class="actions-bar">
+        <button class="primary" data-action="close-puzzle-rules">閉じる</button>
       </div>
     </div>
   </div>
@@ -4372,7 +4622,7 @@ function clearEdges(cardEl) {
 }
 function $(id) { return document.getElementById(id); }
 function showScreen(name) {
-  ['title','setup','online','game','end'].forEach(n => $('screen-'+n).classList.add('hidden'));
+  ['title','setup','online','game','end','puzzle','puzzle-end'].forEach(n => $('screen-'+n).classList.add('hidden'));
   $('screen-' + name).classList.remove('hidden');
 }
 function escapeHtml(s) {
@@ -5511,18 +5761,6 @@ function startGameWithCurrentSetup() {
   opts = {players, seed, turnTime, mode:'local'};
   startGame();
 }
-function startSoloQuick() {
-  opts = {
-    players: [
-      {name:'You', isCPU:false},
-      {name:'CPU L2', isCPU:true, cpuLevel:2},
-    ],
-    seed: '',
-    turnTime: 30,
-    mode: 'local',
-  };
-  startGame();
-}
 function startGame() {
   Net.mode = 'none';
   newGame(opts);
@@ -6109,7 +6347,15 @@ function openSpectatorJoin() {
 function handleAction(a) {
   switch (a) {
     case 'new-game': renderSetup(); break;
-    case 'solo-quick': startSoloQuick(); break;
+    case 'puzzle-start': Puzzle.open(); break;
+    case 'puzzle-diff-easy':   Puzzle.start('easy');   break;
+    case 'puzzle-diff-normal': Puzzle.start('normal'); break;
+    case 'puzzle-diff-hard':   Puzzle.start('hard');   break;
+    case 'puzzle-restart': Puzzle.restart(); break;
+    case 'puzzle-quit': Puzzle.quit(); break;
+    case 'puzzle-setup-cancel': Puzzle.cancel(); break;
+    case 'puzzle-rules': $('overlay-puzzle-rules').classList.remove('hidden'); break;
+    case 'close-puzzle-rules': $('overlay-puzzle-rules').classList.add('hidden'); break;
     case 'rules': $('overlay-rules').classList.remove('hidden'); break;
     case 'online':
       showScreen('online');
@@ -6361,9 +6607,14 @@ window.addEventListener('load', () => {
   window.addEventListener('resize', () => {
     fitBoardCellSize();
     if (state && !$('screen-game').classList.contains('hidden')) requestAnimationFrame(drawConnectionLines);
+    if (typeof Puzzle !== 'undefined' && !$('screen-puzzle').classList.contains('hidden')) Puzzle.fit();
   });
   window.addEventListener('orientationchange', () => {
-    setTimeout(() => { fitBoardCellSize(); if (state) requestAnimationFrame(drawConnectionLines); }, 300);
+    setTimeout(() => {
+      fitBoardCellSize();
+      if (state) requestAnimationFrame(drawConnectionLines);
+      if (typeof Puzzle !== 'undefined' && !$('screen-puzzle').classList.contains('hidden')) Puzzle.fit();
+    }, 300);
   });
   loadSettings();
   showScreen('title');
@@ -6384,6 +6635,744 @@ window.addEventListener('load', () => {
     }
   } catch(e) {}
 });
+
+// ============================== PUZZLE SCORE MODE ==============================
+const Puzzle = (() => {
+  const ROLE = {
+    PAIR:     {key:'pair',     name:'ペアリンク',         pts:50,   cat:'num'},
+    TRIPLE:   {key:'triple',   name:'トリプルノード',     pts:150,  cat:'num'},
+    FOUR:     {key:'four',     name:'フォースポット',     pts:400,  cat:'num'},
+    CHAIN3:   {key:'chain3',   name:'ランチェーン',       pts:80,   cat:'seq'},
+    STREET:   {key:'street',   name:'ストリート',         pts:250,  cat:'seq'},
+    LONG:     {key:'long',     name:'ロングロード',       pts:600,  cat:'seq'},
+    PERFECT:  {key:'perfect',  name:'パーフェクトライン', pts:5000, cat:'seq'},
+    WEB:      {key:'web',      name:'カラーウェブ',       pts:200,  cat:'suit'},
+    STORM:    {key:'storm',    name:'スートストーム',     pts:500,  cat:'suit'},
+    MONO:     {key:'mono',     name:'モノクローム',       pts:1500, cat:'suit'},
+    CLUSTER:  {key:'cluster',  name:'クラスター',         pts:100,  cat:'nw'},
+    MEGA:     {key:'mega',     name:'メガネット',         pts:300,  cat:'nw'},
+    GALAXY:   {key:'galaxy',   name:'ギャラクシー',       pts:800,  cat:'nw'},
+    BRIDGE:   {key:'bridge',   name:'ロイヤルブリッジ',   pts:300,  cat:'sp'},
+    CROSS:    {key:'cross',    name:'ミッドクロス',       pts:500,  cat:'sp'},
+    FULLHOUSE:{key:'fullhouse',name:'フルハウスノード',   pts:350,  cat:'sp'},
+  };
+  const CAT_COLOR = {
+    num:  '#ff9933',
+    seq:  '#ffd34d',
+    suit: '#7ec8ff',
+    nw:   '#a3d9c8',
+    sp:   '#c39cff',
+  };
+  const HAND_SIZE_BY_DIFF = {easy:3, normal:3, hard:3};
+  const INIT_SEED_CARDS = 3;
+
+  let st = null;
+  let _resizeObs = null;
+
+  // ---------- helpers ----------
+  const ckey = (x,y) => x+','+y;
+  const ckeyToXY = k => { const i = k.indexOf(','); return [+k.slice(0,i), +k.slice(i+1)]; };
+
+  // CC = connected component (orthogonal adjacency) of cells where predicate(card,x,y) is true
+  function computeCCs(predicate) {
+    const visited = new Set();
+    const out = [];
+    for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) {
+      const c = st.board[y][x].card;
+      if (!c || !predicate(c, x, y)) continue;
+      const start = ckey(x,y);
+      if (visited.has(start)) continue;
+      const cells = new Set();
+      const stack = [[x,y]];
+      while (stack.length) {
+        const [cx,cy] = stack.pop();
+        const k = ckey(cx,cy);
+        if (visited.has(k)) continue;
+        visited.add(k);
+        cells.add(k);
+        for (const [dx,dy] of DIR) {
+          const nx=cx+dx, ny=cy+dy;
+          if (!inBounds(nx,ny)) continue;
+          const nc = st.board[ny][nx].card;
+          if (!nc || !predicate(nc,nx,ny)) continue;
+          const nk = ckey(nx,ny);
+          if (!visited.has(nk)) stack.push([nx,ny]);
+        }
+      }
+      out.push({cells, size: cells.size});
+    }
+    return out;
+  }
+
+  function emitTierRoles(roles, cc, tracker, tiers) {
+    let oldMax = 0;
+    for (const k of cc.cells) {
+      const v = tracker.get(k) || 0;
+      if (v > oldMax) oldMax = v;
+    }
+    const newMax = cc.size;
+    for (const k of cc.cells) {
+      const v = tracker.get(k) || 0;
+      if (newMax > v) tracker.set(k, newMax);
+    }
+    for (const t of tiers) {
+      if (oldMax < t.T && newMax >= t.T) {
+        roles.push({role: t.role, cells: [...cc.cells].map(ckeyToXY), pts: t.role.pts});
+      }
+    }
+  }
+
+  // ---------- role detection ----------
+  function detectRoles(x, y) {
+    const placed = st.board[y][x].card;
+    const roles = [];
+
+    // ===== 数字系 =====
+    {
+      const ccs = computeCCs(c => c.rank === placed.rank);
+      for (const cc of ccs) {
+        if (!cc.cells.has(ckey(x,y))) continue;
+        // Pair count = number of NEW same-rank physical adjacencies created by this placement
+        let pairCount = 0;
+        for (const [dx,dy] of DIR) {
+          const nx=x+dx, ny=y+dy;
+          if (!inBounds(nx,ny)) continue;
+          const nc = st.board[ny][nx].card;
+          if (nc && nc.rank === placed.rank) pairCount++;
+        }
+        for (let i=0; i<pairCount; i++) {
+          roles.push({role: ROLE.PAIR, cells:[[x,y]], pts: ROLE.PAIR.pts});
+        }
+        // Triple / Four tier emit (per-CC max tracking)
+        const tracker = st.ccMax.rank[placed.rank];
+        emitTierRoles(roles, cc, tracker, [
+          {T:3, role:ROLE.TRIPLE},
+          {T:4, role:ROLE.FOUR},
+        ]);
+      }
+    }
+
+    // ===== 連番系 ===== (ascending paths through (x,y) of lengths 3/5/7/13)
+    {
+      const backPaths = []; // ascending paths ending at (x,y) — first element is start (low rank), last is (x,y)
+      const fwdPaths  = []; // ascending paths starting at (x,y) — first is (x,y), last is high
+      function dfsBack(path, curRank) {
+        // record current backward extent
+        backPaths.push(path.slice());
+        if (path.length >= 13) return;
+        const [cx,cy] = path[path.length-1];
+        for (const [dx,dy] of DIR) {
+          const nx=cx+dx, ny=cy+dy;
+          if (!inBounds(nx,ny)) continue;
+          const nc = st.board[ny][nx].card;
+          if (!nc || nc.rank !== curRank - 1) continue;
+          if (path.some(p => p[0]===nx && p[1]===ny)) continue;
+          path.push([nx,ny]);
+          dfsBack(path, nc.rank);
+          path.pop();
+        }
+      }
+      function dfsFwd(path, curRank) {
+        fwdPaths.push(path.slice());
+        if (path.length >= 13) return;
+        const [cx,cy] = path[path.length-1];
+        for (const [dx,dy] of DIR) {
+          const nx=cx+dx, ny=cy+dy;
+          if (!inBounds(nx,ny)) continue;
+          const nc = st.board[ny][nx].card;
+          if (!nc || nc.rank !== curRank + 1) continue;
+          if (path.some(p => p[0]===nx && p[1]===ny)) continue;
+          path.push([nx,ny]);
+          dfsFwd(path, nc.rank);
+          path.pop();
+        }
+      }
+      // Run DFS from (x,y)
+      dfsBack([[x,y]], placed.rank);
+      dfsFwd([[x,y]], placed.rank);
+      // Combine: reverse(back) ++ fwd[1:] gives full ascending path through (x,y)
+      const seen = new Set();
+      const targetLens = new Set([3,5,7,13]);
+      for (const b of backPaths) {
+        for (const f of fwdPaths) {
+          const combo = b.slice().reverse().concat(f.slice(1));
+          if (!targetLens.has(combo.length)) continue;
+          // Dedup cell uniqueness
+          const cellSig = combo.map(p => p[0]+','+p[1]);
+          if (new Set(cellSig).size !== combo.length) continue;
+          const sig = cellSig.join('|');
+          if (seen.has(sig)) continue;
+          seen.add(sig);
+          const len = combo.length;
+          const role = len===3?ROLE.CHAIN3 : len===5?ROLE.STREET : len===7?ROLE.LONG : ROLE.PERFECT;
+          // Perfect line requires A→K (1→13) exact
+          if (role === ROLE.PERFECT) {
+            const startCard = st.board[combo[0][1]][combo[0][0]].card;
+            if (!startCard || startCard.rank !== 1) continue;
+          }
+          roles.push({role, cells: combo, pts: role.pts});
+        }
+      }
+    }
+
+    // ===== スート系 =====
+    {
+      const ccs = computeCCs(c => c.suit === placed.suit);
+      for (const cc of ccs) {
+        if (!cc.cells.has(ckey(x,y))) continue;
+        const tracker = st.ccMax.suit[placed.suit];
+        emitTierRoles(roles, cc, tracker, [
+          {T:4,  role:ROLE.WEB},
+          {T:7,  role:ROLE.STORM},
+          {T:10, role:ROLE.MONO},
+        ]);
+      }
+    }
+
+    // ===== NW規模系 =====
+    {
+      const ccs = computeCCs(_ => true);
+      for (const cc of ccs) {
+        if (!cc.cells.has(ckey(x,y))) continue;
+        emitTierRoles(roles, cc, st.ccMax.all, [
+          {T:5,  role:ROLE.CLUSTER},
+          {T:10, role:ROLE.MEGA},
+          {T:20, role:ROLE.GALAXY},
+        ]);
+      }
+    }
+
+    // ===== 特殊系 =====
+    // ロイヤルブリッジ: 新規に発生したA↔K隣接エッジ
+    if (placed.rank === 1 || placed.rank === 13) {
+      const other = placed.rank === 1 ? 13 : 1;
+      for (const [dx,dy] of DIR) {
+        const nx=x+dx, ny=y+dy;
+        if (!inBounds(nx,ny)) continue;
+        const nc = st.board[ny][nx].card;
+        if (nc && nc.rank === other) {
+          const a = ckey(x,y), b = ckey(nx,ny);
+          const ek = a < b ? a+'-'+b : b+'-'+a;
+          if (!st.bridgeEmitted.has(ek)) {
+            st.bridgeEmitted.add(ek);
+            roles.push({role: ROLE.BRIDGE, cells:[[x,y],[nx,ny]], pts: ROLE.BRIDGE.pts});
+          }
+        }
+      }
+    }
+    // ミッドクロス: 中央が7、4方向が全て埋まる
+    {
+      const candidates = [];
+      if (placed.rank === 7) candidates.push([x,y]);
+      // 周囲の既存7も対象（自分が4方向のいずれかを埋めた場合）
+      for (const [dx,dy] of DIR) {
+        const nx=x+dx, ny=y+dy;
+        if (!inBounds(nx,ny)) continue;
+        const nc = st.board[ny][nx].card;
+        if (nc && nc.rank === 7) candidates.push([nx,ny]);
+      }
+      for (const [cx,cy] of candidates) {
+        const ckSelf = ckey(cx,cy);
+        if (st.crossEmitted.has(ckSelf)) continue;
+        const nbrs = [];
+        let filled = 0;
+        for (const [dx,dy] of DIR) {
+          const nx=cx+dx, ny=cy+dy;
+          if (!inBounds(nx,ny)) continue;
+          if (st.board[ny][nx].card) { filled++; nbrs.push([nx,ny]); }
+        }
+        if (filled === 4) {
+          st.crossEmitted.add(ckSelf);
+          roles.push({role: ROLE.CROSS, cells:[[cx,cy], ...nbrs], pts: ROLE.CROSS.pts});
+        }
+      }
+    }
+    // フルハウスノード: 同NW内に「同数字ペアが2種以上」
+    {
+      const ccs = computeCCs(_ => true);
+      for (const cc of ccs) {
+        if (!cc.cells.has(ckey(x,y))) continue;
+        const cellsByRank = new Map();
+        for (const k of cc.cells) {
+          const [cx,cy] = ckeyToXY(k);
+          const c = st.board[cy][cx].card;
+          if (!c) continue;
+          if (!cellsByRank.has(c.rank)) cellsByRank.set(c.rank, []);
+          cellsByRank.get(c.rank).push([cx,cy]);
+        }
+        const pairRanks = [];
+        for (const [r, cells] of cellsByRank) {
+          if (cells.length < 2) continue;
+          let hasAdj = false;
+          for (let i=0; i<cells.length && !hasAdj; i++) {
+            for (let j=i+1; j<cells.length && !hasAdj; j++) {
+              const [ax,ay] = cells[i];
+              const [bx,by] = cells[j];
+              if (Math.abs(ax-bx)+Math.abs(ay-by) === 1) hasAdj = true;
+            }
+          }
+          if (hasAdj) pairRanks.push(r);
+        }
+        if (pairRanks.length >= 2) {
+          const sig = [...cc.cells].sort().join('|') + '#' + pairRanks.sort((a,b)=>a-b).join(',');
+          if (!st.fullhouseFlagged.has(sig)) {
+            st.fullhouseFlagged.add(sig);
+            const highlight = [];
+            for (const r of pairRanks) for (const cell of cellsByRank.get(r)) highlight.push(cell);
+            roles.push({role: ROLE.FULLHOUSE, cells: highlight, pts: ROLE.FULLHOUSE.pts});
+          }
+        }
+      }
+    }
+
+    return roles;
+  }
+
+  // ---------- game flow ----------
+  function isLegalPlacement(x, y, card) {
+    const cell = st.board[y][x];
+    if (cell.forbidden || cell.card) return false;
+    // require physical adjacency to any existing card that also satisfies adjacencyOK
+    let anyNeighbor = false;
+    for (const [dx,dy] of DIR) {
+      const nx=x+dx, ny=y+dy;
+      if (!inBounds(nx,ny)) continue;
+      const nc = st.board[ny][nx].card;
+      if (!nc) continue;
+      anyNeighbor = true;
+      // cardが指定されている場合は接続ルール（同スート・同数字・±1ランク・K↔A）をチェック
+      if (card && adjacencyOK(card, nc)) return true;
+    }
+    // cardが未指定の場合は隣接チェックのみ（旧挙動: renderの合法マス表示用）
+    if (!card) return anyNeighbor;
+    // bare board (shouldn't happen due to init seed) — allow anywhere
+    let anyCard = false;
+    for (let yy=0; yy<BOARD_SIZE && !anyCard; yy++)
+      for (let xx=0; xx<BOARD_SIZE && !anyCard; xx++)
+        if (st.board[yy][xx].card) anyCard = true;
+    return !anyCard;
+  }
+
+  function hasAnyLegalMove() {
+    if (!st.hand.length) return false;
+    for (const card of st.hand) {
+      for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) {
+        if (isLegalPlacement(x, y, card)) return true;
+      }
+    }
+    return false;
+  }
+
+  function newPuzzleGame(difficulty) {
+    const seed = ((Date.now() & 0xffffffff) ^ (Math.floor(Math.random() * 0xffffffff))) >>> 0;
+    const rand = mulberry32(seed);
+    const board = makeBoard();
+    generateForbidden(board, rand);
+    const deck = shuffle(makeDeck(), rand);
+    // Initial 4 seed placements (random legal cells)
+    const cells = [];
+    for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) {
+      if (!board[y][x].forbidden) cells.push([x,y]);
+    }
+    shuffle(cells, rand);
+    for (let i=0; i<INIT_SEED_CARDS && i<cells.length && deck.length; i++) {
+      const [x,y] = cells[i];
+      const c = deck.shift();
+      c.owner = 0;
+      c.isJammer = false;
+      board[y][x].card = c;
+    }
+    const hSize = HAND_SIZE_BY_DIFF[difficulty] || 4;
+    const hand = [];
+    for (let i=0; i<hSize && deck.length; i++) hand.push(deck.shift());
+
+    st = {
+      difficulty,
+      handSize: hSize,
+      board,
+      deck,
+      hand,
+      score: 0,
+      placements: 0,
+      log: [],
+      selected: null,
+      ended: false,
+      seed,
+      ccMax: {
+        all:  new Map(),
+        suit: { S:new Map(), H:new Map(), D:new Map(), C:new Map() },
+        rank: {},
+      },
+      bridgeEmitted: new Set(),
+      crossEmitted: new Set(),
+      fullhouseFlagged: new Set(),
+    };
+    for (let r=1; r<=13; r++) st.ccMax.rank[r] = new Map();
+  }
+
+  function placeAt(x, y) {
+    if (!st || st.ended) return;
+    if (st.selected == null) return;
+    const card = st.hand.find(c => c.id === st.selected);
+    if (!card) return;
+    if (!isLegalPlacement(x, y, card)) return;
+
+    card.owner = 0;
+    card.isJammer = false;
+    st.board[y][x].card = card;
+    st.hand = st.hand.filter(c => c.id !== card.id);
+    st.placements++;
+    st.selected = null;
+
+    const roles = detectRoles(x, y);
+    const totalPts = roles.reduce((s, r) => s + r.pts, 0);
+    st.score += totalPts;
+    for (const r of roles) {
+      st.log.push({name: r.role.name, pts: r.pts, cat: r.role.cat, ts: Date.now()});
+    }
+    if (st.log.length > 80) st.log.splice(0, st.log.length - 80);
+
+    if (st.deck.length) st.hand.push(st.deck.shift());
+
+    render();
+    playRoleAnimations(x, y, roles);
+    if (totalPts > 0) bumpScore();
+    if (roles.length >= 3) showComboBanner(roles.length, totalPts);
+    sfxPlace(roles.length);
+
+    if (st.hand.length === 0 && st.deck.length === 0) {
+      setTimeout(endPuzzle, Math.max(500, roles.length * 320));
+    } else if (!hasAnyLegalMove()) {
+      setTimeout(autoSkip, 600);
+    }
+  }
+
+  function autoSkip() {
+    if (!st || st.ended) return;
+    if (st.hand.length === 0) { endPuzzle(); return; }
+    showMsg('合法手なし — 手札1枚を山札へ戻して再配');
+    const c = st.hand.shift();
+    if (st.deck.length === 0) {
+      // No more deck — game ends
+      endPuzzle();
+      return;
+    }
+    st.deck.push(c);
+    st.hand.push(st.deck.shift());
+    render();
+    let safety = 60;
+    while (st && !st.ended && st.hand.length && st.deck.length && !hasAnyLegalMove() && safety-- > 0) {
+      const c2 = st.hand.shift();
+      st.deck.push(c2);
+      st.hand.push(st.deck.shift());
+    }
+    render();
+    if (!hasAnyLegalMove()) endPuzzle();
+  }
+
+  function endPuzzle() {
+    if (!st || st.ended) return;
+    st.ended = true;
+    const rank = rankFor(st.score);
+
+    // ===== ハイスコア更新 =====
+    const LS_HISCORE = 'limiles_puzzle_hiscore';
+    let prev = 0;
+    try { prev = parseInt(localStorage.getItem(LS_HISCORE) || '0', 10) || 0; } catch(e){}
+    const isNewBest = st.score > prev;
+    if (isNewBest) {
+      try { localStorage.setItem(LS_HISCORE, String(st.score)); } catch(e){}
+    }
+    const best = isNewBest ? st.score : prev;
+
+    $('puzzle-end-rank').textContent = rank;
+    $('puzzle-end-score').textContent = st.score.toLocaleString();
+    $('puzzle-end-detail').innerHTML =
+      (isNewBest ? '<div style="color:var(--warn);font-weight:900;font-size:16px;margin-bottom:6px;">🏆 NEW BEST!</div>' : '') +
+      'ベストスコア: <b style="color:var(--warn);">' + best.toLocaleString() + '</b><br>' +
+      '配置数: <b>'+st.placements+'</b> 枚<br>' +
+      '残山札: <b>'+st.deck.length+'</b> 枚<br>' +
+      '残手札: <b>'+st.hand.length+'</b> 枚<br>' +
+      '役発動: <b>'+st.log.length+'</b> 回';
+    showScreen('puzzle-end');
+  }
+
+  function rankFor(score) {
+    if (score >= 14000) return 'SS';
+    if (score >= 9500)  return 'S';
+    if (score >= 6500)  return 'A';
+    if (score >= 4000)  return 'B';
+    if (score >= 2200)  return 'C';
+    if (score >= 1000)  return 'D';
+    return 'E';
+  }
+
+  // ---------- render ----------
+  function render() {
+    if (!st) return;
+    renderBoardP();
+    renderHandP();
+    $('puzzle-score').textContent = st.score.toLocaleString();
+    $('puzzle-deck').textContent = st.deck.length;
+    $('puzzle-hand-count').textContent = st.hand.length;
+    $('puzzle-hand-max').textContent = st.handSize;
+    // ハイスコアをゲーム中に表示
+    const liveEl = $('puzzle-hiscore-live');
+    if (liveEl) {
+      const LS_HISCORE = 'limiles_puzzle_hiscore';
+      let best = 0;
+      try { best = parseInt(localStorage.getItem(LS_HISCORE) || '0', 10) || 0; } catch(e){}
+      liveEl.textContent = Math.max(best, st.score).toLocaleString();
+    }
+    renderLogP();
+  }
+
+  function renderBoardP() {
+    const boardEl = $('puzzle-board');
+    boardEl.innerHTML = '';
+    const showLegal = st.selected != null && !st.ended;
+    const selectedCard = showLegal ? st.hand.find(c => c.id === st.selected) : null;
+    for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) {
+      const cd = st.board[y][x];
+      const el = document.createElement('div');
+      el.className = 'cell';
+      el.dataset.x = x;
+      el.dataset.y = y;
+      if (cd.forbidden) el.classList.add('forbidden');
+      if (showLegal && isLegalPlacement(x, y, selectedCard)) el.classList.add('legal-puzzle');
+      if (cd.card) {
+        const ce = document.createElement('div');
+        ce.className = 'card puzzle-card suit-' + cd.card.suit;
+        ce.innerHTML =
+          '<div class="suit-corner">'+SUIT_GLYPH[cd.card.suit]+'</div>'+
+          '<div class="rank">'+rankStr(cd.card.rank)+'</div>'+
+          '<div class="suit-corner-br">'+SUIT_GLYPH[cd.card.suit]+'</div>';
+        el.appendChild(ce);
+      }
+      el.addEventListener('click', () => onCellTap(x, y));
+      boardEl.appendChild(el);
+    }
+  }
+
+  function renderHandP() {
+    const el = $('puzzle-hand');
+    el.innerHTML = '';
+    if (st.ended) return;
+    for (const c of st.hand) {
+      const card = document.createElement('div');
+      card.className = 'hand-card puzzle-card suit-' + c.suit;
+      if (st.selected === c.id) card.classList.add('selected');
+      card.innerHTML =
+        '<div class="suit-corner">'+SUIT_GLYPH[c.suit]+'</div>'+
+        '<div class="rank">'+rankStr(c.rank)+'</div>'+
+        '<div class="suit-corner-br">'+SUIT_GLYPH[c.suit]+'</div>';
+      const cid = c.id;
+      card.addEventListener('click', () => {
+        if (st.ended) return;
+        st.selected = (st.selected === cid) ? null : cid;
+        render();
+      });
+      el.appendChild(card);
+    }
+  }
+
+  function renderLogP() {
+    const el = $('puzzle-log');
+    el.innerHTML = '';
+    if (!st.log.length) {
+      el.innerHTML = '<div class="puzzle-log-empty">発動した役がここに表示されます</div>';
+      return;
+    }
+    const recent = st.log.slice(-14).reverse();
+    for (let i=0; i<recent.length; i++) {
+      const e = recent[i];
+      const row = document.createElement('div');
+      row.className = 'puzzle-log-entry' + (i===0 ? ' recent' : '');
+      row.style.setProperty('--role-cat-color', CAT_COLOR[e.cat] || '#888');
+      row.innerHTML = '<span class="pl-name">'+escapeHtml(e.name)+'</span>'+
+                      '<span class="pl-pts">+'+e.pts+'</span>';
+      el.appendChild(row);
+    }
+  }
+
+  function onCellTap(x, y) {
+    if (st.ended) return;
+    if (st.selected == null) {
+      showMsg('まず手札のカードを選択してください');
+      return;
+    }
+    const card = st.hand.find(c => c.id === st.selected);
+    if (!isLegalPlacement(x, y, card)) {
+      showMsg('そのマスには配置できません（同スート・同数字・±1ランクのカードに隣接する必要があります）');
+      return;
+    }
+    showMsg('');
+    placeAt(x, y);
+  }
+
+  function showMsg(s) {
+    const el = $('puzzle-msg');
+    if (el) el.textContent = s || '';
+  }
+
+  function bumpScore() {
+    const el = $('puzzle-score');
+    if (!el) return;
+    el.classList.remove('score-bump');
+    void el.offsetWidth;
+    el.classList.add('score-bump');
+  }
+
+  function showComboBanner(count, pts) {
+    const fx = $('puzzle-fx-layer');
+    if (!fx) return;
+    const b = document.createElement('div');
+    b.className = 'combo-banner';
+    b.textContent = count + ' COMBO!  +' + pts;
+    fx.appendChild(b);
+    setTimeout(() => b.remove(), 1400);
+  }
+
+  function playRoleAnimations(px, py, roles) {
+    if (!roles.length) return;
+    const fx = $('puzzle-fx-layer');
+    const boardEl = $('puzzle-board');
+    if (!fx || !boardEl) return;
+    const fxRect = fx.getBoundingClientRect();
+    const cellByKey = {};
+    boardEl.querySelectorAll('.cell').forEach(c => { cellByKey[c.dataset.x+','+c.dataset.y] = c; });
+    const cellCenter = (cx, cy) => {
+      const cell = cellByKey[cx+','+cy];
+      if (!cell) return null;
+      const cr = cell.getBoundingClientRect();
+      return { x: cr.left - fxRect.left + cr.width/2, y: cr.top - fxRect.top + cr.height/2 };
+    };
+    roles.forEach((r, i) => {
+      setTimeout(() => {
+        if (!st || st.ended && i > 0) {} // continue even after end so combo finishes
+        const color = CAT_COLOR[r.role.cat] || '#fff';
+        for (const [cx,cy] of r.cells) {
+          const cell = cellByKey[cx+','+cy];
+          if (!cell) continue;
+          cell.style.setProperty('--role-color', color);
+          cell.classList.remove('role-flash');
+          void cell.offsetWidth;
+          cell.classList.add('role-flash');
+        }
+        let sx=0, sy=0, n=0;
+        for (const [cx,cy] of r.cells) {
+          const p = cellCenter(cx,cy);
+          if (!p) continue;
+          sx += p.x; sy += p.y; n++;
+        }
+        if (n > 0) {
+          const pop = document.createElement('div');
+          pop.className = 'role-popup';
+          pop.style.setProperty('--role-color', color);
+          pop.style.left = (sx/n) + 'px';
+          pop.style.top  = (sy/n) + 'px';
+          pop.innerHTML = '<span class="role-name">'+escapeHtml(r.role.name)+'</span><span class="role-pts">+'+r.pts+'</span>';
+          fx.appendChild(pop);
+          setTimeout(() => pop.remove(), 1050);
+        }
+        // score floater near placed card
+        const placedPos = cellCenter(px, py);
+        if (placedPos) {
+          const f = document.createElement('div');
+          f.className = 'score-floater';
+          f.style.left = (placedPos.x + (i*18 - (roles.length-1)*9)) + 'px';
+          f.style.top  = placedPos.y + 'px';
+          f.style.color = color;
+          f.textContent = '+'+r.pts;
+          fx.appendChild(f);
+          setTimeout(() => f.remove(), 1250);
+        }
+      }, i * 260);
+    });
+  }
+
+  function sfxPlace(roleCount) {
+    try { SFX.kachick(); } catch(e) {}
+    if (roleCount > 0) {
+      setTimeout(() => { try { SFX.shu(); } catch(e) {} }, 80);
+    }
+    if (roleCount >= 3) {
+      setTimeout(() => { try { SFX.zuun(); } catch(e) {} }, 180);
+    }
+    if (roleCount >= 6) {
+      setTimeout(() => { try { SFX.buun(); } catch(e) {} }, 320);
+    }
+  }
+
+  function fit() {
+    const boardEl = $('puzzle-board');
+    if (!boardEl) return;
+    const w = boardEl.clientWidth;
+    if (w <= 0) return;
+    const gap = 2;
+    const cell = Math.max(16, Math.floor((w - gap * 2 - gap * 7) / 8));
+    document.documentElement.style.setProperty('--cell-size', cell + 'px');
+  }
+
+  function attachResizeObs() {
+    if (_resizeObs || typeof ResizeObserver === 'undefined') return;
+    const el = $('puzzle-board');
+    if (!el) return;
+    _resizeObs = new ResizeObserver(() => fit());
+    _resizeObs.observe(el);
+  }
+
+  return {
+    open() {
+      // セットアップ画面にハイスコアを表示
+      const LS_HISCORE = 'limiles_puzzle_hiscore';
+      let best = 0;
+      try { best = parseInt(localStorage.getItem(LS_HISCORE) || '0', 10) || 0; } catch(e){}
+      const block = $('puzzle-setup-hiscore-block');
+      const numEl = $('puzzle-setup-hiscore-num');
+      const rankEl = $('puzzle-setup-hiscore-rank');
+      if (block && numEl && rankEl) {
+        if (best > 0) {
+          numEl.textContent = best.toLocaleString();
+          rankEl.textContent = 'RANK: ' + rankFor(best);
+          block.style.display = '';
+        } else {
+          block.style.display = 'none';
+        }
+      }
+      $('overlay-puzzle-setup').classList.remove('hidden');
+    },
+    cancel() {
+      $('overlay-puzzle-setup').classList.add('hidden');
+    },
+    start(difficulty) {
+      $('overlay-puzzle-setup').classList.add('hidden');
+      newPuzzleGame(difficulty);
+      showScreen('puzzle');
+      render();
+      attachResizeObs();
+      requestAnimationFrame(() => { fit(); });
+      showMsg('カードを選んで盤面の青枠マスをタップ');
+    },
+    restart() {
+      if (!st) { this.open(); return; }
+      const d = st.difficulty;
+      newPuzzleGame(d);
+      showScreen('puzzle');
+      render();
+      requestAnimationFrame(() => { fit(); });
+      showMsg('カードを選んで盤面の青枠マスをタップ');
+    },
+    quit() {
+      st = null;
+      $('overlay-puzzle-setup').classList.add('hidden');
+      $('overlay-puzzle-rules').classList.add('hidden');
+      showScreen('title');
+    },
+    fit,
+    _debug: () => st,
+  };
+})();
 
 // Expose for testing / simulation
 window.__limiles = {
