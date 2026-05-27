@@ -1095,6 +1095,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
             <div>山<b id="puzzle-deck">0</b></div>
             <div>手<b id="puzzle-hand-count">0</b>/<b id="puzzle-hand-max">3</b></div>
             <div>BEST <b id="puzzle-hiscore-live" style="color:var(--warn);">0</b></div>
+            <div style="margin-top:3px; font-size:11px; letter-spacing:0.06em;">🔢 <span id="puzzle-num-mult" style="font-variant-numeric:tabular-nums; color:var(--text-dim);">x1.00</span></div>
           </div>
           <div class="spacer"></div>
           <button class="menu-btn" data-action="puzzle-rules">役一覧</button>
@@ -3179,10 +3180,16 @@ function broadcastLobby() {
 function broadcastStateIfHost() {
   if (Net.mode !== 'online-host') return;
   // ★ ホストの残りタイマー時間をクライアントへ伝える
-  // timerHandle !== null = ホストタイマー稼働中（ホスト自身のターン）→ deadline から現在値を計算して送る
-  // timerHandle === null = ホストタイマー非稼働（クライアントのターン）→ 直前値を維持し、
-  //   直前値がない場合のみ state.turnTime にフォールバック（全秒リセット防止）
-  state._remainingTime = timerHandle !== null ? getRemainingSec() : (state._remainingTime || state.turnTime || 0);
+  // timerHandle !== null = タイマー稼働中 → deadline から現在値を計算して送る
+  // timerHandle === null かつ _timerDeadlineMs > 0 = 他人ターン中のdeadline管理中 → deadline から計算
+  // それ以外 → 直前値を維持（全秒リセット防止）
+  if (timerHandle !== null) {
+    state._remainingTime = getRemainingSec();
+  } else if (_timerDeadlineMs > 0) {
+    state._remainingTime = Math.max(0, Math.ceil((_timerDeadlineMs - performance.now()) / 1000));
+  } else {
+    state._remainingTime = state._remainingTime || state.turnTime || 0;
+  }
   // 単調増加バージョン番号をインクリメントしてから送信する。
   // クライアント側がこの番号で古いメッセージを捨てられるようにする。
   state.stateVersion = (state.stateVersion || 0) + 1;
@@ -3241,7 +3248,13 @@ function _pushStateToSpectators(matchId, hash, deckFp) {
 function sendFullStateTo(conn, viewerIdx, opts) {
   if (!state) return;
   // ★ fullState でも残り時間をクライアントへ伝える（broadcastStateIfHostと同じロジック）
-  state._remainingTime = timerHandle !== null ? getRemainingSec() : (state._remainingTime || state.turnTime || 0);
+  if (timerHandle !== null) {
+    state._remainingTime = getRemainingSec();
+  } else if (_timerDeadlineMs > 0) {
+    state._remainingTime = Math.max(0, Math.ceil((_timerDeadlineMs - performance.now()) / 1000));
+  } else {
+    state._remainingTime = state._remainingTime || state.turnTime || 0;
+  }
   const hash = computeStateHash(state);
   state._lastHash = hash;
   // ★ fullState でも deckFp を送る。client はこれを正として hostDeckFp に保存する。
@@ -3749,7 +3762,8 @@ function checkStalePending() {
 function maybeStartTimerForLocalTurn() {
   if (!state) return;
   checkStalePending(); // ★ Bug5: pending タイムアウトチェック
-  if (currentPlayerIdx() === localPlayerIdx()) {
+  const isMyTurn = currentPlayerIdx() === localPlayerIdx();
+  if (isMyTurn) {
     // オンラインクライアント: 既にタイマーが動いている場合はリセットしない
     // （state パケット受信のたびに deadline が延長されるのを防ぐ）
     if (state.mode === 'online-client' && timerHandle !== null) {
@@ -3763,6 +3777,56 @@ function maybeStartTimerForLocalTurn() {
       return;
     }
     startTurnTimer();
+  } else if (state.mode === 'online-client') {
+    // ★ 他人のターン中もホストの remainingTime でタイマーを表示カウントダウンする。
+    // タイムオーバーアクションは発火しない（表示のみ）。
+    // これにより「他人のターンでタイマーが止まったまま」を防ぎ、
+    // 次に自分のターンが来たとき正しい残り時間でタイマーが開始される。
+    if (!state.turnTime || state.turnTime <= 0) {
+      stopTurnTimer();
+      return;
+    }
+    if (state.remainingTime != null && state.remainingTime > 0) {
+      if (timerHandle !== null) {
+        // すでに動いている → ホストの remainingTime でデッドラインを更新するのみ
+        _timerDeadlineMs = performance.now() + state.remainingTime * 1000;
+        updateTimerDisplay();
+      } else {
+        // タイマー停止中 → 表示用タイマーを起動（timeout は発火しない）
+        _timerDeadlineMs = performance.now() + state.remainingTime * 1000;
+        _pausedRemainingMs = 0;
+        updateTimerDisplay();
+        timerHandle = setInterval(() => {
+          // 自分のターンになっていたら startTurnTimer に切り替え
+          if (currentPlayerIdx() === localPlayerIdx()) {
+            stopTurnTimer();
+            startTurnTimer();
+            return;
+          }
+          updateTimerDisplay();
+          // 他人のターンのタイムオーバーは表示のみ（0表示で止める）
+          if ((_timerDeadlineMs - performance.now()) <= 0) {
+            updateTimerDisplay(); // 0 表示
+            stopTurnTimer();
+          }
+        }, 250);
+      }
+    } else {
+      stopTurnTimer();
+    }
+  } else if (state.mode === 'online-host') {
+    // ★ ホスト: クライアントのターン中も _timerDeadlineMs でカウントダウンを維持する。
+    // これにより broadcastStateIfHost() が正確な残り時間をクライアントへ送れる。
+    if (!state.turnTime || state.turnTime <= 0) {
+      _timerDeadlineMs = 0;
+      return;
+    }
+    // _timerDeadlineMs が未設定またはすでに過去の場合のみ新しいデッドラインをセット
+    // （ターン開始直後の1回だけ設定し、以後は自然に減少させる）
+    if (_timerDeadlineMs <= performance.now()) {
+      _timerDeadlineMs = performance.now() + (state.turnTime || 30) * 1000;
+    }
+    // timerHandle は動かさない（ホストはクライアントのタイムアウトを onTurnTimeout で処理）
   } else {
     stopTurnTimer();
   }
@@ -5496,6 +5560,9 @@ function prepareNewTurn() {
   if (!player.alive) { postActionAdvance(); return; }
   // リプレイモード: タイマー・CPU自動進行・ハンドオフは不要
   if (state.mode === 'replay') { return; }
+  // ★ ターン切り替わり時に deadline をリセット。
+  //   maybeStartTimerForLocalTurn() で新しい turnTime から再セットされる。
+  _timerDeadlineMs = 0;
   // 保護ターン消費 (切断直後のCPU代理に発動)
   if (player.cpuControlled && player.protectTurns > 0) player.protectTurns--;
 
@@ -6711,6 +6778,10 @@ const Puzzle = (() => {
     WEB:      {key:'web',      name:'カラーウェブ',       pts:200,  cat:'suit'},
     STORM:    {key:'storm',    name:'スートストーム',     pts:500,  cat:'suit'},
     MONO:     {key:'mono',     name:'モノクローム',       pts:1500, cat:'suit'},
+    FLUSH1:   {key:'flush1',   name:'スートフラッシュ',   pts:3000, cat:'suit'},
+    FLUSH2:   {key:'flush2',   name:'ダブルフラッシュ',   pts:7000, cat:'suit'},
+    FLUSH3:   {key:'flush3',   name:'トリプルフラッシュ', pts:15000,cat:'suit'},
+    FLUSH4:   {key:'flush4',   name:'パーフェクトフラッシュ', pts:25000, cat:'suit'},
     CLUSTER:  {key:'cluster',  name:'クラスター',         pts:100,  cat:'nw'},
     MEGA:     {key:'mega',     name:'メガネット',         pts:300,  cat:'nw'},
     GALAXY:   {key:'galaxy',   name:'ギャラクシー',       pts:800,  cat:'nw'},
@@ -6726,7 +6797,7 @@ const Puzzle = (() => {
     sp:   '#c39cff',
   };
   const HAND_SIZE_BY_DIFF = {easy:3, normal:3, hard:3};
-  const INIT_SEED_CARDS = 3;
+  const INIT_SEED_CARDS = 2;
 
   let st = null;
   let _resizeObs = null;
@@ -6883,11 +6954,30 @@ const Puzzle = (() => {
       for (const cc of ccs) {
         if (!cc.cells.has(ckey(x,y))) continue;
         const tracker = st.ccMax.suit[placed.suit];
+        const prevCount = st.suitFlashCount;
         emitTierRoles(roles, cc, tracker, [
           {T:4,  role:ROLE.WEB},
           {T:7,  role:ROLE.STORM},
           {T:10, role:ROLE.MONO},
+          {T:13, role:ROLE.FLUSH1},
         ]);
+        // FLUSH1が新たに発火した（13枚達成）かチェック
+        const newFlush1 = roles.filter(r => r.role === ROLE.FLUSH1).length;
+        if (newFlush1 > 0) {
+          // 13枚組が何組あるか全スート集計
+          let total13 = 0;
+          for (const s of ['S','H','D','C']) {
+            const scc = computeCCs(c => c.suit === s);
+            for (const sc of scc) if (sc.size >= 13) total13++;
+          }
+          st.suitFlashCount = total13;
+          // 組数ボーナス（前回より増えた場合のみ発火）
+          if (total13 > prevCount) {
+            if      (total13 >= 4) roles.push({role: ROLE.FLUSH4, cells: [...cc.cells].map(ckeyToXY), pts: ROLE.FLUSH4.pts});
+            else if (total13 >= 3) roles.push({role: ROLE.FLUSH3, cells: [...cc.cells].map(ckeyToXY), pts: ROLE.FLUSH3.pts});
+            else if (total13 >= 2) roles.push({role: ROLE.FLUSH2, cells: [...cc.cells].map(ckeyToXY), pts: ROLE.FLUSH2.pts});
+          }
+        }
       }
     }
 
@@ -7060,6 +7150,7 @@ const Puzzle = (() => {
       selected: null,
       ended: false,
       seed,
+      numMult: 1.0,   // スコアアタック: 数字系役が成立するたびに1.05倍
       ccMax: {
         all:  new Map(),
         suit: { S:new Map(), H:new Map(), D:new Map(), C:new Map() },
@@ -7068,6 +7159,7 @@ const Puzzle = (() => {
       bridgeEmitted: new Set(),
       crossEmitted: new Set(),
       fullhouseFlagged: new Set(),
+      suitFlashCount: 0,  // 13枚連結スートが何組完成したか
     };
     for (let r=1; r<=13; r++) st.ccMax.rank[r] = new Map();
   }
@@ -7087,10 +7179,22 @@ const Puzzle = (() => {
     st.selected = null;
 
     const roles = detectRoles(x, y);
+    // スコアアタック: 数字系役(cat:'num')に現在の乗数を適用し、その後乗数を1.05倍更新
+    let numRoleCountThisTurn = 0;
+    for (const r of roles) {
+      if (r.role.cat === 'num') {
+        r.pts = Math.round(r.pts * st.numMult);
+        numRoleCountThisTurn++;
+      }
+    }
     const totalPts = roles.reduce((s, r) => s + r.pts, 0);
     st.score += totalPts;
     for (const r of roles) {
       st.log.push({name: r.role.name, pts: r.pts, cat: r.role.cat, ts: Date.now()});
+    }
+    // 数字系役が成立した回数分だけ乗数を1.05倍
+    for (let i = 0; i < numRoleCountThisTurn; i++) {
+      st.numMult *= 1.05;
     }
     if (st.log.length > 80) st.log.splice(0, st.log.length - 80);
 
@@ -7155,17 +7259,19 @@ const Puzzle = (() => {
       '配置数: <b>'+st.placements+'</b> 枚<br>' +
       '残山札: <b>'+st.deck.length+'</b> 枚<br>' +
       '残手札: <b>'+st.hand.length+'</b> 枚<br>' +
-      '役発動: <b>'+st.log.length+'</b> 回';
+      '役発動: <b>'+st.log.length+'</b> 回<br>' +
+      '🔢 数字系倍率: <b style="color:var(--warn);">x'+st.numMult.toFixed(2)+'</b> ('+Math.round((st.numMult-1)*100)+'%アップ)';
     showScreen('puzzle-end');
   }
 
   function rankFor(score) {
-    if (score >= 14000) return 'SS';
-    if (score >= 9500)  return 'S';
-    if (score >= 6500)  return 'A';
-    if (score >= 4000)  return 'B';
-    if (score >= 2200)  return 'C';
-    if (score >= 1000)  return 'D';
+    if (score >= 100000) return 'SSS';
+    if (score >= 60000)  return 'SS';
+    if (score >= 30000)  return 'S';
+    if (score >= 12000)  return 'A';
+    if (score >= 5000)   return 'B';
+    if (score >= 2200)   return 'C';
+    if (score >= 1000)   return 'D';
     return 'E';
   }
 
@@ -7178,6 +7284,14 @@ const Puzzle = (() => {
     $('puzzle-deck').textContent = st.deck.length;
     $('puzzle-hand-count').textContent = st.hand.length;
     $('puzzle-hand-max').textContent = st.handSize;
+    // 数字系役乗数表示
+    const multEl = $('puzzle-num-mult');
+    if (multEl) {
+      const pct = Math.round((st.numMult - 1) * 100);
+      multEl.textContent = 'x' + st.numMult.toFixed(2) + (pct > 0 ? ' (+'+pct+'%)' : '');
+      multEl.style.color = st.numMult > 1 ? 'var(--warn)' : 'var(--text-dim)';
+      multEl.style.fontWeight = st.numMult > 1 ? '800' : '400';
+    }
     // ハイスコアをゲーム中に表示
     const liveEl = $('puzzle-hiscore-live');
     if (liveEl) {
