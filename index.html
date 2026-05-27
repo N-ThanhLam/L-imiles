@@ -2625,6 +2625,7 @@ function cpuInitMove(s, playerIdx, level) {
 // ============================== NETWORK (PeerJS) ==============================
 const Net = {
   mode: 'none',          // 'none' | 'online-host' | 'online-client' | 'spectator'
+  _connecting: false,    // ★ netHostCreate/netJoin の非同期初期化中フラグ (二重起動防止)
   peer: null,
   conns: new Map(),      // host: peerId → DataConnection
   hostConn: null,        // client: connection to host
@@ -2893,6 +2894,14 @@ function roomIdFor(keyword) { return 'limiles-' + hashSeed(keyword.toLowerCase()
 
 function netHostCreate({keyword, name, numPlayers, turnTime}) {
   if (!keyword) { showOnlineMsg('エラー','合言葉を入力してください'); return; }
+  // ★ 既に接続中の場合は先にクリーンアップする。
+  //    mode を先に書き換えず、古い peer/conn を完全に閉じてから新規作成する。
+  //    これをしないと「前のセッションが残ったまま上から新規接続」という壊れた状態になる。
+  if (Net.mode !== 'none') { try { netLeave(); } catch(e){} }
+  // ★ 非同期初期化の二重起動を防ぐ。前の _resetPeerInstance().then() がまだ走っている間の
+  //    再呼び出しはここで弾く。
+  if (Net._connecting) return;
+  Net._connecting = true;
   Net.mode = 'online-host';
   Net.roomCode = keyword;
   Net.roomId = roomIdFor(keyword);
@@ -2914,6 +2923,7 @@ function netHostCreate({keyword, name, numPlayers, turnTime}) {
   _resetPeerInstance().then(() => _createHostPeer(0));
 
   function _createHostPeer(retry) {
+    Net._connecting = false; // ★ 非同期初期化が実際に始まったのでフラグ解除
     if (Net.mode !== 'online-host') return; // 退室済み
     try { Net.peer = new Peer(Net.roomId, {debug: 0}); } catch(e) {
       setNetStatus('error', 'Peer 生成失敗'); return;
@@ -3292,6 +3302,11 @@ function stopFullStateHeartbeat() {
 
 function netJoin({keyword, name}) {
   if (!keyword) { showOnlineMsg('エラー','合言葉を入力してください'); return; }
+  // ★ 既に接続中の場合は先にクリーンアップする。
+  if (Net.mode !== 'none') { try { netLeave(); } catch(e){} }
+  // ★ 非同期初期化の二重起動を防ぐ。
+  if (Net._connecting) return;
+  Net._connecting = true;
   Net.mode = 'online-client';
   Net.roomCode = keyword;
   Net.roomId = roomIdFor(keyword);
@@ -3309,6 +3324,7 @@ function netJoin({keyword, name}) {
   _resetPeerInstance().then(() => _createClientPeer());
 
   function _createClientPeer() {
+    Net._connecting = false; // ★ 非同期初期化が実際に始まったのでフラグ解除
     if (Net.mode !== 'online-client') return;
     Net.peer = new Peer(undefined, {debug: 0});
   Net.peer.on('open', () => {
@@ -3936,6 +3952,7 @@ function netLeave() {
   if (Net.roomCode) clearReconnectToken(Net.roomCode);
   Net.reconnectToken = '';
   Net.joinAsSpectator = false;
+  Net._connecting = false; // ★ 非同期初期化途中で退室した場合もフラグをリセット
   stopTurnTimer();
   stopFullStateHeartbeat();
   // ★ placeConfirm タイマー/rAF も停止 (退室後に古い操作が発火しないよう)
