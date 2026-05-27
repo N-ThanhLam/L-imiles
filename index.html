@@ -2671,6 +2671,7 @@ const Net = {
   // ===== Client Prediction =====
   _clientPending: new Map(),              // client: actionId → {card, x, y, isJammer, savedState} pending中の配置
   _actionIdCounter: 0,                    // client: pending action の一意ID生成用
+  _intentionalDisconnect: false,          // ★ netLeave() による意図的切断フラグ。disconnected ハンドラが reconnect() を空振りしないよう制御する
 };
 // ★ 過剰防御の見直し: heartbeat を低頻度化してモバイルでの帯域/GC圧迫を抑える。
 //    state/action は変化時にすぐbroadcastされるので、heartbeat は単なる安全網として 15s 間隔で十分。
@@ -2899,6 +2900,8 @@ function netHostCreate({keyword, name, numPlayers, turnTime}) {
   //    mode を先に書き換えず、古い peer/conn を完全に閉じてから新規作成する。
   //    これをしないと「前のセッションが残ったまま上から新規接続」という壊れた状態になる。
   if (Net.mode !== 'none') { try { netLeave(); } catch(e){} }
+  // ★ 新規接続開始時に意図的切断フラグをリセットする。
+  Net._intentionalDisconnect = false;
   // ★ 非同期初期化の二重起動を防ぐ。前の _resetPeerInstance().then() がまだ走っている間の
   //    再呼び出しはここで弾く。
   if (Net._connecting) return;
@@ -2949,6 +2952,8 @@ function netHostCreate({keyword, name, numPlayers, turnTime}) {
       setNetStatus('error', msg);
     });
     Net.peer.on('disconnected', () => {
+      // ★ 自分で退室した場合 (netLeave) は reconnect しない
+      if (Net._intentionalDisconnect) return;
       setNetStatus('error', 'シグナリング切断 (再接続試行中…)');
       try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
     });
@@ -2963,15 +2968,18 @@ function netHostCreate({keyword, name, numPlayers, turnTime}) {
 }
 
 // 既存 Net.peer を確実に破棄する。サーバへの登録解除イベントが返るのを少し待つ。
-function _resetPeerInstance() {
+// extraDelay: 残骸 ID の解放待ちなど、通常より長く待ちたい場合に指定 (ms)。
+function _resetPeerInstance(extraDelay) {
   return new Promise(resolve => {
-    if (!Net.peer) { resolve(); return; }
+    const wait = 300 + (extraDelay || 0);
+    if (!Net.peer) { setTimeout(resolve, extraDelay ? extraDelay : 0); return; }
     try {
       const old = Net.peer;
       Net.peer = null;
       try { old.destroy(); } catch(e) {}
-      // PeerJS サーバが ID を解放するまで短時間待機。
-      setTimeout(resolve, 300);
+      // PeerJS サーバが ID を解放するまで待機。
+      // extraDelay が指定されている場合はその分長く待つ（残骸が残っている可能性があるため）。
+      setTimeout(resolve, wait);
     } catch(e) { resolve(); }
   });
 }
@@ -3317,6 +3325,8 @@ function netJoin({keyword, name}) {
   if (!keyword) { showOnlineMsg('エラー','合言葉を入力してください'); return; }
   // ★ 既に接続中の場合は先にクリーンアップする。
   if (Net.mode !== 'none') { try { netLeave(); } catch(e){} }
+  // ★ 新規接続開始時に意図的切断フラグをリセットする。
+  Net._intentionalDisconnect = false;
   // ★ 非同期初期化の二重起動を防ぐ。
   if (Net._connecting) return;
   Net._connecting = true;
@@ -3375,6 +3385,8 @@ function netJoin({keyword, name}) {
   // ★ client 側もシグナリング切断時は reconnect で再登録する。
   //   切断中に host へ送信できないので fullState 要求や reconnect-claim の信頼性が落ちる。
   Net.peer.on('disconnected', () => {
+    // ★ 自分で退室した場合 (netLeave) は reconnect しない
+    if (Net._intentionalDisconnect) return;
     try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
   });
   }
@@ -3819,6 +3831,7 @@ function maybeStartTimerForLocalTurn() {
     // これにより broadcastStateIfHost() が正確な残り時間をクライアントへ送れる。
     if (!state.turnTime || state.turnTime <= 0) {
       _timerDeadlineMs = 0;
+      stopTurnTimer();
       return;
     }
     // _timerDeadlineMs が未設定またはすでに過去の場合のみ新しいデッドラインをセット
@@ -3826,7 +3839,21 @@ function maybeStartTimerForLocalTurn() {
     if (_timerDeadlineMs <= performance.now()) {
       _timerDeadlineMs = performance.now() + (state.turnTime || 30) * 1000;
     }
-    // timerHandle は動かさない（ホストはクライアントのタイムアウトを onTurnTimeout で処理）
+    // ★ timerHandle を起動してUI表示を更新し、クライアントターンのタイムアウトも発火する
+    if (timerHandle !== null) {
+      // すでに動いている → deadline更新のみ（ターン切替直後に _timerDeadlineMs=0 でリセット済みなので
+      // ここに来るのは同一ターン内の再呼び出し。表示を即時同期する）
+      updateTimerDisplay();
+      return;
+    }
+    updateTimerDisplay();
+    timerHandle = setInterval(() => {
+      updateTimerDisplay();
+      if ((_timerDeadlineMs - performance.now()) <= 0) {
+        stopTurnTimer();
+        onTurnTimeout();
+      }
+    }, 250);
   } else {
     stopTurnTimer();
   }
@@ -4008,6 +4035,9 @@ function rollbackPendingAction(actionId) {
 }
 
 function netLeave() {
+  // ★ 意図的切断フラグを先立てる。この後の peer.destroy() で 'disconnected' が発火しても
+  //    reconnect() しないようにする（退室後に peer を蘇生させる根本原因の修正）。
+  Net._intentionalDisconnect = true;
   // ゲーム途中の退出はレートに「負け」として記録
   recordOnlineDisconnectLoss();
   // ★ 明示的退室時は再接続トークンを破棄する。
@@ -4027,6 +4057,9 @@ function netLeave() {
   } catch(e){}
   try { Net.hostConn?.close(); } catch(e){}
   try { Net.peer?.destroy(); } catch(e){}
+  // ★ PeerJS は destroy() 直後もシグナリングサーバ側に少し残留する。
+  //    次の Peer 生成を 300ms 遅らせることで 'unavailable-id' を防ぐ。
+  //    実際の遅延は _resetPeerInstance(300) に任せ、ここでは即座に null にするだけ。
   Net.mode = 'none';
   Net.peer = null;
   Net.hostConn = null;
@@ -4067,8 +4100,15 @@ function netLeave() {
 // 設計: シンプル固定ROOM方式
 // 1. ROOM 1 → 2 → 3 を順番に試す (各 peer-unavailable で即次へ)
 // 2. 3部屋全部空なら ROOM 1 でホスト化して待つ
-// 3. ROOM 1 が unavailable-id (既に誰かがホスト中) なら参加しに行く
-// → 2人だけでも必ず遭遇できる。サーバ不要。完全P2P。
+// 3. ROOM 1 が unavailable-id (既に誰かがホスト中 or 残骸) なら:
+//    → _probeRoom で実接続を試みる
+//      - welcome  → 本物のホスト → client として参加
+//      - reject   → 満室/試合中 → ROOM を再スキャン
+//      - timeout / close / error → 残骸確定 → _scheduleHostRetry
+//        (初回 2s、以降 +3s ずつ、最大 30s)
+// ★ _probeRoom 内シグナリングエラーは _autoRestartSearchPeer に流さず
+//    自力で _scheduleHostRetry に戻す (クロージャ断絶防止)
+// ★ _resetPeerInstance に extraDelay を渡し残骸リトライ時のサーバ解放待ちを強化
 const AutoMatch = {
   active: false,
   state: 'idle',   // idle | searching | handshake | hosting | joined | done
@@ -4107,10 +4147,15 @@ function startAutoMatch({numPlayers, turnTime, name}) {
   if (pane) pane.classList.remove('hidden');
   _autoMsg('シグナリングサーバ接続中…');
 
+  // ★ 古い searchPeer と Net.peer を確実に破棄してから新しい Peer を建てる。
+  //    即破棄→即生成だと PeerJS サーバ側に旧 ID が残留し接続失敗の原因になる。
   try { if (AutoMatch.searchPeer) AutoMatch.searchPeer.destroy(); } catch(e){}
-  const myId = 'lm-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36).slice(-6);
-  try { AutoMatch.searchPeer = new Peer(myId, {debug: 0}); }
-  catch(e) { _autoMsg('Peer 生成失敗'); AutoMatch.active = false; return; }
+  AutoMatch.searchPeer = null;
+  _resetPeerInstance().then(() => {
+    if (!AutoMatch.active) return;
+    const myId = 'lm-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36).slice(-6);
+    try { AutoMatch.searchPeer = new Peer(myId, {debug: 0}); }
+    catch(e) { _autoMsg('Peer 生成失敗'); AutoMatch.active = false; return; }
   AutoMatch.searchPeer.on('open', () => {
     if (!AutoMatch.active) return;
     _autoTryNextRoom();
@@ -4131,6 +4176,7 @@ function startAutoMatch({numPlayers, turnTime, name}) {
       setTimeout(_autoRestartSearchPeer, 1500);
     }
   });
+  }); // end _resetPeerInstance.then
 }
 
 function cancelAutoMatch() {
@@ -4149,9 +4195,14 @@ function cancelAutoMatch() {
 
 function _autoRestartSearchPeer() {
   if (!AutoMatch.active) return;
-  try { AutoMatch.searchPeer?.destroy(); } catch(e){}
-  const myId = 'lm-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36).slice(-6);
-  AutoMatch.searchPeer = new Peer(myId, {debug: 0});
+  const oldPeer = AutoMatch.searchPeer;
+  AutoMatch.searchPeer = null;
+  try { if (oldPeer) oldPeer.destroy(); } catch(e){}
+  // ★ 破棄完了を待ってから新しい searchPeer を生成する
+  setTimeout(() => {
+    if (!AutoMatch.active) return;
+    const myId = 'lm-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36).slice(-6);
+    try { AutoMatch.searchPeer = new Peer(myId, {debug: 0}); } catch(e) { return; }
   AutoMatch.searchPeer.on('open', () => { if (AutoMatch.active) { _autoMsg('探索再開'); _autoTryNextRoom(); } });
   AutoMatch.searchPeer.on('error', err => {
     if (!AutoMatch.active) return;
@@ -4160,6 +4211,7 @@ function _autoRestartSearchPeer() {
       setTimeout(_autoRestartSearchPeer, 3000);
     }
   });
+  }, 300);
 }
 
 // ROOM 1→2→3 を順番に試す。全部空なら ROOM 1 でホスト化
@@ -4265,6 +4317,13 @@ function _autoAdoptAsClient(conn, welcomeMsg, roomNum) {
         if (msg === 'network') msg = 'ネットワーク接続失敗';
         setNetStatus('error', msg);
       });
+      // ★ シグナリング切断時は reconnect で再登録する (netJoin と同じ処理)。
+      //    未登録だとシグナリング切断後に fullState 要求が届かなくなる。
+      Net.peer.on('disconnected', () => {
+        // ★ 自分で退室した場合 (netLeave) は reconnect しない
+        if (Net._intentionalDisconnect) return;
+        try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
+      });
     }
   } catch(e){}
 
@@ -4275,78 +4334,203 @@ function _autoAdoptAsClient(conn, welcomeMsg, roomNum) {
   renderLobby();
 }
 
-// 全ROOM空 → 指定ROOMでホスト化。unavailable-id なら既存ホストがいるので参加しに行く
+// 全ROOM空 → 指定ROOMでホスト化。
+// unavailable-id は「本物のホストがいる」か「前回試合の残骸」か区別できない。
+// → 実際に接続を試みて welcome が来れば本物, タイムアウトなら残骸と判断してリトライ。
+//
+// ★ 設計方針:
+//   ① 最初のホスト化試行: searchPeer を先に破棄してから Net.peer でホスト ID を取る
+//   ② unavailable-id → _probeRoom で接続確認 (searchPeer とは独立した一時 peer を使用)
+//   ③ タイムアウト/close/peer-unavailable → 残骸確定 → _scheduleHostRetry
+//       - 初回は 2s, 以降 +3s ずつ, 最大 30s
+//       - _resetPeerInstance に extraDelay を渡してサーバ側 ID 解放を待つ
+//   ④ welcome → _autoAdoptAsClient (一時 peer を searchPeer に昇格させる)
+//   ⑤ reject  → 他 ROOM を試す (_autoTryNextRoom)
+//   ⑥ _probeRoom 内シグナリングエラー → _autoRestartSearchPeer に流さず
+//       自力で _scheduleHostRetry に戻る (フロー断絶を防ぐ)
 function _autoTryHostNow(roomNum) {
   if (!AutoMatch.active) return;
   const roomId = autoRoomId(roomNum);
   _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' でホスト化試行…');
+
+  // searchPeer は以後ホストフロー中は不要。先に破棄して Net.peer との干渉を防ぐ。
   try { AutoMatch.searchPeer?.destroy(); } catch(e){}
   AutoMatch.searchPeer = null;
 
   const numPlayers = AutoMatch.numPlayers;
   const turnTime = AutoMatch.turnTime;
-  Net.mode = 'online-host';
-  Net.roomCode = 'AUTO:' + roomNum;
-  Net.roomId = roomId;
-  Net.myName = AutoMatch.myName;
-  Net.myPlayerIdx = 0;
-  Net.config = {numPlayers, turnTime};
-  Net.ruleHash = computeRuleHash(Net.config);
-  Net.hostPlayers = [{idx:0, name: Net.myName, peerId: 'HOST', isHost:true, connected:true, rating: computeRating()}];
-  Net.conns.clear();
-  Net.acceptInput = true;
 
-  try { if (Net.peer) Net.peer.destroy(); } catch(e){}
-  Net.peer = new Peer(roomId, {debug: 0});
-  Net.peer.on('open', () => {
-    setNetStatus('hosting', 'ランダムマッチ待機中…');
-    AutoMatch.state = 'hosting';
-    _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' ホスト確立 参加待ち (' + Net.hostPlayers.length + '/' + numPlayers + ')');
-    _autoMatchFinalizeAsHost();
-  });
-  Net.peer.on('error', err => {
-    if (err && err.type === 'unavailable-id') {
-      // そのROOMには既にホストがいる → searchPeerを作り直して参加しに行く
-      _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' にホスト発見 → 参加試行');
-      try { Net.peer?.destroy(); } catch(e){}
-      Net.peer = null; Net.mode = 'none'; Net.hostPlayers = [];
-      AutoMatch.currentRoom = 0; // 再度ROOM1から試す
-      AutoMatch.connectSeq++;
+  _doHostAttempt(0);
+
+  // ---- ホスト化1回分 ----
+  function _doHostAttempt(unavailRetry) {
+    if (!AutoMatch.active) return;
+    _setupHostState();
+    // ★ 残骸リトライ時は extraDelay でサーバ側 ID 解放をより確実に待つ
+    const extra = unavailRetry > 0 ? Math.min(400 + unavailRetry * 200, 1200) : 0;
+    _resetPeerInstance(extra).then(() => {
+      if (!AutoMatch.active) return;
+      if (Net.mode !== 'online-host') return;
+      try { Net.peer = new Peer(roomId, {debug: 0}); }
+      catch(e) { _scheduleHostRetry(unavailRetry); return; }
+      _hostPeerEvents(unavailRetry);
+    });
+  }
+
+  function _setupHostState() {
+    Net.mode = 'online-host';
+    Net.roomCode = 'AUTO:' + roomNum;
+    Net.roomId = roomId;
+    Net.myName = AutoMatch.myName;
+    Net.myPlayerIdx = 0;
+    Net.config = {numPlayers, turnTime};
+    Net.ruleHash = computeRuleHash(Net.config);
+    Net.hostPlayers = [{idx:0, name: Net.myName, peerId: 'HOST', isHost:true, connected:true, rating: computeRating()}];
+    Net.conns.clear();
+    Net.acceptInput = true;
+  }
+
+  function _hostPeerEvents(unavailRetry) {
+    if (!Net.peer) return;
+    Net.peer.on('open', () => {
+      setNetStatus('hosting', 'ランダムマッチ待機中…');
+      AutoMatch.state = 'hosting';
+      _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' ホスト確立 参加待ち (' + Net.hostPlayers.length + '/' + numPlayers + ')');
+      _autoMatchFinalizeAsHost();
+    });
+    Net.peer.on('error', err => {
+      if (err && err.type === 'unavailable-id') {
+        // ★ 残骸か本物のホストか不明 → 実際に接続して確認する
+        _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' 使用中を確認 → 接続試行 (' + (unavailRetry + 1) + '回目)');
+        const oldPeer = Net.peer;
+        Net.peer = null; Net.mode = 'none'; Net.hostPlayers = [];
+        AutoMatch.connectSeq++;
+        try { if (oldPeer) oldPeer.destroy(); } catch(e){}
+        // 破棄完了を少し待ってからプローブ
+        setTimeout(() => _probeRoom(unavailRetry), 350);
+        return;
+      }
+      let msg = err && err.type || 'error';
+      if (msg === 'network') msg = 'ネットワーク接続失敗';
+      if (msg === 'server-error') msg = 'シグナリングサーバ応答なし';
+      setNetStatus('error', msg);
+      _autoMsg('エラー: ' + msg);
+    });
+    Net.peer.on('disconnected', () => {
+      // ★ 自分で退室した場合 (netLeave) は reconnect しない
+      if (Net._intentionalDisconnect) return;
+      setNetStatus('error', 'シグナリング切断 (再接続試行中…)');
+      try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
+    });
+    Net.peer.on('connection', conn => {
+      conn.on('open', () => {
+        conn.on('data', d => handleHostMessage(conn, d));
+        conn.on('close', () => onClientDisconnect(conn));
+        conn.on('error', () => onClientDisconnect(conn));
+      });
+    });
+  }
+
+  // 残骸か本物かを実接続で確認する
+  // ★ searchPeer とは完全に独立した一時 peer (sp) を使う。
+  //    Net.peer / AutoMatch.searchPeer を汚染しない。
+  function _probeRoom(unavailRetry) {
+    if (!AutoMatch.active) return;
+    const seq = AutoMatch.connectSeq;
+    let sp;
+    try {
       const myId = 'lm-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36).slice(-6);
-      try { AutoMatch.searchPeer = new Peer(myId, {debug: 0}); } catch(e) { return; }
-      AutoMatch.searchPeer.on('open', () => { if (AutoMatch.active) _autoTryNextRoom(); });
-      AutoMatch.searchPeer.on('error', err2 => {
-        if (!AutoMatch.active) return;
-        if (err2 && err2.type === 'peer-unavailable') {
+      sp = new Peer(myId, {debug: 0});
+    } catch(e) { _scheduleHostRetry(unavailRetry); return; }
+
+    sp.on('open', () => {
+      if (!AutoMatch.active || seq !== AutoMatch.connectSeq) { try { sp.destroy(); } catch(e){} return; }
+      let conn, resolved = false;
+
+      function _resolveProbe(action) {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(probeTimer);
+        try { if (action !== 'adopt') conn.close(); } catch(e){}
+        if (action !== 'adopt') { try { sp.destroy(); } catch(e){} }
+        if (!AutoMatch.active || seq !== AutoMatch.connectSeq) return;
+        if (action === 'stale') {
+          _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' 残骸を確認 → ホスト化リトライ待機');
+          _scheduleHostRetry(unavailRetry);
+        } else if (action === 'nextroom') {
+          AutoMatch.currentRoom = 0;
           AutoMatch.connectSeq++;
-          if (AutoMatch.searchTimer) { clearTimeout(AutoMatch.searchTimer); AutoMatch.searchTimer = null; }
-          setTimeout(_autoTryNextRoom, 50);
-          return;
+          setTimeout(() => { if (AutoMatch.active) _autoTryNextRoom(); }, 50);
         }
-        if (err2 && (err2.type === 'network' || err2.type === 'server-error' || err2.type === 'socket-error' || err2.type === 'disconnected')) {
-          setTimeout(_autoRestartSearchPeer, 1500);
+        // 'adopt' は caller が sp の所有権を取っているので破棄しない
+      }
+
+      try { conn = sp.connect(roomId, {reliable: true}); }
+      catch(e) { try { sp.destroy(); } catch(e2){} _scheduleHostRetry(unavailRetry); return; }
+
+      const probeTimer = setTimeout(() => {
+        // タイムアウト = 残骸確定（誰も応答しない）
+        _resolveProbe('stale');
+      }, AUTO_CONNECT_TIMEOUT_MS);
+
+      conn.on('open', () => {
+        if (!AutoMatch.active || seq !== AutoMatch.connectSeq) {
+          _resolveProbe('stale'); return;
+        }
+        try {
+          conn.send({type:'hello', ver:VERSION, protocolVersion:PROTOCOL_VERSION,
+            packetVersion:PACKET_VERSION, name:AutoMatch.myName, ruleHash:null, rating:computeRating()});
+        } catch(e) { _resolveProbe('stale'); }
+      });
+      conn.on('data', d => {
+        if (resolved || !AutoMatch.active || seq !== AutoMatch.connectSeq) return;
+        if (!validatePacket(d)) return;
+        if (d.type === 'welcome') {
+          // 本物のホストがいた → sp を searchPeer に昇格して client として参加
+          AutoMatch.searchPeer = sp;
+          resolved = true;
+          clearTimeout(probeTimer);
+          _autoAdoptAsClient(conn, d, roomNum);
+        } else if (d.type === 'reject') {
+          // room-full / game-started → 全 ROOM を再スキャン
+          _resolveProbe('nextroom');
         }
       });
-      return;
-    }
-    let msg = err && err.type || 'error';
-    if (msg === 'network') msg = 'ネットワーク接続失敗';
-    if (msg === 'server-error') msg = 'シグナリングサーバ応答なし';
-    setNetStatus('error', msg);
-    _autoMsg('エラー: ' + msg);
-  });
-  Net.peer.on('disconnected', () => {
-    setNetStatus('error', 'シグナリング切断 (再接続試行中…)');
-    try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
-  });
-  Net.peer.on('connection', conn => {
-    conn.on('open', () => {
-      // ★ ここでは game-started / room-full を reject しない (再接続トークン判断は hello で行う)
-      conn.on('data', d => handleHostMessage(conn, d));
-      conn.on('close', () => onClientDisconnect(conn));
-      conn.on('error', () => onClientDisconnect(conn));
+      conn.on('close', () => { _resolveProbe('stale'); });
+      conn.on('error', () => { _resolveProbe('stale'); });
     });
-  });
+
+    sp.on('error', err2 => {
+      if (!AutoMatch.active || seq !== AutoMatch.connectSeq) {
+        try { sp.destroy(); } catch(e){} return;
+      }
+      try { sp.destroy(); } catch(e){}
+      if (err2 && err2.type === 'peer-unavailable') {
+        // ROOM に誰もいない = 残骸が既に消滅 → ホスト化リトライ
+        if (!AutoMatch.active || seq !== AutoMatch.connectSeq) return;
+        _scheduleHostRetry(unavailRetry);
+      } else {
+        // シグナリングエラー → ここも _scheduleHostRetry に戻す
+        // (_autoRestartSearchPeer に流すとクロージャが断絶するため使わない)
+        if (!AutoMatch.active || seq !== AutoMatch.connectSeq) return;
+        const sigDelay = (err2 && (err2.type === 'network' || err2.type === 'socket-error')) ? 3000 : 1500;
+        _autoMsg('シグナリングエラー (' + (err2 && err2.type || 'unknown') + ') → ' + Math.round(sigDelay/1000) + 's 後リトライ');
+        setTimeout(() => _scheduleHostRetry(unavailRetry), sigDelay);
+      }
+    });
+  }
+
+  // 残骸確認後のホスト化リトライ。回数に応じて待機時間を伸ばす。
+  // 初回: 2s、以降 +3s ずつ、最大 30s
+  function _scheduleHostRetry(retryCount) {
+    if (!AutoMatch.active) return;
+    const delay = Math.min(2000 + retryCount * 3000, 30000);
+    _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' ホスト化リトライ待機 ' + Math.round(delay / 1000) + 's… (' + (retryCount + 1) + '回目)');
+    setTimeout(() => {
+      if (!AutoMatch.active) return;
+      _doHostAttempt(retryCount + 1);
+    }, delay);
+  }
 }
 
 // numPlayers に到達したら自動でゲーム開始
@@ -5560,8 +5744,9 @@ function prepareNewTurn() {
   if (!player.alive) { postActionAdvance(); return; }
   // リプレイモード: タイマー・CPU自動進行・ハンドオフは不要
   if (state.mode === 'replay') { return; }
-  // ★ ターン切り替わり時に deadline をリセット。
+  // ★ ターン切り替わり時に deadline とタイマーをリセット。
   //   maybeStartTimerForLocalTurn() で新しい turnTime から再セットされる。
+  stopTurnTimer();
   _timerDeadlineMs = 0;
   // 保護ターン消費 (切断直後のCPU代理に発動)
   if (player.cpuControlled && player.protectTurns > 0) player.protectTurns--;
@@ -5711,7 +5896,9 @@ function onTurnTimeout() {
   const pIdx = currentPlayerIdx();
   if (pIdx < 0) return;
   const isOnline = state.mode === 'online-host' || state.mode === 'online-client';
-  if (isOnline && pIdx !== localIdx) return;
+  // online-clientは自分のターン以外は何もしない（ホストが代理処理する）
+  // online-hostはクライアントのターン含め全員のタイムアウトを処理する
+  if (state.mode === 'online-client' && pIdx !== localIdx) return;
   const player = state.players[pIdx];
   if (!player) return;
   if (!isOnline && player.isCPU) return;
@@ -5785,6 +5972,11 @@ function onTurnTimeout() {
 function showResult() {
   stopTurnTimer();
   showScreen('end');
+  // ★ 試合終了時に再接続トークンを破棄する。
+  //    残留トークンがあると次回同じ合言葉で部屋を作り直したとき
+  //    古いトークンをホストへ提示してしまい「再接続エラー」になる。
+  if (Net.roomCode) clearReconnectToken(Net.roomCode);
+  Net.reconnectToken = '';
   // オンラインモードならレート記録 (1ゲーム1回のみ)
   maybeRecordOnlineGameResult();
   // 「もう一度」ボタンをオンラインモード別に調整
@@ -7215,25 +7407,9 @@ const Puzzle = (() => {
 
   function autoSkip() {
     if (!st || st.ended) return;
-    if (st.hand.length === 0) { endPuzzle(); return; }
-    showMsg('合法手なし — 手札1枚を山札へ戻して再配');
-    const c = st.hand.shift();
-    if (st.deck.length === 0) {
-      // No more deck — game ends
-      endPuzzle();
-      return;
-    }
-    st.deck.push(c);
-    st.hand.push(st.deck.shift());
-    render();
-    let safety = 60;
-    while (st && !st.ended && st.hand.length && st.deck.length && !hasAnyLegalMove() && safety-- > 0) {
-      const c2 = st.hand.shift();
-      st.deck.push(c2);
-      st.hand.push(st.deck.shift());
-    }
-    render();
-    if (!hasAnyLegalMove()) endPuzzle();
+    // スコアアタックモード: 合法手なし → 山札交換なし、即終了
+    showMsg('合法手なし — ゲーム終了');
+    setTimeout(endPuzzle, 800);
   }
 
   function endPuzzle() {
