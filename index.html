@@ -3169,10 +3169,10 @@ function broadcastLobby() {
 function broadcastStateIfHost() {
   if (Net.mode !== 'online-host') return;
   // ★ ホストの残りタイマー時間をクライアントへ伝える
-  // timerSec > 0 = ホストタイマー稼働中（ホスト自身のターン）→ 現在値を送る
-  // timerSec === 0 = ホストタイマー非稼働（クライアントのターン）→ 直前値を維持し、
+  // timerHandle !== null = ホストタイマー稼働中（ホスト自身のターン）→ deadline から現在値を計算して送る
+  // timerHandle === null = ホストタイマー非稼働（クライアントのターン）→ 直前値を維持し、
   //   直前値がない場合のみ state.turnTime にフォールバック（全秒リセット防止）
-  state._remainingTime = timerSec > 0 ? timerSec : (state._remainingTime || state.turnTime || 0);
+  state._remainingTime = timerHandle !== null ? getRemainingSec() : (state._remainingTime || state.turnTime || 0);
   // 単調増加バージョン番号をインクリメントしてから送信する。
   // クライアント側がこの番号で古いメッセージを捨てられるようにする。
   state.stateVersion = (state.stateVersion || 0) + 1;
@@ -3231,7 +3231,7 @@ function _pushStateToSpectators(matchId, hash, deckFp) {
 function sendFullStateTo(conn, viewerIdx, opts) {
   if (!state) return;
   // ★ fullState でも残り時間をクライアントへ伝える（broadcastStateIfHostと同じロジック）
-  state._remainingTime = timerSec > 0 ? timerSec : (state._remainingTime || state.turnTime || 0);
+  state._remainingTime = timerHandle !== null ? getRemainingSec() : (state._remainingTime || state.turnTime || 0);
   const hash = computeStateHash(state);
   state._lastHash = hash;
   // ★ fullState でも deckFp を送る。client はこれを正として hostDeckFp に保存する。
@@ -3735,13 +3735,13 @@ function maybeStartTimerForLocalTurn() {
   checkStalePending(); // ★ Bug5: pending タイムアウトチェック
   if (currentPlayerIdx() === localPlayerIdx()) {
     // オンラインクライアント: 既にタイマーが動いている場合はリセットしない
-    // （state パケット受信のたびに timerSec が延長されるのを防ぐ）
+    // （state パケット受信のたびに deadline が延長されるのを防ぐ）
     if (state.mode === 'online-client' && timerHandle !== null) {
       // ★ ドリフト対策: タイマー稼働中でもホストの remainingTime でデッドラインを補正する。
       //   これにより setInterval の累積ラグがリセットされ、ホスト時計と同期を保てる。
+      //   timerSec は廃止済み。次の 250ms tick で getRemainingSec() が正しい値を返す。
       if (state.remainingTime != null && state.remainingTime > 0 && _timerDeadlineMs > 0) {
         _timerDeadlineMs = performance.now() + state.remainingTime * 1000;
-        timerSec = state.remainingTime;
         updateTimerDisplay();
       }
       return;
@@ -3938,6 +3938,9 @@ function netLeave() {
   Net.joinAsSpectator = false;
   stopTurnTimer();
   stopFullStateHeartbeat();
+  // ★ placeConfirm タイマー/rAF も停止 (退室後に古い操作が発火しないよう)
+  try { if (_placeConfirmTimer) { clearTimeout(_placeConfirmTimer); _placeConfirmTimer = null; } } catch(e){}
+  try { if (_placeConfirmRaf) { cancelAnimationFrame(_placeConfirmRaf); _placeConfirmRaf = null; } } catch(e){}
   try {
     for (const conn of Net.conns.values()) { try { conn.close(); } catch(e){} }
   } catch(e){}
@@ -3952,6 +3955,9 @@ function netLeave() {
   Net._lobbySpectatorCount = 0;
   Net.myPlayerIdx = -1;
   Net.status = 'disconnected';
+  // ★ roomCode / roomId をリセット (未クリアだと次回ホスト作成時に前の値が残留する)
+  Net.roomCode = '';
+  Net.roomId = '';
   Net.currentMatchId = '';
   Net._lastStateVersion = 0;
   Net.isRecovering = false;
@@ -4329,7 +4335,7 @@ function _onNetLifecycleShow() {
   try {
     if (Net.mode === 'online-host') {
       if (state && state.phase === 'play' && currentPlayerIdx() === localPlayerIdx()) {
-        if (typeof startTurnTimer === 'function') startTurnTimer();
+        if (typeof resumeTurnTimer === 'function') resumeTurnTimer();
       }
     }
   } catch(e){}
@@ -4339,7 +4345,23 @@ function _installNetLifecycle() {
     if (document.hidden) _onNetLifecycleHide();
     else _onNetLifecycleShow();
   });
-  window.addEventListener('pagehide', _onNetLifecycleHide);
+  // ★ ページ離脱・タブ閉じ時に WebRTC/PeerJS を完全解放する。
+  //    peer.destroy() を呼ばないとブラウザ内部の RTCPeerConnection が残留し、
+  //    「アプリを kill しないと部屋を再作成できない」症状の直接原因になる。
+  //    beforeunload はデスクトップ、pagehide はモバイル Safari 向けに両方登録する。
+  window.addEventListener('beforeunload', () => {
+    if (Net.mode !== 'none') {
+      try { netLeave(); } catch(e){}
+    }
+  });
+  window.addEventListener('pagehide', (e) => {
+    // persisted=true (BFCache) の場合は hide 扱いのみ。それ以外は完全終了として netLeave。
+    if (!e.persisted && Net.mode !== 'none') {
+      try { netLeave(); } catch(e){}
+    } else {
+      _onNetLifecycleHide();
+    }
+  });
   window.addEventListener('pageshow', _onNetLifecycleShow);
   // Chrome の Page Lifecycle: freeze/resume はタブが背景化で discard 直前/復帰直後に発火する
   window.addEventListener('freeze', _onNetLifecycleHide);
@@ -5525,11 +5547,19 @@ function doHandoff() {
   pauseTurnTimer();
   renderHand(); updateActionButtons();
 }
-function handoffReady() { $('overlay-handoff').classList.add('hidden'); renderAll(); startTurnTimer(); }
+function handoffReady() { $('overlay-handoff').classList.add('hidden'); renderAll(); resumeTurnTimer(); }
 
 // ============================== TIMER ==============================
-let timerSec = 0;
-let _timerDeadlineMs = 0; // オンラインクライアント用: タイムアウト絶対時刻(ms)
+// timerSec は廃止。残り時間は常に deadline から計算する。
+// これにより tick 間の状態不整合・pause/resume ズレが構造的に発生しない。
+let _timerDeadlineMs = 0;    // 絶対デッドライン(ms) — 全モード共通
+let _pausedRemainingMs = 0;  // pause中の残り時間(ms)
+
+// 残り秒数を deadline から直接計算する。timerSec の代わりにこれを使う。
+function getRemainingSec() {
+  return Math.max(0, Math.ceil((_timerDeadlineMs - performance.now()) / 1000));
+}
+
 function startTurnTimer() {
   stopTurnTimer();
   if (!state) return;
@@ -5543,38 +5573,53 @@ function startTurnTimer() {
   } else {
     if (currentPlayerIdx() !== localIdx) return;
   }
-  // オンラインクライアントはホストから受け取った残り時間を使う
+  // オンラインクライアントはホストから受け取った残り時間を使う。それ以外は turnTime から開始。
   const isOnlineClient = state.mode === 'online-client';
-  timerSec = (isOnlineClient && state.remainingTime != null && state.remainingTime > 0) ? state.remainingTime : state.turnTime;
+  const initialSec = (isOnlineClient && state.remainingTime != null && state.remainingTime > 0)
+    ? state.remainingTime
+    : state.turnTime;
+  // ★ 全モード統一: 絶対デッドラインで管理。
+  //   setInterval の累積誤差・Safari凍結・PWA復帰・Android省電力を全て吸収する。
+  //   250ms polling で視覚的ズレを最小化しつつ CPU 負荷は無視できるレベル。
+  _timerDeadlineMs = performance.now() + initialSec * 1000;
+  _pausedRemainingMs = 0;
   updateTimerDisplay();
-  if (isOnlineClient) {
-    // ★ ドリフト対策: setInterval の累積誤差を防ぐため、
-    //   残り時間をミリ秒単位の絶対デッドラインに変換して管理する。
-    //   各 tick では現在時刻からの差分を秒数に切り捨てて表示し、
-    //   デッドラインを過ぎたら即タイムアウトとする。
-    _timerDeadlineMs = performance.now() + timerSec * 1000;
-    timerHandle = setInterval(() => {
-      const remaining = (_timerDeadlineMs - performance.now()) / 1000;
-      timerSec = Math.max(0, Math.ceil(remaining));
-      updateTimerDisplay();
-      if (remaining <= 0) { stopTurnTimer(); onTurnTimeout(); }
-    }, 500); // 500ms 間隔で polling し視覚的なズレを最小化
-  } else {
-    _timerDeadlineMs = 0;
-    timerHandle = setInterval(() => {
-      timerSec--;
-      updateTimerDisplay();
-      if (timerSec <= 0) { stopTurnTimer(); onTurnTimeout(); }
-    }, 1000);
-  }
+  timerHandle = setInterval(() => {
+    const remaining = (_timerDeadlineMs - performance.now()) / 1000;
+    updateTimerDisplay();
+    if (remaining <= 0) { stopTurnTimer(); onTurnTimeout(); }
+  }, 250);
 }
-function pauseTurnTimer() { if (timerHandle) { clearInterval(timerHandle); timerHandle = null; } }
-function stopTurnTimer() { if (timerHandle) { clearInterval(timerHandle); timerHandle = null; } }
+function pauseTurnTimer() {
+  if (!timerHandle) return;
+  // pause時点の残り時間を保存。resume時に deadline を作り直すために使う。
+  _pausedRemainingMs = Math.max(0, _timerDeadlineMs - performance.now());
+  clearInterval(timerHandle);
+  timerHandle = null;
+}
+function resumeTurnTimer() {
+  if (timerHandle) return; // すでに動いている
+  if (!state || !state.turnTime || state.turnTime <= 0) return;
+  if (_pausedRemainingMs <= 0) return;
+  // deadline を現在時刻から再計算して再開。残り時間がズレない。
+  _timerDeadlineMs = performance.now() + _pausedRemainingMs;
+  _pausedRemainingMs = 0;
+  timerHandle = setInterval(() => {
+    const remaining = (_timerDeadlineMs - performance.now()) / 1000;
+    updateTimerDisplay();
+    if (remaining <= 0) { stopTurnTimer(); onTurnTimeout(); }
+  }, 250);
+}
+function stopTurnTimer() {
+  if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
+  _pausedRemainingMs = 0;
+}
 function updateTimerDisplay() {
   const t = $('timer');
-  t.textContent = timerSec;
-  t.classList.toggle('warn', timerSec <= 10 && timerSec > 5);
-  t.classList.toggle('danger', timerSec <= 5);
+  const s = getRemainingSec();
+  t.textContent = s;
+  t.classList.toggle('warn', s <= 10 && s > 5);
+  t.classList.toggle('danger', s <= 5);
 }
 function onTurnTimeout() {
   if (!state) return;
