@@ -2956,9 +2956,18 @@ function _buildLobbyPayload() {
   };
 }
 function _sendLobbyHeartbeat() {
-  if (Net.mode !== 'online-host') return;
+
+  // AutoMatch の host fallback / reconnect 中でも
+  // 「host権限を持つ peer」なら heartbeat を維持する。
+  // mode 固定判定だと race 中に room が蒸発する。
+  const isHost =
+    Net.mode === 'online-host' ||
+    (Net.peer && Net.myPlayerIdx === 0);
+
+  if (!isHost) return;
+
   if (!Net.roomId) return;
-  if (!LOBBY_URL_CONFIGURED) return;  // placeholder のまま無駄なリクエストを出さない
+  if (!LOBBY_URL_CONFIGURED) return;
   try {
     fetch(LOBBY_URL + '/heartbeat', {
       method: 'POST',
