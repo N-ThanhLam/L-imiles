@@ -374,6 +374,15 @@ html.lowspec .result-row.winner-anim { animation: none; }
 .score-row .net-meta { color:var(--text-dim); font-size:10px; opacity:0.8; white-space:nowrap; }
 .rate-badge { display:inline-block; padding:1px 5px; background:var(--accent); color:#0a1220; font-weight:800; font-size:10px; border-radius:8px; margin-left:3px; font-variant-numeric: tabular-nums; }
 .rate-badge.rate-zero { background:var(--panel-2); color:var(--text-dim); }
+.puzzle-rank-badge { display:inline-block; padding:1px 5px; background:linear-gradient(135deg,#ffce5e,#ff8cb8); color:#1a0a18; font-weight:900; font-size:10px; border-radius:8px; margin-left:3px; letter-spacing:0.04em; }
+.puzzle-rank-badge.rank-E { background:var(--panel-2); color:var(--text-dim); }
+.puzzle-rank-badge.rank-D { background:#4a5060; color:#c8d0e0; }
+.puzzle-rank-badge.rank-C { background:#2a5a3a; color:#7effc0; }
+.puzzle-rank-badge.rank-B { background:#2a4a6a; color:#7ec8ff; }
+.puzzle-rank-badge.rank-A { background:#5a3a8a; color:#ddb8ff; }
+.puzzle-rank-badge.rank-S { background:linear-gradient(135deg,#ffce5e,#f5a623); color:#2a1600; }
+.puzzle-rank-badge.rank-SS { background:linear-gradient(135deg,#ff8c42,#ffce5e); color:#2a1000; }
+.puzzle-rank-badge.rank-SSS { background:linear-gradient(135deg,#ff6b9d,#ffce5e,#a98cff); color:#1a0a18; }
 .status-tag { display:inline-block; padding:1px 5px; border-radius:8px; font-size:9px; font-weight:800; letter-spacing:0.04em; margin-left:3px; }
 .title-badge { display:inline-block; padding:2px 8px; background:linear-gradient(135deg, #a98cff, #5ea8ff); color:#0a1220; font-weight:800; font-size:10px; letter-spacing:0.05em; border-radius:10px; margin-left:3px; box-shadow:0 2px 5px rgba(95,168,255,0.4); }
 .status-tag.tag-disc { background:var(--warn); color:#3a2a04; animation: discBlink 1.4s ease-in-out infinite; }
@@ -711,11 +720,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
 
 .puzzle-msg { font-size:11px; color:var(--text-dim); min-height:14px; }
 
-.puzzle-diff-row { display:flex; flex-direction:column; gap:8px; margin:10px 0 14px; }
-.puzzle-diff-btn { padding:12px 14px; font-size:14px; text-align:left; display:flex; flex-direction:column; gap:3px; align-items:flex-start; cursor:pointer; }
-.puzzle-diff-name { font-size:16px; font-weight:800; }
-.puzzle-diff-detail { font-size:11px; opacity:0.85; font-weight:600; }
-.puzzle-diff-btn.primary .puzzle-diff-detail { color:rgba(10,18,32,0.75); }
+
 
 .puzzle-end-card { background:var(--panel-2); border:1px solid var(--border); border-radius:12px; padding:24px 16px; text-align:center; margin:14px 0; }
 .puzzle-end-rank { font-size:84px; font-weight:900; line-height:1; background:linear-gradient(135deg,#ffce5e,#ff8cb8,#a98cff); -webkit-background-clip:text; background-clip:text; color:transparent; letter-spacing:-0.04em; }
@@ -969,6 +974,13 @@ html.lowspec .result-row.winner-anim { animation: none; }
           <button data-action="online-auto-cancel" class="danger">キャンセル</button>
           <button class="primary" data-action="online-auto-start">マッチング開始</button>
         </div>
+        <div style="margin-top:14px; border-top:1px solid var(--panel-2); padding-top:10px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+            <strong style="font-size:13px;">公開ルーム一覧 (最大10)</strong>
+            <button data-action="online-rooms-refresh" style="font-size:11px; padding:3px 10px;">更新</button>
+          </div>
+          <div id="online-room-list" style="font-size:12px; color:var(--text-dim);">未取得</div>
+        </div>
       </div>
 
       <div id="online-pane-lobby" class="hidden" style="margin-top:14px;">
@@ -1131,7 +1143,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
       </div>
       <div class="confirm-buttons" style="justify-content:center; gap:12px;">
         <button data-action="puzzle-setup-cancel">キャンセル</button>
-        <button class="primary" data-action="puzzle-diff-hard" style="padding:14px 32px; font-size:15px;">スタート</button>
+        <button class="primary" data-action="puzzle-start-now" style="padding:14px 32px; font-size:15px;">スタート</button>
       </div>
     </div>
   </div>
@@ -1440,6 +1452,25 @@ function recordOnlineDisconnectLoss() {
   if (state.phase === 'end') return; // 正規終了済みなら記録済みのはず
   recordGameResult({rank: state.players.length, numPlayers: state.players.length, disconnected: true});
   state._rateRecorded = true;
+}
+// パズルスコアモードのランク (ハイスコアから算出)
+function puzzleRankFor(score) {
+  if (score >= 100000) return 'SSS';
+  if (score >= 60000)  return 'SS';
+  if (score >= 30000)  return 'S';
+  if (score >= 12000)  return 'A';
+  if (score >= 5000)   return 'B';
+  if (score >= 2200)   return 'C';
+  if (score >= 1000)   return 'D';
+  return 'E';
+}
+function getPuzzleHiscore() {
+  try { return parseInt(localStorage.getItem('limiles_puzzle_hiscore') || '0', 10) || 0; } catch(e) { return 0; }
+}
+function puzzleRankBadgeHtml() {
+  const best = getPuzzleHiscore();
+  const rank = puzzleRankFor(best);
+  return '<span class="puzzle-rank-badge rank-'+rank+'" title="パズルスコアモード ハイスコアランク ('+best.toLocaleString()+'pt)">'+rank+'</span>';
 }
 // オンライン setup 画面の自分のレート表示を更新
 function updateMyRatingDisplay() {
@@ -2464,7 +2495,6 @@ function cpuPickMove(s, playerIdx, level, deadline) {
 function startCPUTurn() {
   if (cpuPending) return;
   cpuPending = true;
-  pauseTurnTimer();
   const pIdx = currentPlayerIdx();
   const player = state.players[pIdx];
   // 切断中の代理CPUは「強すぎず」維持寄り (Lv2固定)、本来のCPUは設定通り
@@ -2672,6 +2702,9 @@ const Net = {
   _clientPending: new Map(),              // client: actionId → {card, x, y, isJammer, savedState} pending中の配置
   _actionIdCounter: 0,                    // client: pending action の一意ID生成用
   _intentionalDisconnect: false,          // ★ netLeave() による意図的切断フラグ。disconnected ハンドラが reconnect() を空振りしないよう制御する
+  // ===== Worker Lobby Index (host のみ heartbeat 送信) =====
+  // gameplay は引き続き PeerJS direct なので、ここは room discovery 専用のフラグ/タイマーのみ。
+  lobbyHeartbeatTimer: null,              // host: Worker /heartbeat 定期送信タイマー
 };
 // ★ 過剰防御の見直し: heartbeat を低頻度化してモバイルでの帯域/GC圧迫を抑える。
 //    state/action は変化時にすぐbroadcastされるので、heartbeat は単なる安全網として 15s 間隔で十分。
@@ -2680,6 +2713,19 @@ const FULLSTATE_REQ_COOLDOWN = 1500;  // client: 同期要求の最短間隔
 const SPECTATOR_MAX = 8;              // host: 観戦者の最大接続数
 const SPECTATOR_HEARTBEAT_MS = 30000; // host: 観戦者専用 heartbeat 間隔 (30秒・低頻度)
 const SPECTATOR_REQ_COOLDOWN = 5000;  // host: 観戦者 1人あたりの requestFullState 最短間隔
+
+// ===== Worker Lobby Index =====
+// Worker は room 存在 index のみ。authoritative server ではない (gameplay は PeerJS direct)。
+// ※ デプロイ後、自分の Cloudflare Worker URL に差し替えること。
+const LOBBY_URL = 'https://odd-cake-7a5f.thanhlam-527.workers.dev';
+// プレースホルダ判定: 'xxxxx' を含む / 空文字なら未設定とみなす。
+const LOBBY_URL_CONFIGURED = !!LOBBY_URL && !LOBBY_URL.includes('xxxxx');
+const LOBBY_HEARTBEAT_INTERVAL_MS = 5000;  // host → Worker heartbeat 周期 (短くしない)
+const LOBBY_FETCH_TIMEOUT_MS = 4000;       // GET /rooms タイムアウト
+const LOBBY_MAX_ROOMS = 10;                // 表示・探索する最大 room 数
+if (!LOBBY_URL_CONFIGURED) {
+  console.warn('[Lobby] LOBBY_URL is not configured (placeholder). AutoMatch and room browser will not work until you replace it with a real Cloudflare Worker URL.');
+}
 
 // ===== Protocol / packet versioning =====
 // appVersion (VERSION) とは別に protocolVersion / packetVersion を分離する。
@@ -2894,6 +2940,94 @@ function showOnlineMsg(title, body) {
 }
 function roomIdFor(keyword) { return 'limiles-' + hashSeed(keyword.toLowerCase()).toString(16).padStart(8,'0'); }
 
+// ===== Worker Lobby (host heartbeat / room index fetch) =====
+// host のみ heartbeat を Worker に送る。Worker は room existence index 専用。
+// 失敗は silent (Worker outage で gameplay が止まらないようにする)。
+function _buildLobbyPayload() {
+  return {
+    roomCode: Net.roomCode || '',
+    roomId: Net.roomId || '',
+    players: Net.hostPlayers.length,
+    maxPlayers: Net.config ? Net.config.numPlayers : 0,
+    spectators: (state && state.spectators ? state.spectators.length : (Net.lobbySpectators?.length || 0)),
+    started: !!state,            // ★ phase 判定は使わない (rematch/reconnect/transient で誤判定するため)
+    version: VERSION,
+    ts: Date.now(),
+  };
+}
+function _sendLobbyHeartbeat() {
+  if (Net.mode !== 'online-host') return;
+  if (!Net.roomId) return;
+  if (!LOBBY_URL_CONFIGURED) return;  // placeholder のまま無駄なリクエストを出さない
+  try {
+    fetch(LOBBY_URL + '/heartbeat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(_buildLobbyPayload()),
+      keepalive: true,
+    }).catch(e => {
+      // ★ silent ではあるが、診断のため console には残す (Worker down 検知のため)
+      if (!Net._lobbyHeartbeatLoggedError) {
+        Net._lobbyHeartbeatLoggedError = true;
+        console.warn('[Lobby] /heartbeat failed (will keep retrying silently):', e && e.message || e);
+      }
+    });
+  } catch(e) {
+    console.warn('[Lobby] /heartbeat threw:', e);
+  }
+}
+function startLobbyHeartbeat() {
+  // ★ 多重 setInterval 防止 (rematch / 再ホスト / race 対策)
+  stopLobbyHeartbeat();
+  _sendLobbyHeartbeat();  // 初回即送信
+  Net.lobbyHeartbeatTimer = setInterval(_sendLobbyHeartbeat, LOBBY_HEARTBEAT_INTERVAL_MS);
+}
+function stopLobbyHeartbeat() {
+  if (Net.lobbyHeartbeatTimer) {
+    clearInterval(Net.lobbyHeartbeatTimer);
+    Net.lobbyHeartbeatTimer = null;
+  }
+}
+// GET /rooms → {rooms: Array, status: 'ok'|'unconfigured'|'fetch-error'|'bad-json'|'http-error'} を返す。
+// rooms は常に Array。status は UI / 診断用。
+async function fetchLobbyRooms() {
+  if (!LOBBY_URL_CONFIGURED) {
+    return { rooms: [], status: 'unconfigured' };
+  }
+  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const to = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch(e){} }, LOBBY_FETCH_TIMEOUT_MS) : null;
+  try {
+    const res = await fetch(LOBBY_URL + '/rooms', { method:'GET', signal: ctrl ? ctrl.signal : undefined });
+    if (!res.ok) {
+      console.warn('[Lobby] GET /rooms HTTP', res.status, res.statusText);
+      return { rooms: [], status: 'http-error' };
+    }
+    let data;
+    try { data = await res.json(); }
+    catch(e) {
+      console.warn('[Lobby] GET /rooms JSON parse failed:', e);
+      return { rooms: [], status: 'bad-json' };
+    }
+    if (!Array.isArray(data)) {
+      console.warn('[Lobby] GET /rooms returned non-array:', data);
+      return { rooms: [], status: 'bad-json' };
+    }
+    // 型ガード + 最大 LOBBY_MAX_ROOMS で打ち切る
+    const rooms = data.filter(r =>
+      r && typeof r === 'object' &&
+      typeof r.roomId === 'string' &&
+      typeof r.players === 'number' &&
+      typeof r.maxPlayers === 'number'
+    ).slice(0, LOBBY_MAX_ROOMS);
+    return { rooms, status: 'ok' };
+  } catch(e) {
+    console.warn('[Lobby] GET /rooms fetch error (Worker down / CORS / DNS?):', e && e.message || e);
+    return { rooms: [], status: 'fetch-error' };
+  } finally {
+    if (to) clearTimeout(to);
+  }
+}
+
 function netHostCreate({keyword, name, numPlayers, turnTime}) {
   if (!keyword) { showOnlineMsg('エラー','合言葉を入力してください'); return; }
   // ★ 既に接続中の場合は先にクリーンアップする。
@@ -2913,7 +3047,7 @@ function netHostCreate({keyword, name, numPlayers, turnTime}) {
   Net.myPlayerIdx = 0;
   Net.config = {numPlayers, turnTime};
   Net.ruleHash = computeRuleHash(Net.config);
-  Net.hostPlayers = [{idx:0, name: Net.myName, peerId: 'HOST', isHost:true, connected:true, rating: computeRating()}];
+  Net.hostPlayers = [{idx:0, name: Net.myName, peerId: 'HOST', isHost:true, connected:true, rating: computeRating(), puzzleRank: puzzleRankFor(getPuzzleHiscore())}];
   Net.lobbySpectators = [];
   Net.conns.clear();
   // ★ 自分が同じ合言葉で過去に client/spectator として入った時のトークン残骸を破棄する。
@@ -2932,7 +3066,12 @@ function netHostCreate({keyword, name, numPlayers, turnTime}) {
     try { Net.peer = new Peer(Net.roomId, {debug: 0}); } catch(e) {
       setNetStatus('error', 'Peer 生成失敗'); return;
     }
-    Net.peer.on('open', id => { setNetStatus('hosting', '待機中。合言葉を共有してください'); });
+    Net.peer.on('open', id => {
+      setNetStatus('hosting', '待機中。合言葉を共有してください');
+      // ★ host が PeerJS シグナリングに登録成功した段階で Worker /heartbeat 開始。
+      //   この時点で roomCode/roomId/config が確定済み = room を公開できる状態。
+      startLobbyHeartbeat();
+    });
     Net.peer.on('error', err => {
       let msg = err.type || 'error';
       if (err.type === 'unavailable-id') {
@@ -3109,7 +3248,7 @@ function handleHostMessage(conn, msg) {
       Net.conns.set(conn.peer, conn);
       conn.send({
         type:'welcome', yourIdx:-1, role:'spectator', ver:VERSION, config:Net.config,
-        players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating})),
+        players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating, puzzleRank:p.puzzleRank})),
         spectatorCount: spList.length,
       });
       if (state) {
@@ -3127,12 +3266,13 @@ function handleHostMessage(conn, msg) {
     if (Net.hostPlayers.some(p => p.peerId === conn.peer)) return; // duplicate
     const idx = Net.hostPlayers.length;
     const clientRating = (typeof msg.rating === 'number' && isFinite(msg.rating)) ? msg.rating : 0;
-    Net.hostPlayers.push({idx, name: (msg.name||'').slice(0,16) || ('P'+(idx+1)), peerId: conn.peer, isHost:false, connected:true, rating: clientRating});
+    const clientPuzzleRank = (typeof msg.puzzleRank === 'string') ? msg.puzzleRank : undefined;
+    Net.hostPlayers.push({idx, name: (msg.name||'').slice(0,16) || ('P'+(idx+1)), peerId: conn.peer, isHost:false, connected:true, rating: clientRating, puzzleRank: clientPuzzleRank});
     Net.conns.set(conn.peer, conn);
     // クライアントには reconnectToken を発行
     const token = Math.random().toString(36).slice(2, 10);
     Net.hostPlayers[idx].reconnectToken = token;
-    conn.send({type:'welcome', yourIdx: idx, ver:VERSION, config: Net.config, reconnectToken: token, players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating}))});
+    conn.send({type:'welcome', yourIdx: idx, ver:VERSION, config: Net.config, reconnectToken: token, players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating, puzzleRank:p.puzzleRank}))});
     broadcastLobby();
     renderLobby();
   } else if (msg.type === 'action') {
@@ -3180,7 +3320,7 @@ function broadcastLobby() {
   const specCount = state && state.spectators ? state.spectators.length : (Net.lobbySpectators?.length || 0);
   const payload = {
     type:'lobby-update',
-    players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating})),
+    players: Net.hostPlayers.map(p => ({idx:p.idx, name:p.name, isHost:p.isHost, rating:p.rating, puzzleRank:p.puzzleRank})),
     spectatorCount: specCount,
   };
   for (const conn of Net.conns.values()) safeSend(conn, payload);
@@ -3360,7 +3500,7 @@ function netJoin({keyword, name}) {
       setNetStatus('handshake', 'ハンドシェイク中…');
       // 再接続トークンがあれば送信して復帰を試みる。観戦者ならrole=spectator
       const prev = loadReconnectToken(Net.roomCode);
-      const hello = {type:'hello', ver:VERSION, name: Net.myName, ruleHash: null, rating: computeRating()};
+      const hello = {type:'hello', ver:VERSION, name: Net.myName, ruleHash: null, rating: computeRating(), puzzleRank: puzzleRankFor(getPuzzleHiscore())};
       if (Net.joinAsSpectator) hello.role = 'spectator';
       else if (prev && prev.token) hello.reconnectToken = prev.token;
       conn.send(hello);
@@ -3806,7 +3946,6 @@ function maybeStartTimerForLocalTurn() {
       } else {
         // タイマー停止中 → 表示用タイマーを起動（timeout は発火しない）
         _timerDeadlineMs = performance.now() + state.remainingTime * 1000;
-        _pausedRemainingMs = 0;
         updateTimerDisplay();
         timerHandle = setInterval(() => {
           // 自分のターンになっていたら startTurnTimer に切り替え
@@ -3882,6 +4021,7 @@ function buildClientView(s, viewerIdx, opts) {
       exhausted: !!p.exhausted, surrendered: !!p.surrendered,
       disconnected: !!p.disconnected, cpuControlled: !!p.cpuControlled,
       rating: typeof p.rating === 'number' ? p.rating : 0,
+      puzzleRank: typeof p.puzzleRank === 'string' ? p.puzzleRank : undefined,
       stats: p.stats ? {...p.stats} : null,
       // 観戦者は誰の手札も見れない。プレイヤーは自分の手札のみ。
       hand: (!isSpectator && i === viewerIdx) ? p.hand.map(c => ({...c})) : new Array(p.hand.length).fill(null),
@@ -4038,6 +4178,9 @@ function netLeave() {
   // ★ 意図的切断フラグを先立てる。この後の peer.destroy() で 'disconnected' が発火しても
   //    reconnect() しないようにする（退室後に peer を蘇生させる根本原因の修正）。
   Net._intentionalDisconnect = true;
+  // ★ Worker への heartbeat を最優先で停止する。
+  //   先に止めないと、この後の Net 状態リセット中にタイマーが発火して stale な payload が登録される恐れがある。
+  stopLobbyHeartbeat();
   // ゲーム途中の退出はレートに「負け」として記録
   recordOnlineDisconnectLoss();
   // ★ 明示的退室時は再接続トークンを破棄する。
@@ -4096,40 +4239,37 @@ function netLeave() {
   showScreen('title');
 }
 
-// ============================== AUTO MATCH ==============================
-// 設計: シンプル固定ROOM方式
-// 1. ROOM 1 → 2 → 3 を順番に試す (各 peer-unavailable で即次へ)
-// 2. 3部屋全部空なら ROOM 1 でホスト化して待つ
-// 3. ROOM 1 が unavailable-id (既に誰かがホスト中 or 残骸) なら:
-//    → _probeRoom で実接続を試みる
-//      - welcome  → 本物のホスト → client として参加
-//      - reject   → 満室/試合中 → ROOM を再スキャン
-//      - timeout / close / error → 残骸確定 → _scheduleHostRetry
-//        (初回 2s、以降 +3s ずつ、最大 30s)
-// ★ _probeRoom 内シグナリングエラーは _autoRestartSearchPeer に流さず
-//    自力で _scheduleHostRetry に戻す (クロージャ断絶防止)
-// ★ _resetPeerInstance に extraDelay を渡し残骸リトライ時のサーバ解放待ちを強化
+// ============================== AUTO MATCH (Worker Lobby Index 版) ==============================
+// 旧固定ROOM (ROOM 1/2/3 を peer.connect で probe) は完全に削除。
+// 新: Worker /rooms から候補一覧を取得 → version一致 / started!==true / players<maxPlayers
+//     を満たす room へ既存 netJoin で順次接続 → 全失敗で netHostCreate fallback。
+// Worker は room existence index のみ (authoritative ではない)。gameplay は PeerJS direct のまま。
 const AutoMatch = {
   active: false,
-  state: 'idle',   // idle | searching | handshake | hosting | joined | done
-  searchPeer: null,
-  connectSeq: 0,
-  currentRoom: 0,
+  state: 'idle',     // idle | searching | connecting | joined | hosting | done
   numPlayers: 2,
   turnTime: 30,
   myName: 'Auto',
-  searchTimer: null,
+  trySeq: 0,         // 古い試行のコールバックを破棄するための単調増加 seq
+  pollTimer: null,
+  hostTickTimer: null,
 };
-const AUTO_PROTOCOL = PROTOCOL_VERSION;
-const AUTO_ROOM_PREFIX = 'limiles-auto-p' + AUTO_PROTOCOL + '-';
-const AUTO_SEARCH_ROOMS = [1, 2, 3]; // 探索する固定ROOM番号
-const AUTO_CONNECT_TIMEOUT_MS = 4500;
-const AUTO_HANDSHAKE_TIMEOUT_MS = 3000;
+const AUTO_JOIN_TIMEOUT_MS = 15000;  // 1 候補あたり最大待ち時間 (mobile / PeerJS 初回 connect の遅さを許容)
+const AUTO_JOIN_POLL_MS = 200;       // Net.status 観測ポーリング周期
+// ★ 固定 slot 設計: ランダム keyword だと 1 人部屋が無限増殖するため、auto-1..10 の
+//   固定 slot に集約する。Worker /rooms は単なる existence index として使う。
+const AUTO_ROOM_CODES = [
+  'auto-1', 'auto-2', 'auto-3', 'auto-4', 'auto-5',
+  'auto-6', 'auto-7', 'auto-8', 'auto-9', 'auto-10',
+];
 
-function autoRoomId(n) { return AUTO_ROOM_PREFIX + String(n).padStart(6, '0'); }
 function _autoMsg(s) {
   const el = document.getElementById('automatch-status');
   if (el) el.textContent = s || '';
+}
+function _autoClearTimers() {
+  if (AutoMatch.pollTimer) { clearTimeout(AutoMatch.pollTimer); AutoMatch.pollTimer = null; }
+  if (AutoMatch.hostTickTimer) { clearTimeout(AutoMatch.hostTickTimer); AutoMatch.hostTickTimer = null; }
 }
 
 function startAutoMatch({numPlayers, turnTime, name}) {
@@ -4140,421 +4280,171 @@ function startAutoMatch({numPlayers, turnTime, name}) {
   AutoMatch.numPlayers = numPlayers || 2;
   AutoMatch.turnTime = turnTime || 30;
   AutoMatch.myName = (name || 'Auto').slice(0, 16);
-  AutoMatch.currentRoom = 0;
-  AutoMatch.connectSeq = 0;
+  AutoMatch.trySeq++;
+  _autoClearTimers();
 
   const pane = document.getElementById('online-pane-auto');
   if (pane) pane.classList.remove('hidden');
-  _autoMsg('シグナリングサーバ接続中…');
-
-  // ★ 古い searchPeer と Net.peer を確実に破棄してから新しい Peer を建てる。
-  //    即破棄→即生成だと PeerJS サーバ側に旧 ID が残留し接続失敗の原因になる。
-  try { if (AutoMatch.searchPeer) AutoMatch.searchPeer.destroy(); } catch(e){}
-  AutoMatch.searchPeer = null;
-  _resetPeerInstance().then(() => {
-    if (!AutoMatch.active) return;
-    const myId = 'lm-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36).slice(-6);
-    try { AutoMatch.searchPeer = new Peer(myId, {debug: 0}); }
-    catch(e) { _autoMsg('Peer 生成失敗'); AutoMatch.active = false; return; }
-  AutoMatch.searchPeer.on('open', () => {
-    if (!AutoMatch.active) return;
-    _autoTryNextRoom();
-  });
-  AutoMatch.searchPeer.on('error', err => {
-    if (!AutoMatch.active) return;
-    if (err && err.type === 'peer-unavailable') {
-      // 接続先ROOMが空き → 即次のROOMへ
-      if (AutoMatch.state === 'searching' || AutoMatch.state === 'handshake') {
-        AutoMatch.connectSeq++;
-        if (AutoMatch.searchTimer) { clearTimeout(AutoMatch.searchTimer); AutoMatch.searchTimer = null; }
-        setTimeout(_autoTryNextRoom, 50);
-      }
-      return;
-    }
-    if (err && (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'disconnected')) {
-      _autoMsg('シグナリング再接続中…');
-      setTimeout(_autoRestartSearchPeer, 1500);
-    }
-  });
-  }); // end _resetPeerInstance.then
+  _autoMsg('ロビー取得中…');
+  _autoFetchAndJoin();
 }
 
 function cancelAutoMatch() {
   if (!AutoMatch.active && AutoMatch.state === 'idle') return;
   AutoMatch.active = false;
-  if (AutoMatch.searchTimer) { clearTimeout(AutoMatch.searchTimer); AutoMatch.searchTimer = null; }
-  try { AutoMatch.searchPeer?.destroy(); } catch(e){}
-  AutoMatch.searchPeer = null;
   AutoMatch.state = 'idle';
-  AutoMatch.connectSeq++;
+  AutoMatch.trySeq++; // in-flight ポーリング/コールバックを失効させる
+  _autoClearTimers();
   _autoMsg('停止しました');
   const pane = document.getElementById('online-pane-auto');
   if (pane) pane.classList.add('hidden');
   if (Net.mode !== 'none') { try { netLeave(); } catch(e){} }
 }
 
-function _autoRestartSearchPeer() {
-  if (!AutoMatch.active) return;
-  const oldPeer = AutoMatch.searchPeer;
-  AutoMatch.searchPeer = null;
-  try { if (oldPeer) oldPeer.destroy(); } catch(e){}
-  // ★ 破棄完了を待ってから新しい searchPeer を生成する
-  setTimeout(() => {
-    if (!AutoMatch.active) return;
-    const myId = 'lm-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36).slice(-6);
-    try { AutoMatch.searchPeer = new Peer(myId, {debug: 0}); } catch(e) { return; }
-  AutoMatch.searchPeer.on('open', () => { if (AutoMatch.active) { _autoMsg('探索再開'); _autoTryNextRoom(); } });
-  AutoMatch.searchPeer.on('error', err => {
-    if (!AutoMatch.active) return;
-    if (err && err.type === 'peer-unavailable') return;
-    if (err && (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'disconnected')) {
-      setTimeout(_autoRestartSearchPeer, 3000);
-    }
-  });
-  }, 300);
-}
+async function _autoFetchAndJoin() {
+  const seq = AutoMatch.trySeq;
+  const { rooms, status } = await fetchLobbyRooms();
+  if (!AutoMatch.active || seq !== AutoMatch.trySeq) return;
 
-// ROOM 1→2→3 を順番に試す。全部空なら ROOM 1 でホスト化
-function _autoTryNextRoom() {
-  if (!AutoMatch.active) return;
-  if (AutoMatch.state === 'hosting' || AutoMatch.state === 'joined' || AutoMatch.state === 'done') return;
-
-  AutoMatch.currentRoom++;
-  if (AutoMatch.currentRoom > AUTO_SEARCH_ROOMS.length) {
-    // 全ROOM空だった → ROOM 1 でホスト化
-    _autoTryHostNow(AUTO_SEARCH_ROOMS[0]);
+  // ★ Worker から候補が取れない場合、host fallback すると衝突して必ず unavailable-id になる。
+  //   原因の切り分けが必要な状況なので、UI に明示してフローを止める (silent host 化しない)。
+  if (status !== 'ok') {
+    const reasonMsg = {
+      'unconfigured': 'Worker URL が未設定 (LOBBY_URL がプレースホルダのまま)',
+      'fetch-error':  'Worker への接続失敗 (Worker down / CORS / DNS)',
+      'http-error':   'Worker がエラー応答',
+      'bad-json':     'Worker のレスポンス形式が不正',
+    }[status] || ('取得失敗: ' + status);
+    _autoMsg('ランダムマッチ不可: ' + reasonMsg + ' → 詳細は DevTools コンソール');
+    AutoMatch.active = false;
+    AutoMatch.state = 'idle';
     return;
   }
 
-  const roomNum = AUTO_SEARCH_ROOMS[AutoMatch.currentRoom - 1];
-  const targetId = autoRoomId(roomNum);
-  AutoMatch.state = 'searching';
-  _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' 探索中… (' + AutoMatch.currentRoom + '/' + AUTO_SEARCH_ROOMS.length + ')');
+  // roomCode → room の Map に変換 (固定 slot 走査用)
+  const roomMap = new Map();
+  rooms.forEach(r => {
+    if (r && typeof r.roomCode === 'string') roomMap.set(r.roomCode, r);
+  });
 
-  const seq = ++AutoMatch.connectSeq;
-  let conn, finalized = false;
-  const finalize = (success) => {
-    if (finalized) return;
-    finalized = true;
-    if (AutoMatch.searchTimer) { clearTimeout(AutoMatch.searchTimer); AutoMatch.searchTimer = null; }
-    if (!success) {
-      try { conn.close(); } catch(e){}
-      setTimeout(_autoTryNextRoom, 50);
+  // AUTO_ROOM_CODES を 1→10 順走査:
+  //   - 存在 & joinable な slot は join 候補に積む (順序保持 = 若い slot 優先)
+  //   - 存在しない slot は「最初に空いている slot」として記憶 (host fallback 候補)
+  // 集約の鍵: 同じ条件のプレイヤーは必ず若い slot から消費する。
+  const joinable = [];
+  let firstEmptySlot = -1;
+  for (let i = 0; i < AUTO_ROOM_CODES.length; i++) {
+    const code = AUTO_ROOM_CODES[i];
+    const r = roomMap.get(code);
+    if (!r) {
+      if (firstEmptySlot < 0) firstEmptySlot = i;
+      continue;
     }
-  };
-
-  try {
-    conn = AutoMatch.searchPeer.connect(targetId, {reliable: true});
-  } catch(e) {
-    setTimeout(_autoTryNextRoom, 200); return;
+    // 存在するが joinable じゃない slot は skip (host 候補にもしない: 既に使用中だから)
+    if (r.version !== VERSION) continue;
+    if (r.started === true) continue;
+    if (r.players >= r.maxPlayers) continue;
+    if (r.maxPlayers !== AutoMatch.numPlayers) continue;
+    joinable.push(code);
   }
 
-  AutoMatch.searchTimer = setTimeout(() => {
-    if (seq !== AutoMatch.connectSeq) return;
-    finalize(false);
-  }, AUTO_CONNECT_TIMEOUT_MS);
-
-  conn.on('open', () => {
-    if (seq !== AutoMatch.connectSeq) { try { conn.close(); } catch(e){} return; }
-    if (!AutoMatch.active) { try { conn.close(); } catch(e){} return; }
-    AutoMatch.state = 'handshake';
-    _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' ハンドシェイク中…');
-    try {
-      conn.send({
-        type:'hello', ver:VERSION, protocolVersion: PROTOCOL_VERSION, packetVersion: PACKET_VERSION,
-        name: AutoMatch.myName, ruleHash: null, rating: computeRating(),
-      });
-    } catch(e) { finalize(false); return; }
-    if (AutoMatch.searchTimer) clearTimeout(AutoMatch.searchTimer);
-    AutoMatch.searchTimer = setTimeout(() => {
-      if (seq !== AutoMatch.connectSeq) return;
-      finalize(false);
-    }, AUTO_HANDSHAKE_TIMEOUT_MS);
-  });
-  conn.on('data', d => {
-    if (seq !== AutoMatch.connectSeq) return;
-    if (!validatePacket(d)) return;
-    if (d.type === 'reject') {
-      finalize(false); // room-full / game-started → 次のROOMへ
-    } else if (d.type === 'welcome') {
-      finalized = true;
-      if (AutoMatch.searchTimer) { clearTimeout(AutoMatch.searchTimer); AutoMatch.searchTimer = null; }
-      AutoMatch.state = 'joined';
-      _autoAdoptAsClient(conn, d, roomNum);
-    }
-  });
-  conn.on('close', () => { if (seq !== AutoMatch.connectSeq) return; if (!finalized) finalize(false); });
-  conn.on('error', () => { if (seq !== AutoMatch.connectSeq) return; finalize(false); });
+  if (joinable.length === 0) {
+    const hostCode = firstEmptySlot >= 0 ? AUTO_ROOM_CODES[firstEmptySlot] : AUTO_ROOM_CODES[0];
+    _autoMsg('参加可能な部屋なし → ' + hostCode + ' をホスト化');
+    _autoHostFallback(hostCode);
+    return;
+  }
+  _autoMsg('候補 ' + joinable.length + ' 件 (' + joinable.join(', ') + ') → 順次接続');
+  _autoTryJoinList(joinable, 0, firstEmptySlot);
 }
 
-// join 成立した conn を Net に昇格させる
-function _autoAdoptAsClient(conn, welcomeMsg, roomNum) {
-  if (AutoMatch.searchTimer) { clearTimeout(AutoMatch.searchTimer); AutoMatch.searchTimer = null; }
-  AutoMatch.active = false;
-  AutoMatch.state = 'done';
-
-  Net.mode = 'online-client';
-  Net.peer = AutoMatch.searchPeer;
-  AutoMatch.searchPeer = null;
-  Net.hostConn = conn;
-  Net.roomCode = 'AUTO:' + roomNum;
-  Net.roomId = conn.peer;
-  Net.myName = AutoMatch.myName;
-  Net.myPlayerIdx = -1;
-  Net.hostPlayers = [];
-  Net._lastStateVersion = 0;
-  // acceptInput は replaceGameState / game-start 処理の正規パスで設定する（早期セット不要）
-
-  handleClientMessage(welcomeMsg);
-  conn.on('data', d => handleClientMessage(d));
-  conn.on('close', () => { recordOnlineDisconnectLoss(); setNetStatus('disconnected', '接続が切断されました'); });
-  conn.on('error', () => setNetStatus('error', '接続エラー'));
-  try {
-    if (Net.peer) {
-      Net.peer.on('error', err => {
-        let msg = err && err.type || 'error';
-        if (msg === 'peer-unavailable') return;
-        if (msg === 'network') msg = 'ネットワーク接続失敗';
-        setNetStatus('error', msg);
-      });
-      // ★ シグナリング切断時は reconnect で再登録する (netJoin と同じ処理)。
-      //    未登録だとシグナリング切断後に fullState 要求が届かなくなる。
-      Net.peer.on('disconnected', () => {
-        // ★ 自分で退室した場合 (netLeave) は reconnect しない
-        if (Net._intentionalDisconnect) return;
-        try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
-      });
-    }
-  } catch(e){}
-
-  setNetStatus('lobby', 'ランダムマッチ参加成功');
-  _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' 参加成功');
-  const pane = document.getElementById('online-pane-auto');
-  if (pane) pane.classList.add('hidden');
-  renderLobby();
-}
-
-// 全ROOM空 → 指定ROOMでホスト化。
-// unavailable-id は「本物のホストがいる」か「前回試合の残骸」か区別できない。
-// → 実際に接続を試みて welcome が来れば本物, タイムアウトなら残骸と判断してリトライ。
-//
-// ★ 設計方針:
-//   ① 最初のホスト化試行: searchPeer を先に破棄してから Net.peer でホスト ID を取る
-//   ② unavailable-id → _probeRoom で接続確認 (searchPeer とは独立した一時 peer を使用)
-//   ③ タイムアウト/close/peer-unavailable → 残骸確定 → _scheduleHostRetry
-//       - 初回は 2s, 以降 +3s ずつ, 最大 30s
-//       - _resetPeerInstance に extraDelay を渡してサーバ側 ID 解放を待つ
-//   ④ welcome → _autoAdoptAsClient (一時 peer を searchPeer に昇格させる)
-//   ⑤ reject  → 他 ROOM を試す (_autoTryNextRoom)
-//   ⑥ _probeRoom 内シグナリングエラー → _autoRestartSearchPeer に流さず
-//       自力で _scheduleHostRetry に戻る (フロー断絶を防ぐ)
-function _autoTryHostNow(roomNum) {
+// 候補リストを 1 件ずつ試す。Net.status の遷移を監視し、'lobby' で成功、'error'/'disconnected' で次候補。
+// Worker fetch 後の join 自体は既存 netJoin を流用 = PeerJS direct (Worker relay 化しない)。
+// firstEmptySlot: 全候補失敗時に host fallback する slot index (-1 なら slot 0 を使う)。
+function _autoTryJoinList(list, idx, firstEmptySlot) {
   if (!AutoMatch.active) return;
-  const roomId = autoRoomId(roomNum);
-  _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' でホスト化試行…');
+  if (idx >= list.length) {
+    const hostCode = firstEmptySlot >= 0 ? AUTO_ROOM_CODES[firstEmptySlot] : AUTO_ROOM_CODES[0];
+    _autoMsg('全候補失敗 → ' + hostCode + ' をホスト化');
+    _autoHostFallback(hostCode);
+    return;
+  }
+  const code = list[idx];
+  const seq = AutoMatch.trySeq;
+  AutoMatch.state = 'connecting';
+  _autoMsg('候補 ' + (idx+1) + '/' + list.length + ' (' + code + ') 接続中…');
 
-  // searchPeer は以後ホストフロー中は不要。先に破棄して Net.peer との干渉を防ぐ。
-  try { AutoMatch.searchPeer?.destroy(); } catch(e){}
-  AutoMatch.searchPeer = null;
-
-  const numPlayers = AutoMatch.numPlayers;
-  const turnTime = AutoMatch.turnTime;
-
-  _doHostAttempt(0);
-
-  // ---- ホスト化1回分 ----
-  function _doHostAttempt(unavailRetry) {
-    if (!AutoMatch.active) return;
-    _setupHostState();
-    // ★ 残骸リトライ時は extraDelay でサーバ側 ID 解放をより確実に待つ
-    const extra = unavailRetry > 0 ? Math.min(400 + unavailRetry * 200, 1200) : 0;
-    _resetPeerInstance(extra).then(() => {
-      if (!AutoMatch.active) return;
-      if (Net.mode !== 'online-host') return;
-      try { Net.peer = new Peer(roomId, {debug: 0}); }
-      catch(e) { _scheduleHostRetry(unavailRetry); return; }
-      _hostPeerEvents(unavailRetry);
-    });
+  // 既存 netJoin に lift する: keyword = 固定 slot 名を使う。
+  // (room browser からの join と完全に同一パス = roomIdFor(keyword) → PeerJS connect)
+  Net.joinAsSpectator = false;
+  try { netJoin({keyword: code, name: AutoMatch.myName}); }
+  catch(e) {
+    setTimeout(() => _autoTryJoinList(list, idx + 1, firstEmptySlot), 100);
+    return;
   }
 
-  function _setupHostState() {
-    Net.mode = 'online-host';
-    Net.roomCode = 'AUTO:' + roomNum;
-    Net.roomId = roomId;
-    Net.myName = AutoMatch.myName;
-    Net.myPlayerIdx = 0;
-    Net.config = {numPlayers, turnTime};
-    Net.ruleHash = computeRuleHash(Net.config);
-    Net.hostPlayers = [{idx:0, name: Net.myName, peerId: 'HOST', isHost:true, connected:true, rating: computeRating()}];
-    Net.conns.clear();
-    Net.acceptInput = true;
-  }
-
-  function _hostPeerEvents(unavailRetry) {
-    if (!Net.peer) return;
-    Net.peer.on('open', () => {
-      setNetStatus('hosting', 'ランダムマッチ待機中…');
-      AutoMatch.state = 'hosting';
-      _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' ホスト確立 参加待ち (' + Net.hostPlayers.length + '/' + numPlayers + ')');
-      _autoMatchFinalizeAsHost();
-    });
-    Net.peer.on('error', err => {
-      if (err && err.type === 'unavailable-id') {
-        // ★ 残骸か本物のホストか不明 → 実際に接続して確認する
-        _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' 使用中を確認 → 接続試行 (' + (unavailRetry + 1) + '回目)');
-        const oldPeer = Net.peer;
-        Net.peer = null; Net.mode = 'none'; Net.hostPlayers = [];
-        AutoMatch.connectSeq++;
-        try { if (oldPeer) oldPeer.destroy(); } catch(e){}
-        // 破棄完了を少し待ってからプローブ
-        setTimeout(() => _probeRoom(unavailRetry), 350);
-        return;
-      }
-      let msg = err && err.type || 'error';
-      if (msg === 'network') msg = 'ネットワーク接続失敗';
-      if (msg === 'server-error') msg = 'シグナリングサーバ応答なし';
-      setNetStatus('error', msg);
-      _autoMsg('エラー: ' + msg);
-    });
-    Net.peer.on('disconnected', () => {
-      // ★ 自分で退室した場合 (netLeave) は reconnect しない
-      if (Net._intentionalDisconnect) return;
-      setNetStatus('error', 'シグナリング切断 (再接続試行中…)');
-      try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
-    });
-    Net.peer.on('connection', conn => {
-      conn.on('open', () => {
-        conn.on('data', d => handleHostMessage(conn, d));
-        conn.on('close', () => onClientDisconnect(conn));
-        conn.on('error', () => onClientDisconnect(conn));
-      });
-    });
-  }
-
-  // 残骸か本物かを実接続で確認する
-  // ★ searchPeer とは完全に独立した一時 peer (sp) を使う。
-  //    Net.peer / AutoMatch.searchPeer を汚染しない。
-  function _probeRoom(unavailRetry) {
-    if (!AutoMatch.active) return;
-    const seq = AutoMatch.connectSeq;
-    let sp;
-    try {
-      const myId = 'lm-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36).slice(-6);
-      sp = new Peer(myId, {debug: 0});
-    } catch(e) { _scheduleHostRetry(unavailRetry); return; }
-
-    sp.on('open', () => {
-      if (!AutoMatch.active || seq !== AutoMatch.connectSeq) { try { sp.destroy(); } catch(e){} return; }
-      let conn, resolved = false;
-
-      function _resolveProbe(action) {
-        if (resolved) return;
-        resolved = true;
-        clearTimeout(probeTimer);
-        try { if (action !== 'adopt') conn.close(); } catch(e){}
-        if (action !== 'adopt') { try { sp.destroy(); } catch(e){} }
-        if (!AutoMatch.active || seq !== AutoMatch.connectSeq) return;
-        if (action === 'stale') {
-          _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' 残骸を確認 → ホスト化リトライ待機');
-          _scheduleHostRetry(unavailRetry);
-        } else if (action === 'nextroom') {
-          AutoMatch.currentRoom = 0;
-          AutoMatch.connectSeq++;
-          setTimeout(() => { if (AutoMatch.active) _autoTryNextRoom(); }, 50);
-        }
-        // 'adopt' は caller が sp の所有権を取っているので破棄しない
-      }
-
-      try { conn = sp.connect(roomId, {reliable: true}); }
-      catch(e) { try { sp.destroy(); } catch(e2){} _scheduleHostRetry(unavailRetry); return; }
-
-      const probeTimer = setTimeout(() => {
-        // タイムアウト = 残骸確定（誰も応答しない）
-        _resolveProbe('stale');
-      }, AUTO_CONNECT_TIMEOUT_MS);
-
-      conn.on('open', () => {
-        if (!AutoMatch.active || seq !== AutoMatch.connectSeq) {
-          _resolveProbe('stale'); return;
-        }
-        try {
-          conn.send({type:'hello', ver:VERSION, protocolVersion:PROTOCOL_VERSION,
-            packetVersion:PACKET_VERSION, name:AutoMatch.myName, ruleHash:null, rating:computeRating()});
-        } catch(e) { _resolveProbe('stale'); }
-      });
-      conn.on('data', d => {
-        if (resolved || !AutoMatch.active || seq !== AutoMatch.connectSeq) return;
-        if (!validatePacket(d)) return;
-        if (d.type === 'welcome') {
-          // 本物のホストがいた → sp を searchPeer に昇格して client として参加
-          AutoMatch.searchPeer = sp;
-          resolved = true;
-          clearTimeout(probeTimer);
-          _autoAdoptAsClient(conn, d, roomNum);
-        } else if (d.type === 'reject') {
-          // room-full / game-started → 全 ROOM を再スキャン
-          _resolveProbe('nextroom');
-        }
-      });
-      conn.on('close', () => { _resolveProbe('stale'); });
-      conn.on('error', () => { _resolveProbe('stale'); });
-    });
-
-    sp.on('error', err2 => {
-      if (!AutoMatch.active || seq !== AutoMatch.connectSeq) {
-        try { sp.destroy(); } catch(e){} return;
-      }
-      try { sp.destroy(); } catch(e){}
-      if (err2 && err2.type === 'peer-unavailable') {
-        // ROOM に誰もいない = 残骸が既に消滅 → ホスト化リトライ
-        if (!AutoMatch.active || seq !== AutoMatch.connectSeq) return;
-        _scheduleHostRetry(unavailRetry);
-      } else {
-        // シグナリングエラー → ここも _scheduleHostRetry に戻す
-        // (_autoRestartSearchPeer に流すとクロージャが断絶するため使わない)
-        if (!AutoMatch.active || seq !== AutoMatch.connectSeq) return;
-        const sigDelay = (err2 && (err2.type === 'network' || err2.type === 'socket-error')) ? 3000 : 1500;
-        _autoMsg('シグナリングエラー (' + (err2 && err2.type || 'unknown') + ') → ' + Math.round(sigDelay/1000) + 's 後リトライ');
-        setTimeout(() => _scheduleHostRetry(unavailRetry), sigDelay);
-      }
-    });
-  }
-
-  // 残骸確認後のホスト化リトライ。回数に応じて待機時間を伸ばす。
-  // 初回: 2s、以降 +3s ずつ、最大 30s
-  function _scheduleHostRetry(retryCount) {
-    if (!AutoMatch.active) return;
-    const delay = Math.min(2000 + retryCount * 3000, 30000);
-    _autoMsg('ROOM ' + String(roomNum).padStart(6,'0') + ' ホスト化リトライ待機 ' + Math.round(delay / 1000) + 's… (' + (retryCount + 1) + '回目)');
-    setTimeout(() => {
-      if (!AutoMatch.active) return;
-      _doHostAttempt(retryCount + 1);
-    }, delay);
-  }
+  const startAt = Date.now();
+  const poll = () => {
+    if (!AutoMatch.active || seq !== AutoMatch.trySeq) return;
+    if (Net.status === 'lobby') {
+      AutoMatch.active = false;
+      AutoMatch.state = 'joined';
+      _autoMsg('参加成功 (' + code + ')');
+      const pane = document.getElementById('online-pane-auto');
+      if (pane) pane.classList.add('hidden');
+      return;
+    }
+    if (Net.status === 'error' || Net.status === 'disconnected') {
+      try { netLeave(); } catch(e){}
+      setTimeout(() => _autoTryJoinList(list, idx + 1, firstEmptySlot), 150);
+      return;
+    }
+    if (Date.now() - startAt > AUTO_JOIN_TIMEOUT_MS) {
+      // タイムアウト → 次候補
+      try { netLeave(); } catch(e){}
+      setTimeout(() => _autoTryJoinList(list, idx + 1, firstEmptySlot), 150);
+      return;
+    }
+    AutoMatch.pollTimer = setTimeout(poll, AUTO_JOIN_POLL_MS);
+  };
+  AutoMatch.pollTimer = setTimeout(poll, AUTO_JOIN_POLL_MS);
 }
 
-// numPlayers に到達したら自動でゲーム開始
-function _autoMatchFinalizeAsHost() {
-  AutoMatch.active = false;
-  AutoMatch.state = 'done';
-  const pane = document.getElementById('online-pane-auto');
-  if (pane) pane.classList.add('hidden');
-  renderLobby();
+// 全候補失敗 / 空 slot 発見 → 固定 slot keyword でホスト化。
+// netHostCreate の peer.on('open') で startLobbyHeartbeat() が走り、Worker /rooms に登録される。
+// unavailable-id (本物のホスト or 残骸) は netHostCreate 内部の retry (最大3回) に任せる。
+function _autoHostFallback(keyword) {
+  if (!AutoMatch.active) return;
+  AutoMatch.state = 'hosting';
+  netHostCreate({
+    keyword,
+    name: AutoMatch.myName,
+    numPlayers: AutoMatch.numPlayers,
+    turnTime: AutoMatch.turnTime,
+  });
 
+  // 揃ったら自動でゲーム開始 (旧 _autoMatchFinalizeAsHost と同じ挙動)
+  const need = AutoMatch.numPlayers;
   const tickStart = () => {
-    if (Net.mode !== 'online-host') return;
-    if (state) return; // 既に開始済み
-    const need = Net.config?.numPlayers || 2;
-    const have = Net.hostPlayers.length;
-    _autoMsg('ホスト待機 ' + have + '/' + need);
-    if (have >= need) {
-      // 全員揃ったので少し待ってから開始 (相手側 lobby-update / connection 確立猶予)
+    if (!AutoMatch.active) return;
+    if (Net.mode !== 'online-host') {
+      AutoMatch.active = false;
+      AutoMatch.state = 'idle';
+      return;
+    }
+    if (state) return;  // 既に開始済み
+    _autoMsg('ホスト待機 ' + Net.hostPlayers.length + '/' + need);
+    if (Net.hostPlayers.length >= need) {
+      AutoMatch.active = false;
+      AutoMatch.state = 'done';
+      const pane = document.getElementById('online-pane-auto');
+      if (pane) pane.classList.add('hidden');
       setTimeout(() => {
         if (Net.mode === 'online-host' && !state && Net.hostPlayers.length >= need) startOnlineGame();
       }, 800);
       return;
     }
-    setTimeout(tickStart, 1500);
+    AutoMatch.hostTickTimer = setTimeout(tickStart, 1500);
   };
   tickStart();
 }
@@ -4563,19 +4453,16 @@ function _autoMatchFinalizeAsHost() {
 // モバイル Safari は visibilitychange が来ないケース (swipe close / 着信 / Control Center / low memory) があるため、
 // pagehide / freeze / resume も併せて監視する。
 // hide 時:
-//   - turn timer を pause (オンラインのとき pauseTurnTimer)
 //   - host: fullState heartbeat を止めて余計な broadcast を抑制
+//   - タイマーは pause しない。絶対時刻ベース (_timerDeadlineMs) のため performance.now() が
+//     タブ非表示中も進むことで自然にカウントダウンされる。pause/resume 概念を完全に排除。
 // show / resume 時:
 //   - host: heartbeat を再開し fullState を即broadcast (相手の同期を確実にする)
 //   - client / spectator: host へ requestFullState を投げ、自分の state を再同期する
-//   - 自分のターンならタイマーを resume
 let _netLifecycleHidden = false;
 function _onNetLifecycleHide() {
   if (_netLifecycleHidden) return;
   _netLifecycleHidden = true;
-  try {
-    if (typeof pauseTurnTimer === 'function') pauseTurnTimer();
-  } catch(e){}
   if (Net.mode === 'online-host') {
     try { stopFullStateHeartbeat(); } catch(e){}
   }
@@ -4593,17 +4480,9 @@ function _onNetLifecycleShow() {
     // 復帰直後は自分の state が古い可能性が高いので、host から fullState を取り直す
     try { requestFullStateFromHost('lifecycle-resume'); } catch(e){}
   }
-  // 自分のターンならタイマー再開 (state がまだ無いケースは内部 guard で no-op)
   // クライアントは requestFullStateFromHost 後に replaceGameState 内で
-  // maybeStartTimerForLocalTurn() が呼ばれるため、ここでは呼ばない。
-  // (直接 startTurnTimer を呼ぶと timerHandle チェックをバイパスしてリセットされる)
-  try {
-    if (Net.mode === 'online-host') {
-      if (state && state.phase === 'play' && currentPlayerIdx() === localPlayerIdx()) {
-        if (typeof resumeTurnTimer === 'function') resumeTurnTimer();
-      }
-    }
-  } catch(e){}
+  // maybeStartTimerForLocalTurn() が呼ばれるためここでは何もしない。
+  // ホストも _timerDeadlineMs ベースのため resume 不要。performance.now() は止まらない。
 }
 function _installNetLifecycle() {
   document.addEventListener('visibilitychange', () => {
@@ -5320,6 +5199,12 @@ function renderScores() {
     const handLen = p.hand ? p.hand.length : 0;
     const ratingStr = (isOnline && typeof p.rating === 'number')
       ? '<span class="rate-badge" title="レート (直近100戦)">R'+p.rating+'</span>' : '';
+    const puzzleRankStr = isOnline ? (() => {
+      const localIdx = localPlayerIdx();
+      if (p.idx === localIdx) return puzzleRankBadgeHtml();
+      if (typeof p.puzzleRank === 'string') return '<span class="puzzle-rank-badge rank-'+p.puzzleRank+'" title="パズルスコアモード ランク">'+p.puzzleRank+'</span>';
+      return '';
+    })() : '';
     const statusTags = [];
     if (p.disconnected) statusTags.push('<span class="status-tag tag-disc">切断中 CPU代行</span>');
     if (p.surrendered) statusTags.push('<span class="status-tag tag-surr">降参</span>');
@@ -5330,6 +5215,7 @@ function renderScores() {
         '<span style="color:'+PLAYER_COLORS[p.idx].bg+'">'+PLAYER_COLORS[p.idx].badge+'</span>'+
         escapeHtml(p.name)+(p.isCPU?' [CPU'+p.cpuLevel+']':'')+
         ratingStr+
+        puzzleRankStr+
         ' '+statusTags.join(' ')+
       '</div>'+
       '<div class="net-stat">'+
@@ -5813,16 +5699,14 @@ function doHandoff() {
   $('handoff-name').textContent = state.players[pIdx].name;
   $('handoff-name').style.color = PLAYER_COLORS[pIdx].bg;
   $('overlay-handoff').classList.remove('hidden');
-  pauseTurnTimer();
   renderHand(); updateActionButtons();
 }
-function handoffReady() { $('overlay-handoff').classList.add('hidden'); renderAll(); resumeTurnTimer(); }
+function handoffReady() { $('overlay-handoff').classList.add('hidden'); renderAll(); startTurnTimer(); }
 
 // ============================== TIMER ==============================
 // timerSec は廃止。残り時間は常に deadline から計算する。
 // これにより tick 間の状態不整合・pause/resume ズレが構造的に発生しない。
 let _timerDeadlineMs = 0;    // 絶対デッドライン(ms) — 全モード共通
-let _pausedRemainingMs = 0;  // pause中の残り時間(ms)
 
 // 残り秒数を deadline から直接計算する。timerSec の代わりにこれを使う。
 function getRemainingSec() {
@@ -5830,7 +5714,9 @@ function getRemainingSec() {
 }
 
 function startTurnTimer() {
-  stopTurnTimer();
+  // interval のみクリア。_timerDeadlineMs はここでリセットしない。
+  // ターン終了時の stopTurnTimer() だけが deadline をゼロリセットする。
+  if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
   if (!state) return;
   if (!state.turnTime || state.turnTime <= 0) { $('timer').textContent = '∞'; return; }
   const localIdx = localPlayerIdx();
@@ -5848,10 +5734,12 @@ function startTurnTimer() {
     ? state.remainingTime
     : state.turnTime;
   // ★ 全モード統一: 絶対デッドラインで管理。
-  //   setInterval の累積誤差・Safari凍結・PWA復帰・Android省電力を全て吸収する。
+  //   ターン開始時だけ deadline を作成する。タブ復帰・handoff・メニュー等で
+  //   再呼出しされても deadline は再生成しない（performance.now() は止まらないため不要）。
   //   250ms polling で視覚的ズレを最小化しつつ CPU 負荷は無視できるレベル。
-  _timerDeadlineMs = performance.now() + initialSec * 1000;
-  _pausedRemainingMs = 0;
+  if (_timerDeadlineMs <= 0) {
+    _timerDeadlineMs = performance.now() + initialSec * 1000;
+  }
   updateTimerDisplay();
   timerHandle = setInterval(() => {
     const remaining = (_timerDeadlineMs - performance.now()) / 1000;
@@ -5860,28 +5748,18 @@ function startTurnTimer() {
   }, 250);
 }
 function pauseTurnTimer() {
-  if (!timerHandle) return;
-  // pause時点の残り時間を保存。resume時に deadline を作り直すために使う。
-  _pausedRemainingMs = Math.max(0, _timerDeadlineMs - performance.now());
-  clearInterval(timerHandle);
-  timerHandle = null;
+  // 何もしない。
+  // 絶対時刻ベースの deadline 方式では performance.now() が止まらないため
+  // pause/resume は不要。タブ非表示中も deadline は自然に消費される。
 }
 function resumeTurnTimer() {
-  if (timerHandle) return; // すでに動いている
-  if (!state || !state.turnTime || state.turnTime <= 0) return;
-  if (_pausedRemainingMs <= 0) return;
-  // deadline を現在時刻から再計算して再開。残り時間がズレない。
-  _timerDeadlineMs = performance.now() + _pausedRemainingMs;
-  _pausedRemainingMs = 0;
-  timerHandle = setInterval(() => {
-    const remaining = (_timerDeadlineMs - performance.now()) / 1000;
-    updateTimerDisplay();
-    if (remaining <= 0) { stopTurnTimer(); onTurnTimeout(); }
-  }, 250);
+  // 何もしない。
+  // startTurnTimer() が「_timerDeadlineMs <= 0 の時だけ deadline を生成」するため
+  // resume 相当の再起動が必要な場合は startTurnTimer() を直接呼ぶ。
 }
 function stopTurnTimer() {
   if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
-  _pausedRemainingMs = 0;
+  _timerDeadlineMs = 0;  // ターン終了時だけここでリセット。次ターンの startTurnTimer で再生成される。
 }
 function updateTimerDisplay() {
   const t = $('timer');
@@ -6116,6 +5994,7 @@ function startOnlineGame() {
   for (const hp of Net.hostPlayers) {
     if (state.players[hp.idx]) {
       state.players[hp.idx].rating = typeof hp.rating === 'number' ? hp.rating : 0;
+      if (typeof hp.puzzleRank === 'string') state.players[hp.idx].puzzleRank = hp.puzzleRank;
       if (hp.reconnectToken) state.players[hp.idx].reconnectToken = hp.reconnectToken;
     }
   }
@@ -6195,6 +6074,7 @@ function renderLobby() {
       '<span class="color-dot" style="background:'+PLAYER_COLORS[p.idx].bg+'"></span>'+
       '<span style="font-weight:700">'+PLAYER_COLORS[p.idx].badge+' '+escapeHtml(p.name)+'</span>'+
       '<span class="'+rateCls+'" title="レート (直近100戦)">R'+r+'</span>'+
+      (isMe ? puzzleRankBadgeHtml() : (typeof p.puzzleRank === 'string' ? '<span class="puzzle-rank-badge rank-'+p.puzzleRank+'" title="パズルスコアモード ランク">'+p.puzzleRank+'</span>' : ''))+
       (p.isHost ? '<span class="badge-host">HOST</span>' : '');
     lp.appendChild(row);
   });
@@ -6202,6 +6082,59 @@ function renderLobby() {
   const startBtn = $('btn-host-start');
   startBtn.classList.toggle('hidden', Net.mode !== 'online-host' || Net.hostPlayers.length < 2);
   startBtn.disabled = Net.hostPlayers.length < 2;
+}
+
+// ===== Room Browser (Worker /rooms) =====
+// online-pane-auto を開いている間に Worker から room 一覧を取得して表示する。
+// 表示のみ: クリックで netJoin (= 既存 PeerJS direct パス) に流す。Worker relay は通らない。
+let _roomBrowserBusy = false;
+async function renderRoomBrowser() {
+  const el = $('online-room-list');
+  if (!el) return;
+  if (_roomBrowserBusy) return;
+  _roomBrowserBusy = true;
+  el.textContent = '取得中…';
+  const { rooms, status } = await fetchLobbyRooms();
+  _roomBrowserBusy = false;
+  if (status !== 'ok') {
+    const msg = {
+      'unconfigured': 'Worker URL 未設定 (LOBBY_URL がプレースホルダのまま)',
+      'fetch-error':  'Worker への接続に失敗 (Worker down / CORS / DNS / ネットワーク)',
+      'http-error':   'Worker からエラー応答 (詳細は DevTools コンソール)',
+      'bad-json':     'Worker のレスポンス形式が不正 (詳細は DevTools コンソール)',
+    }[status] || ('取得失敗: ' + status);
+    el.textContent = msg;
+    return;
+  }
+  if (rooms.length === 0) {
+    el.textContent = '公開ルームはありません (誰もホスト化していない / heartbeat 反映待ち)';
+    return;
+  }
+  el.innerHTML = '';
+  rooms.forEach(r => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:6px; padding:6px 8px; margin-bottom:4px; background:var(--panel-2); border-radius:4px;';
+    const ver = (r.version === VERSION) ? '' : ' <span style="color:#c66;">(版違い)</span>';
+    const startedTxt = (r.started === true) ? ' <span style="color:#c66;">[試合中]</span>' : '';
+    const full = (r.players >= r.maxPlayers);
+    const code = (typeof r.roomCode === 'string' && r.roomCode) ? r.roomCode : '(no-code)';
+    row.innerHTML =
+      '<span style="font-family:monospace; flex:1; overflow:hidden; text-overflow:ellipsis;">'+escapeHtml(code)+ver+startedTxt+'</span>'+
+      '<span style="font-variant-numeric:tabular-nums; min-width:48px; text-align:right;">'+r.players+'/'+r.maxPlayers+'</span>'+
+      '<span style="font-size:10px; color:var(--text-dim); min-width:44px; text-align:right;">観 '+(r.spectators||0)+'</span>';
+    const btn = document.createElement('button');
+    btn.textContent = '参加';
+    btn.style.cssText = 'font-size:11px; padding:3px 10px;';
+    btn.disabled = (r.version !== VERSION) || (r.started === true) || full;
+    btn.addEventListener('click', () => {
+      const myName = ($('online-auto-name')?.value || 'Auto').trim().slice(0,16) || 'Guest';
+      Net.joinAsSpectator = false;
+      netJoin({keyword: code, name: myName});
+      renderLobby();
+    });
+    row.appendChild(btn);
+    el.appendChild(row);
+  });
 }
 
 // ============================== REPLAY ==============================
@@ -6669,9 +6602,7 @@ function handleAction(a) {
   switch (a) {
     case 'new-game': renderSetup(); break;
     case 'puzzle-start': Puzzle.open(); break;
-    case 'puzzle-diff-easy':   Puzzle.start('easy');   break;
-    case 'puzzle-diff-normal': Puzzle.start('normal'); break;
-    case 'puzzle-diff-hard':   Puzzle.start('hard');   break;
+    case 'puzzle-start-now': Puzzle.start(); break;
     case 'puzzle-restart': Puzzle.restart(); break;
     case 'puzzle-quit': Puzzle.quit(); break;
     case 'puzzle-setup-cancel': Puzzle.cancel(); break;
@@ -6713,7 +6644,10 @@ function handleAction(a) {
       $('tab-join-btn').classList.remove('active');
       { const b = $('tab-auto-btn'); if (b) b.classList.add('active'); }
       updateMyRatingDisplay();
+      // Auto タブを開いたら room browser を自動更新 (Worker /rooms 取得)
+      renderRoomBrowser();
       break;
+    case 'online-rooms-refresh': renderRoomBrowser(); break;
     case 'online-auto-start': {
       const name = ($('online-auto-name')?.value || 'Auto').trim();
       const numPlayers = +($('online-auto-num')?.value || 2);
@@ -6749,7 +6683,7 @@ function handleAction(a) {
     case 'back-to-title':
       stopTurnTimer();
       // ★ AutoMatch 探索中の場合も忘れず停止
-      if (AutoMatch && (AutoMatch.active || AutoMatch.state === 'claiming' || AutoMatch.state === 'hosting')) cancelAutoMatch();
+      if (AutoMatch && (AutoMatch.active || AutoMatch.state === 'hosting')) cancelAutoMatch();
       if (Net.mode !== 'none') netLeave();
       else { state = null; showScreen('title'); }
       break;
@@ -6780,7 +6714,7 @@ function handleAction(a) {
     case 'abort-game':
       $('overlay-menu').classList.add('hidden');
       stopTurnTimer();
-      if (AutoMatch && (AutoMatch.active || AutoMatch.state === 'claiming' || AutoMatch.state === 'hosting')) cancelAutoMatch();
+      if (AutoMatch && (AutoMatch.active || AutoMatch.state === 'hosting')) cancelAutoMatch();
       if (Net.mode !== 'none') netLeave();
       else { state = null; showScreen('title'); }
       break;
@@ -6893,7 +6827,6 @@ window.addEventListener('load', () => {
   $('btn-menu').addEventListener('click', () => {
     if (!state || state.phase === 'end') return;
     $('overlay-menu').classList.remove('hidden');
-    pauseTurnTimer();
   });
   const sdBtn = $('btn-sync-debug');
   if (sdBtn) sdBtn.addEventListener('click', toggleSyncDebug);
@@ -6988,7 +6921,7 @@ const Puzzle = (() => {
     nw:   '#a3d9c8',
     sp:   '#c39cff',
   };
-  const HAND_SIZE_BY_DIFF = {easy:3, normal:3, hard:3};
+  const HAND_SIZE = 3;
   const INIT_SEED_CARDS = 2;
 
   let st = null;
@@ -7307,7 +7240,7 @@ const Puzzle = (() => {
     return false;
   }
 
-  function newPuzzleGame(difficulty) {
+  function newPuzzleGame() {
     const seed = ((Date.now() & 0xffffffff) ^ (Math.floor(Math.random() * 0xffffffff))) >>> 0;
     const rand = mulberry32(seed);
     const board = makeBoard();
@@ -7326,12 +7259,11 @@ const Puzzle = (() => {
       c.isJammer = false;
       board[y][x].card = c;
     }
-    const hSize = HAND_SIZE_BY_DIFF[difficulty] || 4;
+    const hSize = HAND_SIZE;
     const hand = [];
     for (let i=0; i<hSize && deck.length; i++) hand.push(deck.shift());
 
     st = {
-      difficulty,
       handSize: hSize,
       board,
       deck,
@@ -7697,9 +7629,9 @@ const Puzzle = (() => {
     cancel() {
       $('overlay-puzzle-setup').classList.add('hidden');
     },
-    start(difficulty) {
+    start() {
       $('overlay-puzzle-setup').classList.add('hidden');
-      newPuzzleGame(difficulty);
+      newPuzzleGame();
       showScreen('puzzle');
       render();
       attachResizeObs();
@@ -7708,8 +7640,7 @@ const Puzzle = (() => {
     },
     restart() {
       if (!st) { this.open(); return; }
-      const d = st.difficulty;
-      newPuzzleGame(d);
+      newPuzzleGame();
       showScreen('puzzle');
       render();
       requestAnimationFrame(() => { fit(); });
