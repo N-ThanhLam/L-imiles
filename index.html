@@ -2677,6 +2677,7 @@ const Net = {
   config: null,          // host: {numPlayers, turnTime}
   ruleHash: '',
   reconnectToken: '',    // client-side: received from host
+  _lastJoinError: '',    // client-side: 直近 join 試行の終了理由 ('peer-unavailable' | 'reject:<reason>' | 'network' | ...)。AutoMatch のスロット空き判定に使う。
   joinAsSpectator: false,
   currentMatchId: '',    // 試合識別子。newGame ごとに UUID 生成。パケット世代を区別する
   acceptInput: true,     // 再戦直後の race 防止: false の間は clientSendAction を全拒否
@@ -3655,6 +3656,7 @@ function netJoin({keyword, name}) {
   function _createClientPeer() {
     Net._connecting = false; // ★ 非同期初期化が実際に始まったのでフラグ解除
     if (Net.mode !== 'online-client') return;
+    Net._lastJoinError = ''; // ★ AutoMatch スロット判定用: 新規 join 試行の開始でクリア
     Net.peer = new Peer(undefined, {debug: 0});
     Net.peer.on('open', () => {
       setNetStatus('connecting', 'ホストに接続中…');
@@ -3673,7 +3675,7 @@ function netJoin({keyword, name}) {
       });
       conn.on('data', d => { conn.__lastRxTime = Date.now(); handleClientMessage(d); });
       conn.on('close', () => {
-        if (!opened) setNetStatus('error', 'ホストに到達できません');
+        if (!opened) { Net._lastJoinError = Net._lastJoinError || 'unreachable'; setNetStatus('error', 'ホストに到達できません'); }
         else {
           // ゲーム途中での切断ならレート負け記録
           recordOnlineDisconnectLoss();
@@ -3684,6 +3686,7 @@ function netJoin({keyword, name}) {
     });
     Net.peer.on('error', err => {
       let msg = err.type || 'error';
+      Net._lastJoinError = err.type || 'error'; // ★ AutoMatch: 'peer-unavailable'(=スロット空き) 等を記録
       if (err.type === 'peer-unavailable') msg = 'ホストが見つかりません (合言葉を確認)';
       if (err.type === 'network') msg = 'ネットワーク接続失敗';
       setNetStatus('error', msg);
@@ -3885,8 +3888,10 @@ function handleClientMessage(msg) {
     if (msg.reason === 'game-started') txt = '既にゲーム開始済み';
     if (msg.reason === 'room-full') txt = 'ルーム満員';
     if (msg.reason === 'spectator-full') txt = '観戦者上限 (最大' + SPECTATOR_MAX + '人) に達しています';
+    Net._lastJoinError = 'reject:' + msg.reason; // ★ AutoMatch: 占有だが参加不可 = 次スロットへ
     setNetStatus('error', txt);
-    showOnlineMsg('参加拒否', txt);
+    // ★ AutoMatch のスロット探索中は reject が連発するため modal を出さない (UX 保護)。
+    if (!AutoMatch.active) showOnlineMsg('参加拒否', txt);
     try { Net.hostConn?.close(); } catch(e){}
   } else if (msg.type === 'lobby-update') {
     Net.hostPlayers = msg.players;
@@ -4656,12 +4661,19 @@ const AutoMatch = {
 };
 const AUTO_JOIN_TIMEOUT_MS = 15000;  // 1 候補あたり最大待ち時間 (mobile / PeerJS 初回 connect の遅さを許容)
 const AUTO_JOIN_POLL_MS = 200;       // Net.status 観測ポーリング周期
-// ★ 固定 slot 設計: ランダム keyword だと 1 人部屋が無限増殖するため、auto-1..10 の
-//   固定 slot に集約する。Worker /rooms は単なる existence index として使う。
-const AUTO_ROOM_CODES = [
-  'auto-1', 'auto-2', 'auto-3', 'auto-4', 'auto-5',
-  'auto-6', 'auto-7', 'auto-8', 'auto-9', 'auto-10',
-];
+const AUTO_SLOTS_PER_COUNT = 10;     // 人数ごとの固定スロット数
+// ★ 固定 slot 設計: ランダム keyword だと 1 人部屋が無限増殖するため固定 slot に集約する。
+//   さらに人数 (numPlayers) ごとに slot 名前空間を分ける ('auto-2p-1' 等)。
+//   理由: host は hello.ruleHash=null のため numPlayers 不一致を reject しない。
+//   人数別 slot にしておけば、2 人希望のプレイヤーが 4 人部屋へ誤って入るのを構造的に防げる。
+//   roomIdFor(slot) は決定的 PeerJS ID なので、全端末・全 origin (file:// 含む) から
+//   同一に到達できる = Worker 索引のズレ (人によって見える部屋が違う) の影響を受けない。
+function _autoSlotCodes(n) {
+  const num = (typeof n === 'number' && n >= 2) ? n : 2;
+  const out = [];
+  for (let i = 1; i <= AUTO_SLOTS_PER_COUNT; i++) out.push('auto-' + num + 'p-' + i);
+  return out;
+}
 
 function _autoMsg(s) {
   const el = document.getElementById('automatch-status');
@@ -4702,85 +4714,46 @@ function cancelAutoMatch() {
   if (Net.mode !== 'none') { try { netLeave(); } catch(e){} }
 }
 
-async function _autoFetchAndJoin() {
-  const seq = AutoMatch.trySeq;
-  const { rooms, status } = await fetchLobbyRooms();
-  if (!AutoMatch.active || seq !== AutoMatch.trySeq) return;
-
-  // ★ Worker から候補が取れない場合、host fallback すると衝突して必ず unavailable-id になる。
-  //   原因の切り分けが必要な状況なので、UI に明示してフローを止める (silent host 化しない)。
-  if (status !== 'ok') {
-    const reasonMsg = {
-      'unconfigured': 'Worker URL が未設定 (LOBBY_URL がプレースホルダのまま)',
-      'fetch-error':  'Worker への接続失敗 (Worker down / CORS / DNS)',
-      'http-error':   'Worker がエラー応答',
-      'bad-json':     'Worker のレスポンス形式が不正',
-    }[status] || ('取得失敗: ' + status);
-    _autoMsg('ランダムマッチ不可: ' + reasonMsg + ' → 詳細は DevTools コンソール');
-    AutoMatch.active = false;
-    AutoMatch.state = 'idle';
-    return;
-  }
-
-  // roomCode → room の Map に変換 (固定 slot 走査用)
-  const roomMap = new Map();
-  rooms.forEach(r => {
-    if (r && typeof r.roomCode === 'string') roomMap.set(r.roomCode, r);
-  });
-
-  // AUTO_ROOM_CODES を 1→10 順走査:
-  //   - 存在 & joinable な slot は join 候補に積む (順序保持 = 若い slot 優先)
-  //   - 存在しない slot は「最初に空いている slot」として記憶 (host fallback 候補)
-  // 集約の鍵: 同じ条件のプレイヤーは必ず若い slot から消費する。
-  const joinable = [];
-  let firstEmptySlot = -1;
-  for (let i = 0; i < AUTO_ROOM_CODES.length; i++) {
-    const code = AUTO_ROOM_CODES[i];
-    const r = roomMap.get(code);
-    if (!r) {
-      if (firstEmptySlot < 0) firstEmptySlot = i;
-      continue;
-    }
-    // 存在するが joinable じゃない slot は skip (host 候補にもしない: 既に使用中だから)
-    if (r.version !== VERSION) continue;
-    if (r.started === true) continue;
-    if (r.players >= r.maxPlayers) continue;
-    if (r.maxPlayers !== AutoMatch.numPlayers) continue;
-    joinable.push(code);
-  }
-
-  if (joinable.length === 0) {
-    const hostCode = firstEmptySlot >= 0 ? AUTO_ROOM_CODES[firstEmptySlot] : AUTO_ROOM_CODES[0];
-    _autoMsg('参加可能な部屋なし → ' + hostCode + ' をホスト化');
-    _autoHostFallback(hostCode);
-    return;
-  }
-  _autoMsg('候補 ' + joinable.length + ' 件 (' + joinable.join(', ') + ') → 順次接続');
-  _autoTryJoinList(joinable, 0, firstEmptySlot);
+// ★ Worker /rooms には依存しない (auto-match のみ)。
+//   真実の所在は PeerJS クラウド (= roomIdFor(slot) の固定 ID 名前空間) に統一する。
+//   Worker 索引はクライアント/PoP ごとに見え方がズレ (eventual consistency / per-isolate state)、
+//   file:// からは CORS で取得できないため「人によって見える部屋が違う / 直開きで部屋が見えない」
+//   という分裂を生む。固定スロットを auto-1p..N 順 (= 若い slot 優先) に PeerJS 直結で走査すれば、
+//   全端末・全 origin が同一の真実を見るので分裂しない。
+function _autoFetchAndJoin() {
+  if (!AutoMatch.active) return;
+  const order = _autoSlotCodes(AutoMatch.numPlayers);
+  _autoMsg(AutoMatch.numPlayers + '人部屋を探索中… (固定スロット直接探索)');
+  _autoScanSlots(order, 0);
 }
 
-// 候補リストを 1 件ずつ試す。Net.status の遷移を監視し、'lobby' で成功、'error'/'disconnected' で次候補。
-// Worker fetch 後の join 自体は既存 netJoin を流用 = PeerJS direct (Worker relay 化しない)。
-// firstEmptySlot: 全候補失敗時に host fallback する slot index (-1 なら slot 0 を使う)。
-function _autoTryJoinList(list, idx, firstEmptySlot) {
+// 固定スロットを 1 件ずつ PeerJS 直結でプローブする (Worker 非依存)。
+// netJoin = roomIdFor(slot) への peer.connect なので、これ自体が「存在 + 参加可否」プローブになる。
+//   - Net.status==='lobby'            → 参加成功 (完了)
+//   - _lastJoinError==='peer-unavailable'/'unreachable' → スロットは空 → ここをホスト化
+//       (集約の鍵: 全員が若い slot から探すので、最初に見つけた空き slot に集まる。
+//        他端末と同時にホスト化を試みて衝突しても netHostCreate の onIdTaken が join へ救済する)
+//   - _lastJoinError==='reject:*'      → 占有だが参加不可 (満室/試合中/版違い) → 次スロット
+//   - 'network'/'server-error' 系       → シグナリング障害 → bounded 再スキャン
+//   - timeout / その他                  → 次スロット
+function _autoScanSlots(order, idx) {
   if (!AutoMatch.active) return;
-  if (idx >= list.length) {
-    const hostCode = firstEmptySlot >= 0 ? AUTO_ROOM_CODES[firstEmptySlot] : AUTO_ROOM_CODES[0];
-    _autoMsg('全候補失敗 → ' + hostCode + ' をホスト化');
-    _autoHostFallback(hostCode);
+  if (idx >= order.length) {
+    // 空きスロットが 1 つも無かった = 全部占有 & 参加不可 → 待って再スキャン
+    _autoMsg('空き/参加可能な部屋が見つかりません → 再スキャン');
+    _autoRescanAfterDelay();
     return;
   }
-  const code = list[idx];
+  const code = order[idx];
   const seq = AutoMatch.trySeq;
   AutoMatch.state = 'connecting';
-  _autoMsg('候補 ' + (idx+1) + '/' + list.length + ' (' + code + ') 接続中…');
+  _autoMsg('探索 ' + (idx+1) + '/' + order.length + ' (' + code + ')…');
 
-  // 既存 netJoin に lift する: keyword = 固定 slot 名を使う。
-  // (room browser からの join と完全に同一パス = roomIdFor(keyword) → PeerJS connect)
   Net.joinAsSpectator = false;
+  Net._lastJoinError = '';
   try { netJoin({keyword: code, name: AutoMatch.myName}); }
   catch(e) {
-    setTimeout(() => _autoTryJoinList(list, idx + 1, firstEmptySlot), 100);
+    setTimeout(() => _autoScanSlots(order, idx + 1), 100);
     return;
   }
 
@@ -4796,14 +4769,26 @@ function _autoTryJoinList(list, idx, firstEmptySlot) {
       return;
     }
     if (Net.status === 'error' || Net.status === 'disconnected') {
+      const err = Net._lastJoinError || '';
       try { netLeave(); } catch(e){}
-      setTimeout(() => _autoTryJoinList(list, idx + 1, firstEmptySlot), 150);
+      if (err === 'peer-unavailable' || err === 'unreachable') {
+        // このスロットは空 → ホスト化 (占有済みなら netHostCreate が join へ自動救済)
+        _autoMsg(code + ' は空き → ホスト化');
+        _autoHostFallback(order, idx);
+      } else if (err === 'network' || err === 'server-error' || err === 'socket-error' || err === 'socket-closed') {
+        // シグナリング/ネットワーク障害: どのスロットでも同じく失敗するので churn せず待つ
+        _autoMsg('ネットワーク/シグナリング障害 → 再試行');
+        _autoRescanAfterDelay();
+      } else {
+        // reject:* (満室/試合中/版違い) や不明 → 次スロット
+        setTimeout(() => _autoScanSlots(order, idx + 1), 150);
+      }
       return;
     }
     if (Date.now() - startAt > AUTO_JOIN_TIMEOUT_MS) {
-      // タイムアウト → 次候補
+      // 遅い host の可能性。ここでホスト化すると本物の host を奪う恐れがあるので次スロットへ。
       try { netLeave(); } catch(e){}
-      setTimeout(() => _autoTryJoinList(list, idx + 1, firstEmptySlot), 150);
+      setTimeout(() => _autoScanSlots(order, idx + 1), 150);
       return;
     }
     AutoMatch.pollTimer = setTimeout(poll, AUTO_JOIN_POLL_MS);
@@ -4811,17 +4796,19 @@ function _autoTryJoinList(list, idx, firstEmptySlot) {
   AutoMatch.pollTimer = setTimeout(poll, AUTO_JOIN_POLL_MS);
 }
 
-// 全候補失敗 / 空 slot 発見 → 固定 slot keyword でホスト化。
-// netHostCreate の peer.on('open') で startLobbyHeartbeat() が走り、Worker /rooms に登録される。
+// 空き slot を発見 → その固定 slot keyword でホスト化。
+// netHostCreate の peer.on('open') で startLobbyHeartbeat() が走り、Worker /rooms にも登録される
+// (Worker は room browser 表示用の任意インデックス。auto-match の動作は Worker に依存しない)。
 //
 // ★ 重要: 固定 slot 設計では roomIdFor(keyword) が固定 PeerJS ID になるため、
 //   別端末/別タブ/前セッションのゾンビが ID を占有していると host 化が unavailable-id になる。
 //   その場合 onIdTaken で「その slot に join」へフォールバックする。
 //   - join 成功 → 本物のホストがいた → client として参加
-//   - join 失敗 (ゾンビ / 満室 / 開始済み) → bounded 再スキャン
-//   これにより Worker /rooms と PeerJS の状態が一時的にズレても回復できる。
-function _autoHostFallback(keyword) {
+//   - join 失敗 (ゾンビ / 満室 / 開始済み) → 次スロットへ進む (top から再スキャンしない:
+//       slot 1 がゾンビだと永久に詰まるため。order/idx を引き回して次を試す)
+function _autoHostFallback(order, idx) {
   if (!AutoMatch.active) return;
+  const keyword = order[idx];
   AutoMatch.state = 'hosting';
   const seq = AutoMatch.trySeq;
   _autoMsg(keyword + ' をホスト化試行…');
@@ -4838,13 +4825,20 @@ function _autoHostFallback(keyword) {
         // ID 占有中 → 本物のホストかゾンビか不明。実際に join して確認する。
         if (!AutoMatch.active || seq !== AutoMatch.trySeq) return;
         _autoMsg(keyword + ' は使用中 → 参加を試行…');
-        _autoProbeJoin(keyword);   // netJoin は内部で失敗 host peer を netLeave して掃除する
+        _autoProbeJoin(order, idx);   // netJoin は内部で失敗 host peer を netLeave して掃除する
       },
       onHostFailed: (type) => {
         // unavailable-id 以外 (network / server-error 等)
         if (!AutoMatch.active || seq !== AutoMatch.trySeq) return;
-        _autoMsg('ホスト化失敗 (' + type + ') → 再スキャン');
-        _autoRescanAfterDelay();
+        if (type === 'network' || type === 'server-error') {
+          _autoMsg('シグナリング障害 (' + type + ') → 再試行');
+          _autoRescanAfterDelay();
+        } else {
+          // この slot ではホスト化できない → 次スロットへ
+          _autoMsg('ホスト化失敗 (' + type + ') → 次スロット');
+          try { netLeave(); } catch(e){}
+          setTimeout(() => _autoScanSlots(order, idx + 1), 150);
+        }
       },
     }
   );
@@ -4878,15 +4872,17 @@ function _autoHostWaitLoop() {
 }
 
 // host 化が unavailable-id だった slot に join を試みる (本物のホストか確認)。
-// 成功 → client。失敗 (ゾンビ / 満室 / 開始済み) → bounded 再スキャン。
-function _autoProbeJoin(keyword) {
+// 成功 → client。失敗 (ゾンビ / 満室 / 開始済み) → 次スロットへ進む (詰まり防止)。
+function _autoProbeJoin(order, idx) {
   if (!AutoMatch.active) return;
+  const keyword = order[idx];
   const seq = AutoMatch.trySeq;
   AutoMatch.state = 'connecting';
   Net.joinAsSpectator = false;
+  Net._lastJoinError = '';
   // netJoin は冒頭で「Net.mode!=='none' なら netLeave()」するので、失敗した host peer はここで掃除される。
   try { netJoin({keyword, name: AutoMatch.myName}); }
-  catch(e) { _autoRescanAfterDelay(); return; }
+  catch(e) { setTimeout(() => _autoScanSlots(order, idx + 1), 150); return; }
 
   const startAt = Date.now();
   const poll = () => {
@@ -4901,14 +4897,14 @@ function _autoProbeJoin(keyword) {
       return;
     }
     if (Net.status === 'error' || Net.status === 'disconnected') {
-      // join できなかった = ゾンビ ID or 満室/開始済み → 再スキャン
+      // join できなかった = ゾンビ ID or 満室/開始済み → 次スロットへ (top から再スキャンしない)
       try { netLeave(); } catch(e){}
-      _autoRescanAfterDelay();
+      setTimeout(() => _autoScanSlots(order, idx + 1), 150);
       return;
     }
     if (Date.now() - startAt > AUTO_JOIN_TIMEOUT_MS) {
       try { netLeave(); } catch(e){}
-      _autoRescanAfterDelay();
+      setTimeout(() => _autoScanSlots(order, idx + 1), 150);
       return;
     }
     AutoMatch.pollTimer = setTimeout(poll, AUTO_JOIN_POLL_MS);
