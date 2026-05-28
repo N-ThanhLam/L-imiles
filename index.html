@@ -3363,7 +3363,13 @@ function handleHostMessage(conn, msg) {
     // ===== 再接続: reconnectToken付きで来た場合 =====
     if (msg.reconnectToken && state && state.phase !== 'end') {
       for (const p of state.players) {
-        if (p.reconnectToken === msg.reconnectToken && p.disconnected) {
+        // ★ token 一致なら p.disconnected フラグに依らず再接続を受理する。
+        //    通信断では client の再接続が host の切断検知(close/error)より速いことが多く、
+        //    その瞬間は p.disconnected===false のまま。従来は token 一致でもこのブランチを
+        //    素通りして下の game-started 拒否に落ち、「既にゲーム開始済み」連発の主因だった。
+        //    reconnectToken は player ごとの認証情報なので、一致＝正当な復帰とみなして
+        //    conn を差し替える(古い conn は下の peerId 不一致判定で閉じられる)。
+        if (p.reconnectToken === msg.reconnectToken) {
           // 接続復帰
           p.disconnected = false;
           p.cpuControlled = false;
@@ -4162,6 +4168,22 @@ function handleClientMessage(msg) {
       setNetStatus('lobby', 'ロビー待機中');
     }
   } else if (msg.type === 'reject') {
+    // ★ 自動再接続中の一時的な拒否 (game-started / room-full) は「host がまだ
+    //    切断を検知できていない」レースの結果なので、モーダルや error 表示・ロビー遷移は
+    //    せず、既存の予算(deadline)を維持したまま backoff 再試行へ戻す。
+    //    (主因は host 側 hello ハンドラで修正済みだが、残レース対策の二重防御)
+    if (Net._autoReconnectActive && (msg.reason === 'game-started' || msg.reason === 'room-full')) {
+      try { console.warn('[reconnect] transient reject:', msg.reason, '→ retry'); } catch(e){}
+      try { Net.hostConn?.close(); } catch(e){}
+      Net.hostConn = null; // close ハンドラ(:reconnected-conn-close)が二重起動しないよう先に外す
+      if (!Net._reconnecting) {
+        Net._reconnecting = true;            // deadline はリセットしない（無限再試行を防ぐ）
+        setNetStatusInGame('reconnecting', '再接続中…');
+        showReconnectOverlay('再接続中…');
+      }
+      _scheduleNextReconnect();
+      return;
+    }
     let txt = msg.reason;
     if (msg.reason === 'version-mismatch') txt = 'バージョン不一致 (host: ' + (msg.expected||'?') + ', you: '+VERSION+')';
     if (msg.reason === 'rule-mismatch') txt = 'ルール設定不一致';
