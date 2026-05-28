@@ -3028,7 +3028,12 @@ async function fetchLobbyRooms() {
   }
 }
 
-function netHostCreate({keyword, name, numPlayers, turnTime}) {
+// hooks (任意): AutoMatch から呼ぶときに host 確立/失敗を観測するためのコールバック。
+//   { onHostReady, onIdTaken, onHostFailed(type) }
+//   onIdTaken が渡された場合、内部の unavailable-id リトライ (最大3回) はスキップし、
+//   即座に onIdTaken を呼ぶ (AutoMatch 側で「join に切り替える」判断をするため)。
+function netHostCreate({keyword, name, numPlayers, turnTime}, hooks) {
+  hooks = hooks || {};
   if (!keyword) { showOnlineMsg('エラー','合言葉を入力してください'); return; }
   // ★ 既に接続中の場合は先にクリーンアップする。
   //    mode を先に書き換えず、古い peer/conn を完全に閉じてから新規作成する。
@@ -3071,11 +3076,15 @@ function netHostCreate({keyword, name, numPlayers, turnTime}) {
       // ★ host が PeerJS シグナリングに登録成功した段階で Worker /heartbeat 開始。
       //   この時点で roomCode/roomId/config が確定済み = room を公開できる状態。
       startLobbyHeartbeat();
+      if (hooks.onHostReady) { try { hooks.onHostReady(); } catch(e){} }
     });
     Net.peer.on('error', err => {
       let msg = err.type || 'error';
       if (err.type === 'unavailable-id') {
-        // ★ 旧セッションが PeerJS サーバに残っている可能性 →
+        // ★ AutoMatch 経由 (onIdTaken あり): 内部リトライせず即委譲する。
+        //   固定 slot は本物のホストがいる可能性が高いので「join に切り替える」判断は呼び出し側に任せる。
+        if (hooks.onIdTaken) { try { hooks.onIdTaken(); } catch(e){} return; }
+        // ★ 手動ホスト作成: 旧セッションが PeerJS サーバに残っている可能性 →
         //   破棄→待機→リトライ。最大 3 回 (3.5s) まで頑張る。
         if (retry < 3) {
           setNetStatus('creating', '前回セッションを解放中… ('+(retry+1)+'/3)');
@@ -3089,6 +3098,7 @@ function netHostCreate({keyword, name, numPlayers, turnTime}) {
       if (err.type === 'network') msg = 'ネットワーク接続失敗';
       if (err.type === 'server-error') msg = 'シグナリングサーバ応答なし';
       setNetStatus('error', msg);
+      if (hooks.onHostFailed) { try { hooks.onHostFailed(err.type || 'error'); } catch(e){} }
     });
     Net.peer.on('disconnected', () => {
       // ★ 自分で退室した場合 (netLeave) は reconnect しない
@@ -4281,6 +4291,7 @@ function startAutoMatch({numPlayers, turnTime, name}) {
   AutoMatch.turnTime = turnTime || 30;
   AutoMatch.myName = (name || 'Auto').slice(0, 16);
   AutoMatch.trySeq++;
+  AutoMatch._rescanCount = 0;  // host↔join ピンポンの再スキャン上限カウンタをリセット
   _autoClearTimers();
 
   const pane = document.getElementById('online-pane-auto');
@@ -4412,18 +4423,45 @@ function _autoTryJoinList(list, idx, firstEmptySlot) {
 
 // 全候補失敗 / 空 slot 発見 → 固定 slot keyword でホスト化。
 // netHostCreate の peer.on('open') で startLobbyHeartbeat() が走り、Worker /rooms に登録される。
-// unavailable-id (本物のホスト or 残骸) は netHostCreate 内部の retry (最大3回) に任せる。
+//
+// ★ 重要: 固定 slot 設計では roomIdFor(keyword) が固定 PeerJS ID になるため、
+//   別端末/別タブ/前セッションのゾンビが ID を占有していると host 化が unavailable-id になる。
+//   その場合 onIdTaken で「その slot に join」へフォールバックする。
+//   - join 成功 → 本物のホストがいた → client として参加
+//   - join 失敗 (ゾンビ / 満室 / 開始済み) → bounded 再スキャン
+//   これにより Worker /rooms と PeerJS の状態が一時的にズレても回復できる。
 function _autoHostFallback(keyword) {
   if (!AutoMatch.active) return;
   AutoMatch.state = 'hosting';
-  netHostCreate({
-    keyword,
-    name: AutoMatch.myName,
-    numPlayers: AutoMatch.numPlayers,
-    turnTime: AutoMatch.turnTime,
-  });
+  const seq = AutoMatch.trySeq;
+  _autoMsg(keyword + ' をホスト化試行…');
 
-  // 揃ったら自動でゲーム開始 (旧 _autoMatchFinalizeAsHost と同じ挙動)
+  netHostCreate(
+    { keyword, name: AutoMatch.myName, numPlayers: AutoMatch.numPlayers, turnTime: AutoMatch.turnTime },
+    {
+      onHostReady: () => {
+        if (!AutoMatch.active || seq !== AutoMatch.trySeq) return;
+        AutoMatch._rescanCount = 0;  // host 確立できたので再スキャン回数リセット
+        _autoHostWaitLoop();
+      },
+      onIdTaken: () => {
+        // ID 占有中 → 本物のホストかゾンビか不明。実際に join して確認する。
+        if (!AutoMatch.active || seq !== AutoMatch.trySeq) return;
+        _autoMsg(keyword + ' は使用中 → 参加を試行…');
+        _autoProbeJoin(keyword);   // netJoin は内部で失敗 host peer を netLeave して掃除する
+      },
+      onHostFailed: (type) => {
+        // unavailable-id 以外 (network / server-error 等)
+        if (!AutoMatch.active || seq !== AutoMatch.trySeq) return;
+        _autoMsg('ホスト化失敗 (' + type + ') → 再スキャン');
+        _autoRescanAfterDelay();
+      },
+    }
+  );
+}
+
+// host 確立後、numPlayers が揃ったら自動でゲーム開始 (旧 _autoMatchFinalizeAsHost 相当)
+function _autoHostWaitLoop() {
   const need = AutoMatch.numPlayers;
   const tickStart = () => {
     if (!AutoMatch.active) return;
@@ -4447,6 +4485,66 @@ function _autoHostFallback(keyword) {
     AutoMatch.hostTickTimer = setTimeout(tickStart, 1500);
   };
   tickStart();
+}
+
+// host 化が unavailable-id だった slot に join を試みる (本物のホストか確認)。
+// 成功 → client。失敗 (ゾンビ / 満室 / 開始済み) → bounded 再スキャン。
+function _autoProbeJoin(keyword) {
+  if (!AutoMatch.active) return;
+  const seq = AutoMatch.trySeq;
+  AutoMatch.state = 'connecting';
+  Net.joinAsSpectator = false;
+  // netJoin は冒頭で「Net.mode!=='none' なら netLeave()」するので、失敗した host peer はここで掃除される。
+  try { netJoin({keyword, name: AutoMatch.myName}); }
+  catch(e) { _autoRescanAfterDelay(); return; }
+
+  const startAt = Date.now();
+  const poll = () => {
+    if (!AutoMatch.active || seq !== AutoMatch.trySeq) return;
+    if (Net.status === 'lobby') {
+      AutoMatch.active = false;
+      AutoMatch.state = 'joined';
+      AutoMatch._rescanCount = 0;
+      _autoMsg('参加成功 (' + keyword + ')');
+      const pane = document.getElementById('online-pane-auto');
+      if (pane) pane.classList.add('hidden');
+      return;
+    }
+    if (Net.status === 'error' || Net.status === 'disconnected') {
+      // join できなかった = ゾンビ ID or 満室/開始済み → 再スキャン
+      try { netLeave(); } catch(e){}
+      _autoRescanAfterDelay();
+      return;
+    }
+    if (Date.now() - startAt > AUTO_JOIN_TIMEOUT_MS) {
+      try { netLeave(); } catch(e){}
+      _autoRescanAfterDelay();
+      return;
+    }
+    AutoMatch.pollTimer = setTimeout(poll, AUTO_JOIN_POLL_MS);
+  };
+  AutoMatch.pollTimer = setTimeout(poll, AUTO_JOIN_POLL_MS);
+}
+
+// host↔join ピンポンの無限ループを防ぐため、回数上限つきで再スキャンする。
+function _autoRescanAfterDelay() {
+  if (!AutoMatch.active) return;
+  AutoMatch._rescanCount = (AutoMatch._rescanCount || 0) + 1;
+  if (AutoMatch._rescanCount > 5) {
+    _autoMsg('混雑のためマッチングできませんでした。');
+    AutoMatch.active = false;
+    AutoMatch.state = 'idle';
+    // ★ netLeave 経由で title 画面に飛んでいる可能性があるため、modal で確実に通知する。
+    showOnlineMsg('マッチング失敗', '空き部屋の確保に繰り返し失敗しました。<br>少し時間を置いてから再度お試しください。');
+    return;
+  }
+  const delay = 1200 + AutoMatch._rescanCount * 600;
+  _autoMsg('再スキャン待機 ' + Math.round(delay/1000) + 's… (' + AutoMatch._rescanCount + '/5)');
+  const seq = ++AutoMatch.trySeq;  // 進行中の古いコールバックを失効させる
+  AutoMatch.pollTimer = setTimeout(() => {
+    if (!AutoMatch.active || seq !== AutoMatch.trySeq) return;
+    _autoFetchAndJoin();
+  }, delay);
 }
 
 // ============================== LIFECYCLE (visibility / pagehide / freeze) ==============================
