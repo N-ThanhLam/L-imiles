@@ -7192,6 +7192,8 @@ function handleAction(a) {
     case 'close-puzzle-rules': $('overlay-puzzle-rules').classList.add('hidden'); break;
     case 'rules': $('overlay-rules').classList.remove('hidden'); break;
     case 'online':
+      try { localStorage.removeItem('limiles_reconnect'); } catch(e) {}
+      try { if ('caches' in window) caches.keys().then(ks => ks.forEach(k => caches.delete(k))); } catch(e) {}
       showScreen('online');
       $('online-pane-host').classList.remove('hidden');
       $('online-pane-join').classList.add('hidden');
@@ -7385,6 +7387,36 @@ if ('serviceWorker' in navigator) {
   });
 
 }
+
+// ============================== STARTUP CLEANUP ==============================
+// 起動時に古いSWキャッシュ・オンライン系LSゴミを掃除する。
+// 「別端末では動く・この端末だけ動かない」の主因はここ。
+(function startupCleanup() {
+  // 1. 古いService Workerを全解除 + キャッシュ削除
+  //    sw.js が古いHTMLを返し続けるのを防ぐ。
+  //    ページ本体のバージョンアップ後も古いSWが生き残るケースへの対策。
+  try {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(reg => {
+          // 現在アクティブなSWのスコープが自分と一致するものだけ update() を呼ぶ。
+          // キャッシュは caches API で全削除（自分のオリジンのみ）。
+          reg.update().catch(() => {});
+        });
+      }).catch(() => {});
+      if ('caches' in window) {
+        caches.keys().then(keys => {
+          keys.forEach(k => caches.delete(k));
+        }).catch(() => {});
+      }
+    }
+  } catch(e) {}
+
+  // 2. reconnectToken が古いまま残っているとJOIN時に旧試合トークンを送ってしまい
+  //    ホストに弾かれる。起動時に必ずクリアする。
+  //    （再接続は同一セッション内でのみ有効にする方針）
+  try { localStorage.removeItem('limiles_reconnect'); } catch(e) {}
+})();
 
 // ============================== BOOTSTRAP ==============================
 // 強制更新後にURLからタイムスタンプを除去してアドレスバーを綺麗にする
