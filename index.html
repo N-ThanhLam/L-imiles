@@ -2730,7 +2730,7 @@ const LOBBY_URL = 'https://odd-cake-7a5f.thanhlam-527.workers.dev';
 const LOBBY_URL_CONFIGURED = !!LOBBY_URL && !LOBBY_URL.includes('xxxxx');
 const LOBBY_HEARTBEAT_INTERVAL_MS = 5000;  // host → Worker heartbeat 周期 (短くしない)
 const LOBBY_FETCH_TIMEOUT_MS = 4000;       // GET /rooms タイムアウト
-const LOBBY_MAX_ROOMS = 10;                // 表示・探索する最大 room 数
+const LOBBY_MAX_ROOMS = 60;                // room browser 表示の最大 room 数 (人数別 50 部屋に対応)
 if (!LOBBY_URL_CONFIGURED) {
   console.warn('[Lobby] LOBBY_URL is not configured (placeholder). AutoMatch and room browser will not work until you replace it with a real Cloudflare Worker URL.');
 }
@@ -4577,15 +4577,18 @@ function rollbackPendingAction(actionId) {
   }
 }
 
-function netLeave() {
+function netLeave(opts) {
+  // ★ silent: AutoMatch のスロット探索中などで「画面遷移なし・レート記録なし」で
+  //   ネットワークだけ畳みたいときに true。AutoMatch.active 中は常に silent 扱いにする。
+  const silent = (opts && opts.silent === true) || (typeof AutoMatch !== 'undefined' && AutoMatch.active);
   // ★ 意図的切断フラグを先立てる。この後の peer.destroy() で 'disconnected' が発火しても
   //    reconnect() しないようにする（退室後に peer を蘇生させる根本原因の修正）。
   Net._intentionalDisconnect = true;
   // ★ Worker への heartbeat を最優先で停止する。
   //   先に止めないと、この後の Net 状態リセット中にタイマーが発火して stale な payload が登録される恐れがある。
   stopLobbyHeartbeat();
-  // ゲーム途中の退出はレートに「負け」として記録
-  recordOnlineDisconnectLoss();
+  // ゲーム途中の退出はレートに「負け」として記録 (探索プローブでは記録しない)
+  if (!silent) recordOnlineDisconnectLoss();
   // ★ 明示的退室時は再接続トークンを破棄する。
   //    同じ合言葉で部屋を作り直すケース (rejoin バグの主原因) で
   //    旧トークンを誤って host へ提示しないようにする。
@@ -4637,11 +4640,15 @@ function netLeave() {
   Net.localDeckFp = '';
   Net._lastDeckLen = -1;
   state = null;
-  $('online-pane-lobby').classList.add('hidden');
-  $('online-pane-host').classList.remove('hidden');
-  $('online-pane-join').classList.add('hidden');
-  { const p = $('online-pane-auto'); if (p) p.classList.add('hidden'); }
-  showScreen('title');
+  // ★ AutoMatch 探索中 (silent) は画面遷移しない。
+  //   スロットを次々プローブする際に毎回タイトルへ戻ってしまう「チラつき」を防ぐ。
+  if (!silent) {
+    $('online-pane-lobby').classList.add('hidden');
+    $('online-pane-host').classList.remove('hidden');
+    $('online-pane-join').classList.add('hidden');
+    { const p = $('online-pane-auto'); if (p) p.classList.add('hidden'); }
+    showScreen('title');
+  }
 }
 
 // ============================== AUTO MATCH (Worker Lobby Index 版) ==============================
@@ -4660,8 +4667,9 @@ const AutoMatch = {
   hostTickTimer: null,
 };
 const AUTO_JOIN_TIMEOUT_MS = 15000;  // 1 候補あたり最大待ち時間 (mobile / PeerJS 初回 connect の遅さを許容)
-const AUTO_JOIN_POLL_MS = 200;       // Net.status 観測ポーリング周期
-const AUTO_SLOTS_PER_COUNT = 10;     // 人数ごとの固定スロット数
+const AUTO_JOIN_POLL_MS = 100;       // Net.status 観測ポーリング周期 (速応答のため短め)
+const AUTO_NEXT_DELAY_MS = 40;       // 次スロットへ移るまでの待機 (チラつき無しで素早く)
+const AUTO_SLOTS_PER_COUNT = 50;     // 人数ごとの固定スロット数 (= 最大 50 部屋/人数)
 // ★ 固定 slot 設計: ランダム keyword だと 1 人部屋が無限増殖するため固定 slot に集約する。
 //   さらに人数 (numPlayers) ごとに slot 名前空間を分ける ('auto-2p-1' 等)。
 //   理由: host は hello.ruleHash=null のため numPlayers 不一致を reject しない。
@@ -4753,7 +4761,7 @@ function _autoScanSlots(order, idx) {
   Net._lastJoinError = '';
   try { netJoin({keyword: code, name: AutoMatch.myName}); }
   catch(e) {
-    setTimeout(() => _autoScanSlots(order, idx + 1), 100);
+    setTimeout(() => _autoScanSlots(order, idx + 1), AUTO_NEXT_DELAY_MS);
     return;
   }
 
@@ -4781,14 +4789,14 @@ function _autoScanSlots(order, idx) {
         _autoRescanAfterDelay();
       } else {
         // reject:* (満室/試合中/版違い) や不明 → 次スロット
-        setTimeout(() => _autoScanSlots(order, idx + 1), 150);
+        setTimeout(() => _autoScanSlots(order, idx + 1), AUTO_NEXT_DELAY_MS);
       }
       return;
     }
     if (Date.now() - startAt > AUTO_JOIN_TIMEOUT_MS) {
       // 遅い host の可能性。ここでホスト化すると本物の host を奪う恐れがあるので次スロットへ。
       try { netLeave(); } catch(e){}
-      setTimeout(() => _autoScanSlots(order, idx + 1), 150);
+      setTimeout(() => _autoScanSlots(order, idx + 1), AUTO_NEXT_DELAY_MS);
       return;
     }
     AutoMatch.pollTimer = setTimeout(poll, AUTO_JOIN_POLL_MS);
@@ -4837,7 +4845,7 @@ function _autoHostFallback(order, idx) {
           // この slot ではホスト化できない → 次スロットへ
           _autoMsg('ホスト化失敗 (' + type + ') → 次スロット');
           try { netLeave(); } catch(e){}
-          setTimeout(() => _autoScanSlots(order, idx + 1), 150);
+          setTimeout(() => _autoScanSlots(order, idx + 1), AUTO_NEXT_DELAY_MS);
         }
       },
     }
@@ -4882,7 +4890,7 @@ function _autoProbeJoin(order, idx) {
   Net._lastJoinError = '';
   // netJoin は冒頭で「Net.mode!=='none' なら netLeave()」するので、失敗した host peer はここで掃除される。
   try { netJoin({keyword, name: AutoMatch.myName}); }
-  catch(e) { setTimeout(() => _autoScanSlots(order, idx + 1), 150); return; }
+  catch(e) { setTimeout(() => _autoScanSlots(order, idx + 1), AUTO_NEXT_DELAY_MS); return; }
 
   const startAt = Date.now();
   const poll = () => {
@@ -4899,12 +4907,12 @@ function _autoProbeJoin(order, idx) {
     if (Net.status === 'error' || Net.status === 'disconnected') {
       // join できなかった = ゾンビ ID or 満室/開始済み → 次スロットへ (top から再スキャンしない)
       try { netLeave(); } catch(e){}
-      setTimeout(() => _autoScanSlots(order, idx + 1), 150);
+      setTimeout(() => _autoScanSlots(order, idx + 1), AUTO_NEXT_DELAY_MS);
       return;
     }
     if (Date.now() - startAt > AUTO_JOIN_TIMEOUT_MS) {
       try { netLeave(); } catch(e){}
-      setTimeout(() => _autoScanSlots(order, idx + 1), 150);
+      setTimeout(() => _autoScanSlots(order, idx + 1), AUTO_NEXT_DELAY_MS);
       return;
     }
     AutoMatch.pollTimer = setTimeout(poll, AUTO_JOIN_POLL_MS);
