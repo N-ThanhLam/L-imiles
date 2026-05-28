@@ -4041,6 +4041,10 @@ function disposeOnlineGameState() {
   Net._spectatorViewCache = null;
   Net._spectatorViewVersion = -1;
   Net._spectatorReqCooldown.clear();
+  // ★ host diff ベースラインをリセット: 再戦 (startOnlineGame) では host peer を作り直さない
+  //   ため、これを残すと初回 broadcastStateIfHost が旧試合の view を基準に diff を生成し、
+  //   client 側で必ず hash 不一致 → fullState 往復が発生する。ここで破棄して初手はフル送信させる。
+  if (Net._lastSentViews) Net._lastSentViews.clear();
   // ★ deck fp リセット
   Net.hostDeckFp = '';
   Net.localDeckFp = '';
@@ -4108,6 +4112,9 @@ function requestFullStateFromHost(reason) {
 // クライアント: host state を完全上書き同期する
 // 部分修復ではなく state を丸ごと差し替え、UI/timer/animation/overlay も reset する
 function replaceGameState(view) {
+  // ★ 選択カードを退避: 自手番でカードを選んでいる最中に resync が走っても
+  //   (再接続 / desync 修復)、適用後に手札へ残っていれば選択を復元してカーソルを保つ。
+  const _prevSel = ui.selectedCardId;
   // 1. local pending/animation/overlay 破棄
   hidePlacePopup();
   UI_PENDING = null;
@@ -4147,6 +4154,14 @@ function replaceGameState(view) {
   Net.acceptInput = true;
   // ★ recover 中に退避していた action を再送する（入力食われ防止）
   flushPendingActions();
+  // ★ 選択カード復元: 自分の手番が継続中で、退避したカードが手札に残っている場合のみ。
+  if (_prevSel != null && state.phase !== 'end') {
+    const _li = localPlayerIdx();
+    if (_li >= 0 && currentPlayerIdx() === _li) {
+      const _hand = state.players?.[_li]?.hand || [];
+      if (_hand.find(c => c && c.id === _prevSel)) ui.selectedCardId = _prevSel;
+    }
+  }
   // 5. 描画と timer 再生成
   if (state.phase === 'end') { showResult(); return; }
   renderAll();
@@ -4268,8 +4283,35 @@ function handleClientMessage(msg) {
     // ★ Bug D: reconnect / spectator first-join 経路で Net.currentMatchId が未設定のまま残るのを防ぐ。
     //   currentMatchId が空の状態が続くと、後続の旧試合 stale packet が誤って受理される。
     if (!Net.currentMatchId && msg.matchId) Net.currentMatchId = msg.matchId;
+    const _fsVer  = (typeof msg.version === 'number') ? msg.version : null;
+    const _fsHash = msg.hash || '';
+    // ★「気付かせない」処理: 15 秒ごとの定期 fullState heartbeat は、
+    //   既に同期済み (= hash 一致) なら replaceGameState を呼ばない。
+    //   replaceGameState は選択カード / 配置ポップアップ / タイマーを破棄するため、
+    //   何も変わっていないのに 15 秒おきにカーソルがリセットされる原因になっていた。
+    //   復帰中 (isRecovering / 自動再接続) は従来どおり必ず適用する。
+    if (!Net.isRecovering && !Net._autoReconnectActive) {
+      const _hasPending = Net._clientPending && Net._clientPending.size > 0;
+      // 予測適用中、または自分の方が新しい heartbeat → 巻き戻し/予測破棄を避けメタのみ更新。
+      //   (silent desync は予測タイムアウト(checkStalePending)が fullState 要求で救済する)
+      if (_hasPending || (_fsVer != null && _fsVer < (Net._lastStateVersion || 0))) {
+        Net.hostHash = _fsHash || Net.hostHash;
+        renderSyncDebug();
+        return;
+      }
+      // hash 一致 = 完全同期済み → 再適用も再描画もせずメタだけ更新（UI 無傷）
+      if (_fsHash && Net.localHash && _fsHash === Net.localHash) {
+        if (_fsVer != null) Net._lastStateVersion = _fsVer;
+        Net.hostHash = _fsHash;
+        if (msg.deckFp) { Net.hostDeckFp = msg.deckFp; Net.localDeckFp = msg.deckFp; }
+        Net.syncState = 'synced';
+        Net._health = 'ok';
+        renderSyncDebug();
+        return;
+      }
+    }
     if ($('screen-game').classList.contains('hidden')) showScreen('game');
-    Net.hostHash = msg.hash || '';
+    Net.hostHash = _fsHash;
     // ★ fullState 受信時に hostDeckFp を正として更新する。
     // これ以降の state パケットはこの fp と照合される。
     if (msg.deckFp) { Net.hostDeckFp = msg.deckFp; Net.localDeckFp = msg.deckFp; }
@@ -4317,16 +4359,20 @@ function handleClientMessage(msg) {
     // 自分のターン継続中かつ pending なしの場合は selectedCardId を保持する。
     // ターンが変わった / pending確定済み の場合のみリセット。
     {
-      const _incomingTurn = msg.view && msg.view.currentPlayer;
       const _localIdx = localPlayerIdx();
+      // ★ 修正: 旧コードは view に存在しない msg.view.currentPlayer を参照しており
+      //   _keepSel が常に false（= state 受信のたびに必ず選択解除）になっていた。
+      //   currentPlayerIdx() は currentRoundOrder[currentTurnIdx] を解決する正規の判定。
+      //   この時点で state は既に新 view で上書き済みなので state を正として読む。
       const _keepSel = (
         _localIdx >= 0 &&
-        _incomingTurn === _localIdx &&
-        UI_PENDING == null
+        currentPlayerIdx() === _localIdx &&
+        UI_PENDING == null &&
+        state.phase !== 'end'
       );
       if (_keepSel && ui.selectedCardId != null) {
         // 手札にそのカードがまだ存在するか確認（交換・使用済みなら破棄）
-        const _hand = msg.view?.players?.[_localIdx]?.hand || [];
+        const _hand = state.players?.[_localIdx]?.hand || [];
         if (!_hand.find(c => c && c.id === ui.selectedCardId)) {
           ui.selectedCardId = null;
         }
@@ -4412,9 +4458,10 @@ function handleClientMessage(msg) {
     UI_EXCHANGE_PICKED.clear();
     // selectedCardId 維持ロジック (state ハンドラと同じ)
     {
-      const _incomingTurn = state.currentTurnIdx;
       const _localIdx = localPlayerIdx();
-      const _keepSel = _localIdx >= 0 && _incomingTurn === _localIdx && UI_PENDING == null;
+      // ★ 修正: currentTurnIdx は手番順序内の「位置」でありプレイヤー idx ではない。
+      //   currentPlayerIdx() (= currentRoundOrder[currentTurnIdx]) で実際の手番者と比較する。
+      const _keepSel = _localIdx >= 0 && currentPlayerIdx() === _localIdx && UI_PENDING == null && state.phase !== 'end';
       if (!_keepSel) {
         ui.selectedCardId = null;
       } else if (ui.selectedCardId != null) {
@@ -6213,27 +6260,25 @@ function renderScores(networkScores) {
 function renderLog() {
   const el = $('log-panel');
   el.innerHTML = '';
+  // ★ 名前の安全取得: 壊れたリプレイ / 範囲外 idx でも例外で renderAll 全体を落とさない。
+  const pname = (i) => (state.players[i] && state.players[i].name) || '?';
   const recent = (state.log || []).slice(-40).reverse();
   for (const entry of recent) {
     const e = document.createElement('div');
     e.className = 'log-entry';
     let txt = '';
     if (entry.type === 'place') {
-      const p = state.players[entry.player];
-      txt = 'R'+entry.round+' '+p.name+': '+entry.card+' → ('+entry.x+','+entry.y+')'+(entry.isJammer?' [妨害]':'');
+      txt = 'R'+entry.round+' '+pname(entry.player)+': '+entry.card+' → ('+entry.x+','+entry.y+')'+(entry.isJammer?' [妨害]':'');
     } else if (entry.type === 'exchange') {
-      const p = state.players[entry.player];
-      txt = 'R'+entry.round+' '+p.name+': 交換 '+entry.returned.join(',')+' ('+entry.drawn+'枚)';
+      txt = 'R'+entry.round+' '+pname(entry.player)+': 交換 '+(entry.returned||[]).join(',')+' ('+entry.drawn+'枚)';
     } else if (entry.type === 'action-unable') {
-      const p = state.players[entry.player];
-      txt = 'R'+entry.round+' '+p.name+': 行動不能';
+      txt = 'R'+entry.round+' '+pname(entry.player)+': 行動不能';
     } else if (entry.type === 'disconnect') {
-      const p = state.players[entry.player];
-      txt = 'R'+entry.round+' '+p.name+': 切断';
+      txt = 'R'+entry.round+' '+pname(entry.player)+': 切断';
     } else if (entry.type === 'round-start') {
       txt = '— ラウンド '+entry.round+' 開始 —';
     } else if (entry.type === 'game-end') {
-      const ws = entry.winners.map(i => state.players[i].name).join(', ');
+      const ws = (entry.winners||[]).map(i => pname(i)).join(', ');
       txt = '★ 終了 勝者: '+ws;
     }
     e.textContent = txt;
@@ -6289,10 +6334,18 @@ function updateActionButtons() {
     return;
   }
 
+  // ★ anyLegalPlacement は手札×盤面走査でやや重い。同一 render 内で最大 3 回呼ばれていたので
+  //   遅延メモ化して 1 回に抑える（自手番の play フェーズでのみ計算）。
+  let _legalCache = null;
+  const hasLegal = () => {
+    if (_legalCache === null) _legalCache = (localIdx >= 0 && inPlayPhase) ? anyLegalPlacement(state, localIdx) : false;
+    return _legalCache;
+  };
+
   const canShowExchange = canActLocally && inPlayPhase && !UI_PENDING && !UI_EXCHANGE_MODE;
   let exEligible = false;
   if (canShowExchange) {
-    exEligible = !anyLegalPlacement(state, localIdx) && state.deck.length > 0 && state.players[localIdx].hand.length > 0;
+    exEligible = !hasLegal() && state.deck.length > 0 && state.players[localIdx].hand.length > 0;
   }
   $('btn-exchange').classList.toggle('hidden', !canShowExchange);
   $('btn-exchange').disabled = !exEligible;
@@ -6307,7 +6360,7 @@ function updateActionButtons() {
 
   let canGiveUp = false;
   if (canActLocally && inPlayPhase && !UI_PENDING && !UI_EXCHANGE_MODE) {
-    if (!anyLegalPlacement(state, localIdx) && (state.deck.length === 0 || state.players[localIdx].hand.length === 0)) {
+    if (!hasLegal() && (state.deck.length === 0 || state.players[localIdx].hand.length === 0)) {
       canGiveUp = true;
     }
   }
@@ -6327,7 +6380,7 @@ function updateActionButtons() {
   else if (UI_PENDING) msg = UI_PENDING.isJammer ? '妨害配置 — 確定待ち' : '配置 — 確定待ち';
   else if (UI_EXCHANGE_MODE) msg = '交換するカードを選択 (山札残' + state.deck.length + ')';
   else {
-    if (anyLegalPlacement(state, localIdx)) msg = 'カードを選択 → マスをタップ';
+    if (hasLegal()) msg = 'カードを選択 → マスをタップ';
     else if (state.deck.length > 0 && state.players[localIdx].hand.length > 0) msg = '置けるカードなし — 交換してください';
     else msg = '置けず交換も不可 — 行動不能ボタンを押してください';
   }
