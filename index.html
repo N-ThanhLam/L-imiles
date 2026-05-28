@@ -871,7 +871,9 @@ html.lowspec .result-row.winner-anim { animation: none; }
       <div class="tab-row">
         <button id="tab-host-btn" class="active" data-action="online-tab-host">ホスト作成</button>
         <button id="tab-join-btn" data-action="online-tab-join">参加</button>
+        <!-- DISABLED: ランダムマッチ修正中
         <button id="tab-auto-btn" data-action="online-tab-auto">ランダム</button>
+        -->
       </div>
 
       <div id="online-pane-host">
@@ -932,6 +934,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
         </div>
       </div>
 
+      <!-- DISABLED: ランダムマッチ修正中
       <div id="online-pane-auto" class="hidden">
         <div class="setup-row" style="background:var(--panel-2); border-radius:6px; padding:6px 10px; margin-bottom:12px;">
           <label style="min-width:auto;">あなたのレート</label>
@@ -982,6 +985,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
           <div id="online-room-list" style="font-size:12px; color:var(--text-dim);">未取得</div>
         </div>
       </div>
+      --> <!-- /DISABLED ランダムマッチ -->
 
       <div id="online-pane-lobby" class="hidden" style="margin-top:14px;">
         <h3>ルーム</h3>
@@ -7388,7 +7392,7 @@ const Puzzle = (() => {
       selected: null,
       ended: false,
       seed,
-      numMult: 1.0,   // スコアアタック: 数字系役が成立するたびに1.05倍
+      numMult: 1.0,   // スコアアタック: 数字系役が成立するたびに1.10倍
       ccMax: {
         all:  new Map(),
         suit: { S:new Map(), H:new Map(), D:new Map(), C:new Map() },
@@ -7417,7 +7421,7 @@ const Puzzle = (() => {
     st.selected = null;
 
     const roles = detectRoles(x, y);
-    // スコアアタック: 数字系役(cat:'num')に現在の乗数を適用し、その後乗数を1.05倍更新
+    // スコアアタック: 数字系役(cat:'num')に現在の乗数を適用し、その後乗数を1.10倍更新
     let numRoleCountThisTurn = 0;
     for (const r of roles) {
       if (r.role.cat === 'num') {
@@ -7430,9 +7434,9 @@ const Puzzle = (() => {
     for (const r of roles) {
       st.log.push({name: r.role.name, pts: r.pts, cat: r.role.cat, ts: Date.now()});
     }
-    // 数字系役が成立した回数分だけ乗数を1.05倍
+    // 数字系役が成立した回数分だけ乗数を1.10倍
     for (let i = 0; i < numRoleCountThisTurn; i++) {
-      st.numMult *= 1.05;
+      st.numMult *= 1.10;
     }
     if (st.log.length > 80) st.log.splice(0, st.log.length - 80);
 
@@ -7487,13 +7491,13 @@ const Puzzle = (() => {
   }
 
   function rankFor(score) {
-    if (score >= 100000) return 'SSS';
-    if (score >= 60000)  return 'SS';
-    if (score >= 30000)  return 'S';
-    if (score >= 12000)  return 'A';
-    if (score >= 5000)   return 'B';
-    if (score >= 2200)   return 'C';
-    if (score >= 1000)   return 'D';
+    if (score >= 300000) return 'SSS';
+    if (score >= 150000) return 'SS';
+    if (score >= 60000)  return 'S';
+    if (score >= 25000)  return 'A';
+    if (score >= 10000)  return 'B';
+    if (score >= 4000)   return 'C';
+    if (score >= 1500)   return 'D';
     return 'E';
   }
 
