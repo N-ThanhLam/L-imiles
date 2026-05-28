@@ -3081,20 +3081,27 @@ function netHostCreate({keyword, name, numPlayers, turnTime}, hooks) {
     Net.peer.on('error', err => {
       let msg = err.type || 'error';
       if (err.type === 'unavailable-id') {
-        // ★ AutoMatch 経由 (onIdTaken あり): 内部リトライせず即委譲する。
-        //   固定 slot は本物のホストがいる可能性が高いので「join に切り替える」判断は呼び出し側に任せる。
-        if (hooks.onIdTaken) { try { hooks.onIdTaken(); } catch(e){} return; }
-        // ★ 手動ホスト作成: 旧セッションが PeerJS サーバに残っている可能性 →
-        //   破棄→待機→リトライ。最大 3 回 (3.5s) まで頑張る。
-        if (retry < 3) {
-          setNetStatus('creating', '前回セッションを解放中… ('+(retry+1)+'/3)');
-          try { Net.peer.destroy(); } catch(e){}
-          Net.peer = null;
-          setTimeout(() => _createHostPeer(retry + 1), 700 + retry * 400);
-          return;
-        }
-        msg = 'この合言葉は他で使用中です。少し時間を置いて再試行してください';
-      }
+
+  // ★ AutoMatch 用:
+  // slot が既に使われているなら join 救済へ委譲する。
+  // onIdTaken がある時は内部 retry を行わない。
+  if (hooks.onIdTaken) {
+    try { hooks.onIdTaken(); } catch(e){}
+    return;
+  }
+
+  // Safari/iOS では destroy() 後もしばらく ID が残ることがある。
+  // 段階的 backoff で数回 (最大 ~4.5s) まで頑張る。
+  if (retry < 3) {
+    setNetStatus('creating', '前回セッションを解放中… ('+(retry+1)+'/3)');
+    try { Net.peer.destroy(); } catch(e){}
+    Net.peer = null;
+    setTimeout(() => _createHostPeer(retry + 1), 700 + retry * 400);
+    return;
+  }
+
+  msg = 'この合言葉は他で使用中です。少し時間を置いて再試行してください';
+}
       if (err.type === 'network') msg = 'ネットワーク接続失敗';
       if (err.type === 'server-error') msg = 'シグナリングサーバ応答なし';
       setNetStatus('error', msg);
