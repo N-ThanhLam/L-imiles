@@ -981,7 +981,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
         </p>
         <div class="actions-bar">
           <button data-action="back-to-title">戻る</button>
-          <button data-action="online-auto-cancel" class="danger">キャンセル</button>
+          <button id="btn-auto-reconnect" data-action="online-reconnect" disabled title="戻れる対戦がありません">再接続</button>
           <button class="primary" data-action="online-auto-start">マッチング開始</button>
         </div>
         <div style="margin-top:14px; border-top:1px solid var(--panel-2); padding-top:10px;">
@@ -3071,6 +3071,32 @@ function clearReconnectToken(room) {
     if (!room || o.room === room) localStorage.removeItem(RECONNECT_KEY);
   } catch(e) {}
 }
+// ★ 手動「再接続」ボタン用のスナップショット。
+//    事故切断だけでなく「間違えて退室した」場合でも同じ相手の試合へ戻れるよう、
+//    netLeave 時に roomCode / token / idx / name を保存する。
+//    RECONNECT_KEY とは別キーにするのが要点:
+//      - online 画面に入るたびに RECONNECT_KEY は自動削除される (:online ハンドラ)
+//      - netLeave は clearReconnectToken で RECONNECT_KEY を消す
+//    これらに巻き込まれず保持し、明示的な再接続ボタンだけが消費する
+//    (自動 join 経路には流さない = 旧トークン誤提示による rejoin バグを再発させない)。
+const LASTMATCH_KEY = 'limiles_lastmatch';
+const LASTMATCH_TTL_MS = 30 * 60 * 1000; // 30 分 (試合が長引いても戻れるよう長め)
+function saveLastMatch(snap) {
+  try { localStorage.setItem(LASTMATCH_KEY, JSON.stringify({ ...snap, ts: Date.now() })); } catch(e){}
+}
+function loadLastMatch() {
+  try {
+    const raw = localStorage.getItem(LASTMATCH_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (!o || !o.roomCode || !o.token) return null;
+    if (Date.now() - (o.ts || 0) > LASTMATCH_TTL_MS) return null;
+    return o;
+  } catch(e) { return null; }
+}
+function clearLastMatch() {
+  try { localStorage.removeItem(LASTMATCH_KEY); } catch(e){}
+}
 function computeRuleHash(cfg) { return `p${cfg.numPlayers}|t${cfg.turnTime}`; }
 function setNetStatus(s, msg) { Net.status = s; Net.statusMsg = msg || ''; renderLobby(); renderNetIndicator(); }
 // ★ 対戦中の状態更新用: renderLobby()(=showScreen('online') でロビーへ遷移する) を呼ばず、
@@ -4883,6 +4909,12 @@ function netLeave(opts) {
   // ★ silent: AutoMatch のスロット探索中などで「画面遷移なし・レート記録なし」で
   //   ネットワークだけ畳みたいときに true。AutoMatch.active 中は常に silent 扱いにする。
   const silent = (opts && opts.silent === true) || (typeof AutoMatch !== 'undefined' && AutoMatch.active);
+  // ★ 手動「再接続」用スナップショットを保存する (clear 系より先に、まだ値が生きているうちに)。
+  //   試合中のクライアントが抜けたときだけ対象。事故/意図に関わらず「同じ相手」へ戻れるようにする。
+  //   Net.reconnectToken は初回 join 時に host から受領した値で、退室まで保持されている。
+  if (!silent && Net.mode === 'online-client' && Net.reconnectToken && state && state.phase !== 'end') {
+    saveLastMatch({ roomCode: Net.roomCode, roomId: Net.roomId, token: Net.reconnectToken, idx: Net.myPlayerIdx, name: Net.myName });
+  }
   // ★ 意図的切断フラグを先立てる。この後の peer.destroy() で 'disconnected' が発火しても
   //    reconnect() しないようにする（退室後に peer を蘇生させる根本原因の修正）。
   Net._intentionalDisconnect = true;
@@ -5029,6 +5061,31 @@ function cancelAutoMatch() {
   const pane = document.getElementById('online-pane-auto');
   if (pane) pane.classList.add('hidden');
   if (Net.mode !== 'none') { try { netLeave(); } catch(e){} }
+}
+
+// ★ 意図的に退室した後でも「同じ相手」の試合へ手動で戻るための再接続。
+//    netLeave 時に保存したスナップショット(LASTMATCH_KEY)の token を RECONNECT_KEY へ
+//    一時復元し、token があれば hello に載せて復帰を試みる既存の netJoin に委譲する。
+//    host 側は reconnectToken 一致で受理 → fullState で復帰する (相手が居なければ失敗表示)。
+function reconnectLastMatch() {
+  const snap = loadLastMatch();
+  if (!snap) { showOnlineMsg('再接続できません', '戻れる対戦が見つかりません。<br>(時間切れ、またはまだ対戦していません)'); return; }
+  // 既存接続があれば畳む。netLeave は RECONNECT_KEY を消すので token 復元はこの後で行う。
+  if (Net.mode !== 'none') { try { netLeave(); } catch(e){} }
+  // netJoin が読む RECONNECT_KEY に token を復元 (ts を更新して 5 分有効判定を通す)。
+  saveReconnectToken(snap.roomCode, snap.token, snap.idx);
+  setNetStatus('connecting', '再接続中…');
+  netJoin({ keyword: snap.roomCode, name: snap.name || Net.myName || 'Guest' });
+  renderLobby();
+}
+
+// 「再接続」ボタンの活性状態を更新する (戻れる対戦があるときだけ押せる)。
+function updateReconnectBtn() {
+  const btn = document.getElementById('btn-auto-reconnect');
+  if (!btn) return;
+  const snap = loadLastMatch();
+  btn.disabled = !snap;
+  btn.title = snap ? ('「' + (snap.roomCode || '?') + '」の対戦に再接続します') : '戻れる対戦がありません';
 }
 
 // ★ Worker /rooms には依存しない (auto-match のみ)。
@@ -6791,6 +6848,7 @@ function showResult() {
   //    古いトークンをホストへ提示してしまい「再接続エラー」になる。
   if (Net.roomCode) clearReconnectToken(Net.roomCode);
   Net.reconnectToken = '';
+  clearLastMatch(); // ★ 試合が終わったら手動再接続スナップショットも破棄 (終了済み試合への誤再接続を防ぐ)
   // オンラインモードならレート記録 (1ゲーム1回のみ)
   maybeRecordOnlineGameResult();
   // リプレイ再生完了時: 全ボタンを非表示（replay-controls の「終了」で戻る）
@@ -7643,6 +7701,7 @@ function handleAction(a) {
       $('tab-join-btn').classList.remove('active');
       { const b = $('tab-auto-btn'); if (b) b.classList.add('active'); }
       updateMyRatingDisplay();
+      updateReconnectBtn(); // ★ 戻れる対戦があれば「再接続」ボタンを活性化
       // Auto タブを開いたら room browser を自動更新 (Worker /rooms 取得)
       renderRoomBrowser();
       break;
@@ -7655,7 +7714,7 @@ function handleAction(a) {
       startAutoMatch({numPlayers, turnTime, name});
       break;
     }
-    case 'online-auto-cancel': cancelAutoMatch(); break;
+    case 'online-reconnect': reconnectLastMatch(); break;
     case 'online-host-create': {
       saveSettings();
       const keyword = $('online-host-keyword').value.trim();
