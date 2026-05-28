@@ -2725,7 +2725,7 @@ const SPECTATOR_REQ_COOLDOWN = 5000;  // host: 観戦者 1人あたりの reques
 // ===== Worker Lobby Index =====
 // Worker は room 存在 index のみ。authoritative server ではない (gameplay は PeerJS direct)。
 // ※ デプロイ後、自分の Cloudflare Worker URL に差し替えること。
-const LOBBY_URL = 'https://odd-cake-7a5f.thanhlam-527.workers.dev';
+const LOBBY_URL = 'https://limiles-lobby.thanhlam-527.workers.dev';
 // プレースホルダ判定: 'xxxxx' を含む / 空文字なら未設定とみなす。
 const LOBBY_URL_CONFIGURED = !!LOBBY_URL && !LOBBY_URL.includes('xxxxx');
 const LOBBY_HEARTBEAT_INTERVAL_MS = 5000;  // host → Worker heartbeat 周期 (短くしない)
