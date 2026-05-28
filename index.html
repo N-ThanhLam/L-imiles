@@ -393,6 +393,31 @@ html.lowspec .result-row.winner-anim { animation: none; }
 .puzzle-rank-badge.rank-S { background:linear-gradient(135deg,#ffce5e,#f5a623); color:#2a1600; }
 .puzzle-rank-badge.rank-SS { background:linear-gradient(135deg,#ff8c42,#ffce5e); color:#2a1000; }
 .puzzle-rank-badge.rank-SSS { background:linear-gradient(135deg,#ff6b9d,#ffce5e,#a98cff); color:#1a0a18; }
+/* === X ランク (100万点超: 真の最上位) === */
+.puzzle-rank-badge.rank-X {
+  background: #000;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.75) !important;
+  box-shadow: 0 0 5px rgba(255,255,255,0.5), 0 0 12px rgba(0,245,255,0.35);
+  animation: rankXGlow 1.8s ease-in-out infinite;
+  letter-spacing: 0.1em;
+}
+@keyframes rankXGlow {
+  0%,100% { box-shadow: 0 0 4px rgba(255,255,255,0.4), 0 0 10px rgba(0,245,255,0.25); }
+  50%      { box-shadow: 0 0 8px rgba(255,255,255,0.9), 0 0 18px rgba(0,245,255,0.55), 0 0 28px rgba(169,140,255,0.3); }
+}
+/* end screen 大表示 — rank-X 付与時に上書き */
+.puzzle-end-rank.rank-X {
+  background: linear-gradient(90deg,#fff 0%,#00f5ff 18%,#a98cff 36%,#ff6b9d 54%,#ffce5e 72%,#00f5ff 90%,#fff 100%);
+  background-size: 280% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: rankXShine 2.2s linear infinite;
+  filter: drop-shadow(0 0 22px rgba(0,245,255,0.65)) drop-shadow(0 0 8px rgba(169,140,255,0.5));
+}
+@keyframes rankXShine {
+  0%   { background-position: 200% center; }
+  100% { background-position: -80% center; }
+}
 .status-tag { display:inline-block; padding:1px 5px; border-radius:8px; font-size:9px; font-weight:800; letter-spacing:0.04em; margin-left:3px; }
 .title-badge { display:inline-block; padding:2px 8px; background:linear-gradient(135deg, #a98cff, #5ea8ff); color:#0a1220; font-weight:800; font-size:10px; letter-spacing:0.05em; border-radius:10px; margin-left:3px; box-shadow:0 2px 5px rgba(95,168,255,0.4); }
 .status-tag.tag-disc { background:var(--warn); color:#3a2a04; animation: discBlink 1.4s ease-in-out infinite; }
@@ -1478,6 +1503,7 @@ function recordOnlineDisconnectLoss() {
 }
 // パズルスコアモードのランク (ハイスコアから算出)
 function puzzleRankFor(score) {
+  if (score >= 1000000) return 'X';
   if (score >= 100000) return 'SSS';
   if (score >= 60000)  return 'SS';
   if (score >= 30000)  return 'S';
@@ -8503,6 +8529,8 @@ const Puzzle = (() => {
     const best = isNewBest ? st.score : prev;
 
     $('puzzle-end-rank').textContent = rank;
+    const _rankEl = $('puzzle-end-rank');
+    _rankEl.className = 'puzzle-end-rank' + (rank === 'X' ? ' rank-X' : '');
     $('puzzle-end-score').textContent = st.score.toLocaleString();
     $('puzzle-end-detail').innerHTML =
       (isNewBest ? '<div style="color:var(--warn);font-weight:900;font-size:16px;margin-bottom:6px;">🏆 NEW BEST!</div>' : '') +
@@ -8516,6 +8544,7 @@ const Puzzle = (() => {
   }
 
   function rankFor(score) {
+    if (score >= 1000000) return 'X';
     if (score >= 300000) return 'SSS';
     if (score >= 150000) return 'SS';
     if (score >= 60000)  return 'S';
