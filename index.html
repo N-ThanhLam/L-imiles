@@ -125,6 +125,16 @@ html.lowspec #btn-exchange.no-legal-breath { animation: none; opacity: 0.85; }
 .sync-debug .sd-v.bad { color:var(--danger); }
 .sync-debug .sd-v.warn { color:var(--warn); }
 .sync-debug .sd-v.ok { color:var(--good); }
+/* ===== 再接続オーバーレイ (入力ロック) ===== */
+.reconnect-overlay { position:fixed; inset:0; z-index:120; background:rgba(6,8,14,0.72); display:flex; align-items:center; justify-content:center; padding:16px; pointer-events:auto; }
+.reconnect-overlay .rc-box { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:22px 26px; max-width:340px; width:100%; text-align:center; box-shadow:0 18px 50px rgba(0,0,0,0.6); }
+.reconnect-overlay .rc-spin { width:34px; height:34px; margin:0 auto 14px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:rc-spin 0.9s linear infinite; }
+.reconnect-overlay .rc-msg { font-size:14px; font-weight:700; color:var(--text); line-height:1.5; }
+.reconnect-overlay .rc-sub { font-size:11px; color:var(--text-dim); margin-top:8px; line-height:1.5; }
+.reconnect-overlay .rc-leave { margin-top:16px; }
+@keyframes rc-spin { to { transform:rotate(360deg); } }
+/* lowspec ではスピナーを回さず静的リングにする (発光/アニメ負荷を避ける) */
+html.lowspec .reconnect-overlay .rc-spin { animation:none; border-top-color:var(--border); }
 
 /* ===== board-first: #screen-game 直下構成 ===== */
 /* 元の .main-area / .board-wrap は使わず、新規 .board-area / .side-panel を直接配置 */
@@ -927,7 +937,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
         </div>
         <div class="actions-bar">
           <button data-action="back-to-title">戻る</button>
-          <button data-action="join-spectator" title="観戦のみ。手札は見えません">観戦参加</button>
+          <!-- [観戦封印] <button data-action="join-spectator" title="観戦のみ。手札は見えません">観戦参加</button> -->
           <button class="primary" data-action="online-join">参加</button>
         </div>
       </div>
@@ -1072,6 +1082,9 @@ html.lowspec .result-row.winner-anim { animation: none; }
       <div class="sd-row"><span class="sd-k">recv</span><span class="sd-v" id="sd-recv">off</span></div>
       <div class="sd-row"><span class="sd-k">pndg</span><span class="sd-v" id="sd-pendingq">0</span></div>
       <div class="sd-row"><span class="sd-k">deckFp</span><span class="sd-v" id="sd-deckfp">—</span></div>
+      <div class="sd-row"><span class="sd-k">ping</span><span class="sd-v" id="sd-ping">—</span></div>
+      <div class="sd-row"><span class="sd-k">seq</span><span class="sd-v" id="sd-seq">—</span></div>
+      <div class="sd-row"><span class="sd-k">conn</span><span class="sd-v" id="sd-conn">—</span></div>
     </div>
   </div>
 
@@ -1081,7 +1094,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
       <div class="result-list" id="result-list"></div>
       <div class="actions-bar">
         <button data-action="download-replay">リプレイ保存</button>
-        <button data-action="share-replay-url">URL共有</button>
+        <button class="primary" data-action="watch-replay">リプレイを見る</button>
         <button data-action="back-to-title">タイトルへ</button>
         <button class="primary" data-action="rematch">もう一度</button>
       </div>
@@ -1243,6 +1256,16 @@ html.lowspec .result-row.winner-anim { animation: none; }
       <div class="confirm-buttons">
         <button class="primary" data-action="close-om">OK</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 再接続オーバーレイ: 再接続中/同期中は入力を遮断する -->
+  <div id="overlay-reconnect" class="reconnect-overlay hidden">
+    <div class="rc-box">
+      <div id="rc-spin" class="rc-spin"></div>
+      <div id="rc-msg" class="rc-msg">再接続中…</div>
+      <div class="rc-sub">通信が一時的に途切れています。<br>そのままお待ちください（最大約45秒）。</div>
+      <button id="rc-leave" class="danger rc-leave hidden" data-action="reconnect-leave">退室してタイトルへ</button>
     </div>
   </div>
 
@@ -2020,6 +2043,7 @@ function recordReplayAction(act) {
   const turnCtx = {
     turnIndex: state.currentTurnIdx,
     roundOrder: state.currentRoundOrder ? [...state.currentRoundOrder] : null,
+    nextRoundOrder: state.nextRoundOrder ? [...state.nextRoundOrder] : null,
     round: state.round,
   };
   // 修正10: state.logではなくreplayTickを使う（log追加順変化でindexがズレない）
@@ -2168,7 +2192,17 @@ function endRound() {
   if (aliveCount() === 0) { endGame(); return; }
   state.currentRoundOrder = (state.nextRoundOrder || []).filter(i => state.players[i].alive);
   if (state.currentRoundOrder.length === 0) { endGame(); return; }
-  state.nextRoundOrder = computeNextRoundOrder(state.currentRoundOrder);
+  // 修正12: リプレイ中は computeNextRoundOrder を呼ばない。
+  // computeNextRoundOrder は state.rand を消費するため、再生順序によってはシードがズレて
+  // 以降の shuffle 結果が本来と変わってしまう。
+  // リプレイ中の nextRoundOrder は次アクションの applyReplayAction 先頭で
+  // act.roundOrder から権威的に復元されるので、ここでは暫定コピーだけ置く。
+  if (state.mode !== 'replay') {
+    state.nextRoundOrder = computeNextRoundOrder(state.currentRoundOrder);
+  } else {
+    // リプレイ中: 次ラウンド先頭アクションの roundOrder 補正に任せる
+    state.nextRoundOrder = [...state.currentRoundOrder];
+  }
   state.round++;
   state.currentTurnIdx = 0;
   handoffShownFor = -1; // ラウンド切り替わり時は必ずハンドオフを表示する
@@ -2713,6 +2747,18 @@ const Net = {
   // ===== Worker Lobby Index (host のみ heartbeat 送信) =====
   // gameplay は引き続き PeerJS direct なので、ここは room discovery 専用のフラグ/タイマーのみ。
   lobbyHeartbeatTimer: null,              // host: Worker /heartbeat 定期送信タイマー
+  // ===== 接続健全性 / 自動再接続 (client) =====
+  // 既存の signaling reconnect(peer.reconnect) は PeerServer への再登録のみで、
+  // host への DataConnection 自体は復活しなかった。ここを補強する。
+  _reconnecting: false,        // client: DataConnection 再接続ループ稼働中
+  _autoReconnectActive: false, // client: 自動再接続〜resync 完了までの間 true (手動rejoin と区別し modal を抑制)
+  _reconnectAttempt: 0,        // client: 現在の試行回数 (backoff index)
+  _reconnectTimer: null,       // client: 次回試行までの backoff タイマー
+  _reconnectDeadline: 0,       // client: この時刻を過ぎたら諦めて loss を記録
+  _reconnectConn: null,        // client: 接続確立待ちの新 conn (open 前に閉じる用)
+  _connHealthTimer: null,      // client: __lastRxTime の沈黙を監視するタイマー
+  _health: 'ok',               // client: 'ok' | 'unstable' (silence ベースの主観的健全性)
+  _lastPingMs: 0,              // client: 直近 ping RTT(ms)。sync-debug 表示用
 };
 // ★ 過剰防御の見直し: heartbeat を低頻度化してモバイルでの帯域/GC圧迫を抑える。
 //    state/action は変化時にすぐbroadcastされるので、heartbeat は単なる安全網として 15s 間隔で十分。
@@ -3027,6 +3073,9 @@ function clearReconnectToken(room) {
 }
 function computeRuleHash(cfg) { return `p${cfg.numPlayers}|t${cfg.turnTime}`; }
 function setNetStatus(s, msg) { Net.status = s; Net.statusMsg = msg || ''; renderLobby(); renderNetIndicator(); }
+// ★ 対戦中の状態更新用: renderLobby()(=showScreen('online') でロビーへ遷移する) を呼ばず、
+//   game 画面に留まったまま net-indicator だけ更新する。再接続オーバーレイ表示中に使う。
+function setNetStatusInGame(s, msg) { Net.status = s; Net.statusMsg = msg || ''; renderNetIndicator(); }
 function showOnlineMsg(title, body) {
   $('om-title').textContent = title;
   $('om-body').innerHTML = body;
@@ -3305,9 +3354,9 @@ function onClientDisconnect(conn) {
 
 function handleHostMessage(conn, msg) {
   if (!validatePacket(msg)) return;
-  // ★ Fix9: ping-pong — クライアントからの keepalive に即座に応答
-  if (msg.type === 'ping') { try { conn.send({type:'pong'}); } catch(e){} return; }
-  if (msg.type === 'pong') { return; } // host→client ping への応答
+  // ★ Fix9: ping-pong — クライアントからの keepalive に即座に応答 (t を echo して相手の RTT 計測を助ける)
+  if (msg.type === 'ping') { try { conn.send({type:'pong', t: msg.t}); } catch(e){} return; }
+  if (msg.type === 'pong') { if (typeof msg.t === 'number') conn.__rtt = Date.now() - msg.t; return; } // host→client ping への応答
   if (msg.type === 'hello') {
     if (msg.ver !== VERSION) { conn.send({type:'reject', reason:'version-mismatch', expected:VERSION}); setTimeout(()=>conn.close(), 200); return; }
     if (msg.ruleHash !== null && msg.ruleHash !== Net.ruleHash) { conn.send({type:'reject', reason:'rule-mismatch', expected:Net.ruleHash}); setTimeout(()=>conn.close(), 200); return; }
@@ -3608,14 +3657,14 @@ function startIcePingTimer() {
   stopIcePingTimer();
   Net._icePingTimer = setInterval(() => {
     if (Net.mode === 'online-host') {
-      // host → 全クライアントに ping
+      // host → 全クライアントに ping (t は pong で echo され RTT 計測に使う)
       for (const conn of Net.conns.values()) {
-        if (conn.open) { try { conn.send({type:'ping'}); } catch(e){} }
+        if (conn.open) { try { conn.send({type:'ping', t: Date.now()}); } catch(e){} }
       }
     } else if (Net.mode === 'online-client' || Net.mode === 'spectator') {
       // client → host に ping
       if (Net.hostConn && Net.hostConn.open) {
-        try { Net.hostConn.send({type:'ping'}); } catch(e){}
+        try { Net.hostConn.send({type:'ping', t: Date.now()}); } catch(e){}
         // ★ client 側のゾンビ検出: 受信途絶なら強制切断してシグナリング再接続を誘発
         if (Net.hostConn.__lastRxTime && (Date.now() - Net.hostConn.__lastRxTime) > ICE_ZOMBIE_THRESHOLD_MS) {
           try { Net.hostConn.close(); } catch(e){}
@@ -3675,20 +3724,28 @@ function netJoin({keyword, name}) {
       });
       conn.on('data', d => { conn.__lastRxTime = Date.now(); handleClientMessage(d); });
       conn.on('close', () => {
-        if (!opened) { Net._lastJoinError = Net._lastJoinError || 'unreachable'; setNetStatus('error', 'ホストに到達できません'); }
-        else {
-          // ゲーム途中での切断ならレート負け記録
-          recordOnlineDisconnectLoss();
-          setNetStatus('disconnected', '接続が切断されました');
-        }
+        if (!opened) { Net._lastJoinError = Net._lastJoinError || 'unreachable'; setNetStatus('error', 'ホストに到達できません'); return; }
+        if (Net.hostConn && Net.hostConn !== conn) return; // 再接続で差し替え済みの古い conn は無視
+        if (Net._intentionalDisconnect) return;
+        // ★ 即敗北記録せず自動再接続へ。最終的に諦めたときだけ _giveUpReconnect() が loss を記録する。
+        //   online-client かつ試合中のみ再接続。観戦/ロビー/試合終了は従来どおり切断表示。
+        if (Net.mode === 'online-client' && state && state.phase !== 'end') { _startClientReconnect('initial-conn-close'); }
+        else { setNetStatus('disconnected', '接続が切断されました'); }
       });
-      conn.on('error', () => setNetStatus('error', '接続エラー'));
+      conn.on('error', () => {
+        if (Net.hostConn && Net.hostConn !== conn) return; // 差し替え済みの古い conn は無視
+        // open 後のエラーは切断扱いとして再接続へ委ねる。open 前は接続エラー表示のまま。
+        if (opened && Net.mode === 'online-client' && !Net._intentionalDisconnect && state && state.phase !== 'end') { _startClientReconnect('initial-conn-error'); }
+        else if (!opened) { setNetStatus('error', '接続エラー'); }
+      });
     });
     Net.peer.on('error', err => {
       let msg = err.type || 'error';
       Net._lastJoinError = err.type || 'error'; // ★ AutoMatch: 'peer-unavailable'(=スロット空き) 等を記録
       if (err.type === 'peer-unavailable') msg = 'ホストが見つかりません (合言葉を確認)';
       if (err.type === 'network') msg = 'ネットワーク接続失敗';
+      // ★ 再接続ループ中は host 不在(peer-unavailable)等が頻発する。画面遷移させず loop に任せる。
+      if (Net._reconnecting) return;
       setNetStatus('error', msg);
     });
     // ★ client 側もシグナリング切断時は reconnect で再登録する。
@@ -3699,6 +3756,211 @@ function netJoin({keyword, name}) {
       try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
     });
   }
+}
+
+// ============================================================================
+// クライアント自動再接続 (DataConnection persistence)
+// ----------------------------------------------------------------------------
+// 既存の signaling reconnect (peer.reconnect) は PeerServer への再登録のみで、
+// host への DataConnection 自体は復活しなかった。ここで data channel を貼り直す。
+//  - host 側は reconnectToken による復帰(handleHostMessage 'hello')を実装済み。
+//    client は新しい conn を開いて token 付き hello を送るだけで復帰できる。
+//  - 「切断=即敗北」を避けるため recordOnlineDisconnectLoss() は再接続を諦めたときだけ呼ぶ。
+//  - fullState 同期 / seq / pending-card など既存機構はそのまま再利用する。
+// ============================================================================
+const RECONNECT_MAX_MS = 45000;                        // 諦めるまでの総予算 (指示書の 30〜45s)
+const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000]; // 指数backoff。超過分は末尾(8s)を繰り返す
+const RECONNECT_CONN_TIMEOUT_MS = 6000;                // 1試行あたり conn.open を待つ上限
+
+function _startClientReconnect(reason) {
+  if (Net.mode !== 'online-client') return;            // 対象は対戦中クライアントのみ
+  if (Net._intentionalDisconnect) return;              // netLeave 中は再接続しない
+  if (Net._reconnecting) return;                       // 二重起動防止
+  if (!state || state.phase === 'end') return;         // 試合終了/ロビーは対象外
+  Net._reconnecting = true;
+  Net._autoReconnectActive = true;
+  Net._reconnectAttempt = 0;
+  Net._reconnectDeadline = Date.now() + RECONNECT_MAX_MS;
+  Net.isRecovering = true;     // action 送信を止め、既存の復帰機構に合流
+  Net.acceptInput = false;     // 入力ガード
+  Net.syncState = 'recovering';
+  Net._health = 'unstable';
+  setNetStatusInGame('reconnecting', '再接続中…'); // game 画面に留まったまま overlay を出す
+  showReconnectOverlay('再接続中…');
+  try { console.warn('[reconnect] start:', reason); } catch(e){}
+  _clientReconnectAttempt();
+}
+
+function _scheduleNextReconnect() {
+  if (!Net._reconnecting) return;
+  if (Date.now() >= Net._reconnectDeadline) { _giveUpReconnect(); return; }
+  const i = Math.min(Net._reconnectAttempt, RECONNECT_BACKOFF_MS.length - 1);
+  if (Net._reconnectTimer) clearTimeout(Net._reconnectTimer);
+  Net._reconnectTimer = setTimeout(_clientReconnectAttempt, RECONNECT_BACKOFF_MS[i]);
+}
+
+function _clientReconnectAttempt() {
+  if (Net.mode !== 'online-client' || Net._intentionalDisconnect) { _stopClientReconnect(); return; }
+  if (!Net._reconnecting) return;
+  if (Date.now() >= Net._reconnectDeadline) { _giveUpReconnect(); return; }
+  Net._reconnectAttempt++;
+  // 前回試行で開きかけた conn が残っていれば閉じる
+  try { if (Net._reconnectConn) Net._reconnectConn.close(); } catch(e){}
+  Net._reconnectConn = null;
+
+  _ensureClientPeer().then(peer => {
+    if (!Net._reconnecting || Net.mode !== 'online-client' || Net._intentionalDisconnect) return;
+    if (!peer) { _scheduleNextReconnect(); return; }
+    if (Date.now() >= Net._reconnectDeadline) { _giveUpReconnect(); return; }
+    let conn;
+    try { conn = peer.connect(Net.roomId, {reliable: true}); }
+    catch(e) { _scheduleNextReconnect(); return; }
+    Net._reconnectConn = conn;
+    let opened = false;
+    const failTimer = setTimeout(() => {
+      if (opened) return;
+      try { conn.close(); } catch(e){}
+      if (Net._reconnectConn === conn) Net._reconnectConn = null;
+      _scheduleNextReconnect();
+    }, RECONNECT_CONN_TIMEOUT_MS);
+
+    conn.on('open', () => {
+      opened = true;
+      clearTimeout(failTimer);
+      if (!Net._reconnecting || Net._intentionalDisconnect) { try { conn.close(); } catch(e){} return; }
+      Net._reconnectConn = null;
+      Net.hostConn = conn;
+      conn.__lastRxTime = Date.now();
+      // token 付き hello で復帰を要求 → host が welcome(reconnected)+fullState を返す
+      const prev = loadReconnectToken(Net.roomCode);
+      const hello = {type:'hello', ver:VERSION, name: Net.myName, ruleHash: null, rating: computeRating(), puzzleRank: puzzleRankFor(getPuzzleHiscore())};
+      if (prev && prev.token) hello.reconnectToken = prev.token;
+      try { conn.send(hello); } catch(e){}
+      // 受信ハンドラを貼り直す。再度切れたら再接続ループへ。
+      conn.on('data', d => { conn.__lastRxTime = Date.now(); handleClientMessage(d); });
+      conn.on('close', () => { if (Net.hostConn !== conn) return; if (!Net._intentionalDisconnect) _startClientReconnect('reconnected-conn-close'); });
+      conn.on('error', () => {});
+      // backoff ループは止める。以降は fullState 適用待ち (resyncing)。
+      Net._reconnecting = false;
+      if (Net._reconnectTimer) { clearTimeout(Net._reconnectTimer); Net._reconnectTimer = null; }
+      Net._reconnectAttempt = 0;
+      setNetStatusInGame('resyncing', '同期中…');
+      showReconnectOverlay('同期中…');
+      startConnHealthTimer();
+      startIcePingTimer();
+      // 保険: welcome が来なくても fullState を要求しておく(replaceGameState で overlay は自動的に閉じる)
+      try { requestFullStateFromHost('after-reconnect'); } catch(e){}
+    });
+    conn.on('error', () => { if (!opened) { clearTimeout(failTimer); if (Net._reconnectConn === conn) Net._reconnectConn = null; _scheduleNextReconnect(); } });
+    conn.on('close', () => { if (!opened) { clearTimeout(failTimer); if (Net._reconnectConn === conn) Net._reconnectConn = null; _scheduleNextReconnect(); } });
+  }).catch(() => { _scheduleNextReconnect(); });
+}
+
+function _stopClientReconnect() {
+  Net._reconnecting = false;
+  Net._reconnectAttempt = 0;
+  if (Net._reconnectTimer) { clearTimeout(Net._reconnectTimer); Net._reconnectTimer = null; }
+  try { if (Net._reconnectConn) Net._reconnectConn.close(); } catch(e){}
+  Net._reconnectConn = null;
+}
+
+function _giveUpReconnect() {
+  _stopClientReconnect();
+  Net._autoReconnectActive = false;
+  Net._health = 'ok';
+  recordOnlineDisconnectLoss();         // ここで初めて「敗北」を確定する
+  setNetStatusInGame('disconnected', '接続が切断されました'); // overlay(退室ボタン)を出すので game 画面に留まる
+  showReconnectOverlay('接続が回復できませんでした', true); // 退室ボタン付き
+}
+
+// host への signaling 経路 (Net.peer) を確実に open 状態にして返す。
+// peer が生きていれば再利用、死んでいれば作り直す。失敗時は null。
+function _ensureClientPeer() {
+  return new Promise(resolve => {
+    const p = Net.peer;
+    if (p && !p.destroyed && p.open) { resolve(p); return; }
+    if (p && !p.destroyed && !p.open) {
+      // signaling だけ切れている → reconnect して open を待つ
+      try { p.reconnect(); } catch(e){}
+      let done = false;
+      const finish = ok => { if (done) return; done = true; resolve(ok ? p : null); };
+      const to = setTimeout(() => finish(p.open), 4000);
+      p.on('open', () => { clearTimeout(to); finish(true); });
+      p.on('error', () => { clearTimeout(to); finish(p.open); });
+      return;
+    }
+    // peer が無い/破棄済み → 新規作成 (client peer は undefined = ランダム ID)
+    try { if (p) p.destroy(); } catch(e){}
+    let np;
+    try { np = new Peer(undefined, {debug: 0}); } catch(e) { resolve(null); return; }
+    Net.peer = np;
+    let done = false;
+    const finish = ok => { if (done) return; done = true; resolve(ok ? np : null); };
+    const to = setTimeout(() => finish(np.open), 8000);
+    np.on('open', () => { clearTimeout(to); finish(true); });
+    np.on('error', () => { clearTimeout(to); finish(false); });
+    // 新 peer にも signaling 自動再接続を付けておく (初期 join と同じ挙動)
+    np.on('disconnected', () => {
+      if (Net._intentionalDisconnect) return;
+      try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
+    });
+  });
+}
+
+// ============================================================================
+// 接続健全性モニタ (client)。__lastRxTime の沈黙時間で段階判定する。
+//  - 15s 沈黙: unstable 表示 + ping 再送 (応答が来れば自然回復)
+//  - 30s 沈黙: 自動再接続を起動 (40s の ICE ゾンビ判定より前に動く)
+// ネットワーク送信は ping のみ。判定自体は Date.now() 比較で低コスト。
+// ============================================================================
+const HEALTH_UNSTABLE_MS = 15000;
+const HEALTH_RECONNECT_MS = 30000;
+function startConnHealthTimer() {
+  stopConnHealthTimer();
+  if (Net.mode !== 'online-client') return; // 健全性モニタはクライアント専用 (host は CPU 代理で吸収)
+  Net._connHealthTimer = setInterval(_connHealthTick, 5000);
+}
+function stopConnHealthTimer() {
+  if (Net._connHealthTimer) { clearInterval(Net._connHealthTimer); Net._connHealthTimer = null; }
+}
+function _connHealthTick() {
+  if (Net.mode !== 'online-client') return;
+  if (Net._intentionalDisconnect || Net._reconnecting) return;
+  if (!state || state.phase === 'end') return;
+  if (_netLifecycleHidden) return;            // バックグラウンド中は setInterval throttle で誤検知するため判定しない
+  const conn = Net.hostConn;
+  if (!conn || conn.open === false) { _startClientReconnect('health-no-conn'); return; }
+  const last = conn.__lastRxTime || 0;
+  if (!last) return;
+  const silence = Date.now() - last;
+  if (silence >= HEALTH_RECONNECT_MS) {
+    _startClientReconnect('health-silence');
+  } else if (silence >= HEALTH_UNSTABLE_MS) {
+    if (Net._health !== 'unstable') { Net._health = 'unstable'; renderNetIndicator(); }
+    try { conn.send({type:'ping', t: Date.now()}); } catch(e){}   // liveness probe (応答で lastRxTime 更新)
+  } else {
+    if (Net._health !== 'ok') { Net._health = 'ok'; renderNetIndicator(); }
+  }
+}
+
+// ============================================================================
+// 再接続オーバーレイ。再接続/同期中は pointer-events で入力を遮断する。
+// lowspec ではスピナーアニメを無効化 (CSS 側 html.lowspec で対応)。
+// ============================================================================
+function showReconnectOverlay(text, isFinal) {
+  const el = document.getElementById('overlay-reconnect');
+  if (!el) return;
+  const msgEl = document.getElementById('rc-msg');
+  if (msgEl) msgEl.textContent = text || '再接続中…';
+  const btn = document.getElementById('rc-leave');
+  if (btn) btn.classList.toggle('hidden', !isFinal);
+  const spin = document.getElementById('rc-spin');
+  if (spin) spin.classList.toggle('hidden', !!isFinal);
+  el.classList.remove('hidden');
+}
+function hideReconnectOverlay() {
+  const el = document.getElementById('overlay-reconnect');
+  if (el) el.classList.add('hidden');
 }
 
 // オンライン対戦の state/timer/UI を完全に破棄する。rematch・game-start の前に呼ぶ。
@@ -3736,6 +3998,11 @@ function disposeOnlineGameState() {
   Net.syncState = 'idle';
   Net._pendingFullReqAt = 0;
   Net._pendingActionQueue = [];  // ★ 試合リセット時にキューを破棄
+  // ★ 進行中の再接続ループを止めて overlay/フラグを下ろす (接続自体は維持されるので health timer は止めない)
+  _stopClientReconnect();
+  hideReconnectOverlay();
+  Net._autoReconnectActive = false;
+  Net._health = 'ok';
   Net._clientPending.clear();   // ★ Client Prediction pending もクリア
   Net._actionIdCounter = 0;      // ★ actionId カウンタもリセット（デバッグ性確保）
   // ★ 観戦者キャッシュ・cooldown リセット
@@ -3835,6 +4102,13 @@ function replaceGameState(view) {
   Net.localHash = computeStateHash(state);
   Net.isRecovering = false;
   Net.syncState = 'synced';
+  Net._health = 'ok';
+  // ★ 自動再接続→resync 完了: overlay を閉じてフラグを下ろす (game 画面に留まる)
+  if (Net._autoReconnectActive) {
+    Net._autoReconnectActive = false;
+    setNetStatusInGame('synced', '');
+  }
+  hideReconnectOverlay();
   // ★ Client Prediction: fullState受信で全pending確定クリア（host stateが正）
   Net._clientPending.clear();
   // ★ 入力ガード解除: fullState 完全適用後に入力を受付開始
@@ -3851,8 +4125,8 @@ function replaceGameState(view) {
 function handleClientMessage(msg) {
   if (!validatePacket(msg)) return;
   // ★ Fix9: ping-pong — ホストからの keepalive に応答し、逆方向の pong も受理
-  if (msg.type === 'ping') { try { if (Net.hostConn) Net.hostConn.send({type:'pong'}); } catch(e){} return; }
-  if (msg.type === 'pong') { return; } // client→host ping への応答
+  if (msg.type === 'ping') { try { if (Net.hostConn) Net.hostConn.send({type:'pong', t: msg.t}); } catch(e){} return; }
+  if (msg.type === 'pong') { if (typeof msg.t === 'number') { Net._lastPingMs = Date.now() - msg.t; renderSyncDebug(); } return; } // client→host ping への応答
   if (msg.type === 'welcome') {
     // Verify host's rule hash matches what client expects? Host is authoritative.
     Net.myPlayerIdx = msg.yourIdx;
@@ -3876,8 +4150,14 @@ function handleClientMessage(msg) {
       Net.syncState = 'recovering';
       // ★ Bug D: 古い試合の currentMatchId を引きずらない。直後の fullState で正しい値が設定される。
       Net.currentMatchId = '';
-      setNetStatus('lobby', '再接続成功');
-      showOnlineMsg('再接続成功', 'ゲームに復帰しました');
+      // 自動再接続中は overlay(同期中…)で状態を見せるので modal は出さない。
+      // 手動 rejoin (netJoin) の場合のみ従来どおり成功 modal を表示する。
+      if (Net._autoReconnectActive) {
+        setNetStatusInGame('resyncing', '同期中…'); // overlay 表示中なので game 画面に留まる
+      } else {
+        setNetStatus('lobby', '再接続成功');
+        showOnlineMsg('再接続成功', 'ゲームに復帰しました');
+      }
     } else {
       setNetStatus('lobby', 'ロビー待機中');
     }
@@ -4599,6 +4879,13 @@ function netLeave(opts) {
   stopTurnTimer();
   stopFullStateHeartbeat();
   stopIcePingTimer(); // ★ Fix9
+  // ★ 自動再接続まわりを完全停止 (意図的退室時は再接続させない)
+  _stopClientReconnect();
+  stopConnHealthTimer();
+  hideReconnectOverlay();
+  Net._autoReconnectActive = false;
+  Net._health = 'ok';
+  Net._lastPingMs = 0;
   // ★ placeConfirm タイマー/rAF も停止 (退室後に古い操作が発火しないよう)
   try { if (_placeConfirmTimer) { clearTimeout(_placeConfirmTimer); _placeConfirmTimer = null; } } catch(e){}
   try { if (_placeConfirmRaf) { cancelAnimationFrame(_placeConfirmRaf); _placeConfirmRaf = null; } } catch(e){}
@@ -4982,8 +5269,14 @@ function _onNetLifecycleShow() {
     } catch(e){}
   } else if (Net.mode === 'online-client' || Net.mode === 'spectator') {
     try { startIcePingTimer(); } catch(e){} // ★ Fix9
-    // 復帰直後は自分の state が古い可能性が高いので、host から fullState を取り直す
-    try { requestFullStateFromHost('lifecycle-resume'); } catch(e){}
+    try { startConnHealthTimer(); } catch(e){} // 健全性モニタも再開
+    // ★ バックグラウンド中に DataConnection が死んでいることが多い (Safari freeze で RTC 切断)。
+    //   conn が閉じていれば即自動再接続、生きていれば fullState を取り直して同期する。
+    if (Net.mode === 'online-client' && state && state.phase !== 'end' && (!Net.hostConn || Net.hostConn.open === false)) {
+      try { _startClientReconnect('lifecycle-resume-dead-conn'); } catch(e){}
+    } else {
+      try { requestFullStateFromHost('lifecycle-resume'); } catch(e){}
+    }
   }
   // クライアントは requestFullStateFromHost 後に replaceGameState 内で
   // maybeStartTimerForLocalTurn() が呼ばれるためここでは何もしない。
@@ -5643,7 +5936,11 @@ function renderTopBar() {
   const tp = $('turn-player');
   if (pIdx >= 0 && state.players[pIdx]) {
     tp.style.background = PLAYER_COLORS[pIdx].bg;
-    tp.textContent = PLAYER_COLORS[pIdx].badge + ' ' + state.players[pIdx].name + (state.phase==='init'?' [初期]':'');
+    // モード表示: リプレイ中は「🎬 再生」、通常録画中は何も付けない
+    const modeSuffix = state.mode === 'replay'
+      ? ' 🎬'
+      : (state.phase === 'init' ? ' [初期]' : '');
+    tp.textContent = PLAYER_COLORS[pIdx].badge + ' ' + state.players[pIdx].name + modeSuffix;
   }
   const nowEl = $('now-order'), nextEl = $('next-order');
   nowEl.innerHTML = ''; nextEl.innerHTML = '';
@@ -5704,12 +6001,16 @@ function renderNetIndicator() {
     el.className = 'net-status ok';
     el.textContent = 'HOST · 接続' + Net.conns.size;
   } else {
-    const cls = Net.isRecovering ? 'warn' :
-      (Net.syncState === 'desync-detected' ? 'bad' :
-       (Net.status === 'lobby' || Net.status === 'connecting' || Net.status === 'handshake' ? 'warn' :
-        (Net.status.startsWith('error') || Net.status === 'disconnected' ? 'bad' : 'ok')));
+    let cls, tag;
+    if (Net._reconnecting || Net.status === 'reconnecting') { cls = 'bad'; tag = '再接続中…'; }
+    else if (Net._autoReconnectActive || Net.status === 'resyncing') { cls = 'warn'; tag = '同期中…'; }
+    else if (Net.isRecovering) { cls = 'warn'; tag = '同期中…'; }
+    else if (Net.syncState === 'desync-detected') { cls = 'bad'; tag = 'desync'; }
+    else if (Net.status === 'disconnected' || (Net.status || '').startsWith('error')) { cls = 'bad'; tag = Net.status; }
+    else if (Net._health === 'unstable') { cls = 'warn'; tag = '不安定'; }
+    else if (Net.status === 'lobby' || Net.status === 'connecting' || Net.status === 'handshake') { cls = 'warn'; tag = Net.status; }
+    else { cls = 'ok'; tag = Net.status || 'OK'; }
     el.className = 'net-status ' + cls;
-    const tag = Net.isRecovering ? '同期中…' : (Net.syncState === 'desync-detected' ? 'desync' : Net.status);
     el.textContent = 'CLIENT · ' + tag;
   }
   renderSyncDebug();
@@ -5752,6 +6053,36 @@ function renderSyncDebug() {
     dfEl.textContent = fp !== '—' ? fp.slice(0, 8) : '—'; // 先頭8桁のみ表示
     const isMismatch = Net.hostDeckFp && Net.localDeckFp && Net.hostDeckFp !== Net.localDeckFp;
     dfEl.className = 'sd-v ' + (isMismatch ? 'bad' : (fp !== '—' ? 'ok' : ''));
+  }
+  // ★ ping (RTT)
+  const pingEl = document.getElementById('sd-ping');
+  if (pingEl) {
+    let ms = -1;
+    if (Net.mode === 'online-client') ms = Net._lastPingMs || 0;
+    else if (Net.mode === 'online-host') {
+      let sum = 0, n = 0;
+      for (const c of Net.conns.values()) { if (typeof c.__rtt === 'number') { sum += c.__rtt; n++; } }
+      ms = n ? Math.round(sum / n) : -1;
+    }
+    pingEl.textContent = ms >= 0 ? ms + 'ms' : '—';
+    pingEl.className = 'sd-v ' + (ms < 0 ? '' : (ms > 400 ? 'bad' : (ms > 180 ? 'warn' : 'ok')));
+  }
+  // ★ action seq (client が host へ送る単調増加カウンタ)
+  const seqEl = document.getElementById('sd-seq');
+  if (seqEl) seqEl.textContent = (Net.mode === 'online-client') ? String(Net._actionSeq || 0) : '—';
+  // ★ 接続状態 / 再接続フェーズ
+  const connEl = document.getElementById('sd-conn');
+  if (connEl) {
+    let txt = '—', cls = '';
+    if (Net.mode === 'online-host') { txt = Net.conns.size + 'peer'; cls = 'ok'; }
+    else if (Net.mode === 'online-client') {
+      if (Net._reconnecting) { txt = 'reconnecting'; cls = 'bad'; }
+      else if (Net._autoReconnectActive) { txt = 'resyncing'; cls = 'warn'; }
+      else if (Net._health === 'unstable') { txt = 'unstable'; cls = 'warn'; }
+      else if (Net.hostConn && Net.hostConn.open) { txt = 'open'; cls = 'ok'; }
+      else { txt = 'closed'; cls = 'bad'; }
+    }
+    connEl.textContent = txt; connEl.className = 'sd-v ' + cls;
   }
 }
 
@@ -5871,9 +6202,11 @@ function updateActionButtons() {
     $('btn-exchange-cancel').classList.add('hidden');
     $('btn-giveup').classList.add('hidden');
     $('btn-surrender').classList.add('hidden');
-    const pIdx = curIdx >= 0 ? curIdx : 0;
-    const pName = state.players[pIdx]?.name || '?';
-    $('message').textContent = '🎬 リプレイ — ' + pName + ' のターン';
+    // renderTopBar と同じ pIdx 計算で表示ズレを防ぐ
+    const pIdx = curIdx >= 0 ? curIdx : -1;
+    const pName = (pIdx >= 0 && state.players[pIdx]) ? state.players[pIdx].name : '?';
+    const playState = Replay.playing ? '▶ 再生中' : '⏸ 停止中';
+    $('message').textContent = '🎬 ' + playState + ' — ' + pName + ' のターン';
     return;
   }
 
@@ -6438,21 +6771,37 @@ function showResult() {
   Net.reconnectToken = '';
   // オンラインモードならレート記録 (1ゲーム1回のみ)
   maybeRecordOnlineGameResult();
-  // 「もう一度」ボタンをオンラインモード別に調整
-  const rematchBtn = document.querySelector('[data-action="rematch"]');
-  if (rematchBtn) {
-    if (Net.mode === 'online-host') {
-      rematchBtn.textContent = 'もう一度 (再戦開始)';
-      rematchBtn.disabled = false;
-      rematchBtn.title = '';
-    } else if (Net.mode === 'online-client' || Net.mode === 'spectator') {
-      rematchBtn.textContent = 'もう一度 (ホスト待ち)';
-      rematchBtn.disabled = false; // クリック時に待機メッセージを表示
-      rematchBtn.title = 'ホストが再戦を開始するまでお待ちください';
-    } else {
-      rematchBtn.textContent = 'もう一度';
-      rematchBtn.disabled = false;
-      rematchBtn.title = '';
+  // リプレイ再生完了時: 全ボタンを非表示（replay-controls の「終了」で戻る）
+  const isReplayMode = (state && state.mode === 'replay');
+  const rematchBtn   = document.querySelector('[data-action="rematch"]');
+  const dlBtn        = document.querySelector('#screen-end [data-action="download-replay"]');
+  const watchBtn     = document.querySelector('[data-action="watch-replay"]');
+  const titleBtn     = document.querySelector('#screen-end [data-action="back-to-title"]');
+  if (isReplayMode) {
+    if (rematchBtn) rematchBtn.classList.add('hidden');
+    if (dlBtn)      dlBtn.classList.add('hidden');
+    if (watchBtn)   watchBtn.classList.add('hidden');
+    if (titleBtn)   titleBtn.classList.add('hidden');
+  } else {
+    if (rematchBtn) rematchBtn.classList.remove('hidden');
+    if (dlBtn)      dlBtn.classList.remove('hidden');
+    if (watchBtn)   watchBtn.classList.remove('hidden');
+    if (titleBtn)   titleBtn.classList.remove('hidden');
+    // 「もう一度」ボタンをオンラインモード別に調整
+    if (rematchBtn) {
+      if (Net.mode === 'online-host') {
+        rematchBtn.textContent = 'もう一度 (再戦開始)';
+        rematchBtn.disabled = false;
+        rematchBtn.title = '';
+      } else if (Net.mode === 'online-client' || Net.mode === 'spectator') {
+        rematchBtn.textContent = 'もう一度 (ホスト待ち)';
+        rematchBtn.disabled = false; // クリック時に待機メッセージを表示
+        rematchBtn.title = 'ホストが再戦を開始するまでお待ちください';
+      } else {
+        rematchBtn.textContent = 'もう一度';
+        rematchBtn.disabled = false;
+        rematchBtn.title = '';
+      }
     }
   }
   const el = $('result-list');
@@ -6610,7 +6959,7 @@ function startOnlineGame() {
   // ★ 再戦直後 1 秒は heartbeat を止める。
   //    game-start / state / fullState / reconnect が同時多発するため、
   //    安定後に開始することで不要な再送を防ぐ。
-  setTimeout(() => { startFullStateHeartbeat(); startIcePingTimer(); }, 1000); // ★ Fix9
+  setTimeout(() => { startFullStateHeartbeat(); startIcePingTimer(); startConnHealthTimer(); }, 1000); // ★ Fix9 / 接続健全性モニタ
 }
 
 function renderLobby() {
@@ -6898,13 +7247,39 @@ function openReplayFile() {
 }
 function applyReplayAction(act) {
   if (!state || state.phase === 'end') return false;
-  // actionは録画時の player を持つ。currentPlayerIdx と合致しているはず
+
+  // ── 修正12: アクション実行前に録画時の状態を権威的に復元 ──────────────────
+  // roundOrder/turnIndex はアクション録画時点の値。これが正とすることで
+  // computeNextRoundOrder のシード消費ズレ・exchange後ターン不進・any mismatch を一括解消。
+  if (act.phase === 'play' && act.roundOrder && Array.isArray(act.roundOrder)) {
+    // roundOrder が実際と違う場合のみ上書き（不要な書き込みを避ける）
+    const curStr  = JSON.stringify(state.currentRoundOrder);
+    const actStr  = JSON.stringify(act.roundOrder);
+    if (curStr !== actStr) {
+      console.info('replay: restoring roundOrder', state.currentRoundOrder, '->', act.roundOrder, 'at cursor', Replay.cursor);
+      state.currentRoundOrder = [...act.roundOrder];
+    }
+    if (typeof act.turnIndex === 'number' && state.currentTurnIdx !== act.turnIndex) {
+      console.info('replay: restoring turnIndex', state.currentTurnIdx, '->', act.turnIndex);
+      state.currentTurnIdx = act.turnIndex;
+    }
+    // nextRoundOrder を記録値から権威的に復元 (NEXT表示のズレ修正)
+    if (act.nextRoundOrder && Array.isArray(act.nextRoundOrder)) {
+      const curNextStr = JSON.stringify(state.nextRoundOrder);
+      const actNextStr = JSON.stringify(act.nextRoundOrder);
+      if (curNextStr !== actNextStr) {
+        state.nextRoundOrder = [...act.nextRoundOrder];
+      }
+    }
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   if (act.type === 'place' || act.type === 'jammer') {
     const pIdx = act.player;
     const cur = currentPlayerIdx();
     if (cur !== pIdx) {
-      // 修正6: turnIndex/roundOrderで状態ズレを検証
-      console.warn('replay action player mismatch', cur, pIdx, 'expected turn:', act.turnIndex);
+      // 権威的補正後もズレが残る場合: initフェーズのズレ等。警告のみ。
+      console.warn('replay: player mismatch after correction', cur, '->', pIdx, act);
     }
     const player = state.players[pIdx];
     if (!player) return false;
@@ -6912,10 +7287,9 @@ function applyReplayAction(act) {
     const card = player.hand.find(c => c && c.suit === act.card.suit && c.rank === act.card.rank);
     if (!card) { console.warn('replay: card not in hand', act); return false; }
     // 修正9: リプレイ専用関数でSFX/animation等をスキップ
-    // ★ playerIdx を明示的に渡す。currentPlayerIdx 任せだと旧データで誤所有が起きる。
     placeCardReplay(card, act.x, act.y, act.type === 'jammer', pIdx);
-    // postActionAdvance が壊れないよう、ターン idx が記録と一致しなければ補正
-    if (currentPlayerIdx() === pIdx) postActionAdvance();
+    // 修正12: 補正済みなので currentPlayerIdx() === pIdx チェックは不要。常にターンを進める。
+    postActionAdvance();
     return true;
   }
   if (act.type === 'exchange') {
@@ -6939,16 +7313,20 @@ function applyReplayAction(act) {
     }
     if (!idsToReturn.length) return false;
     exchangeCards(pIdx, idsToReturn);
+    // exchange はターンを消費しない。後続の place または unable アクションが postActionAdvance() を呼ぶ。
+    // ここで postActionAdvance() を呼ぶとターンが二重進行するため呼ばない。
     return true;
   }
   if (act.type === 'surrender') {
     surrenderPlayer(act.player);
-    if (currentPlayerIdx() === act.player) postActionAdvance();
+    // 修正12: 補正済みなので常にターンを進める
+    postActionAdvance();
     return true;
   }
   if (act.type === 'unable') {
     markActionUnable(act.player);
-    if (currentPlayerIdx() === act.player) postActionAdvance();
+    // 修正12: 補正済みなので常にターンを進める
+    postActionAdvance();
     return true;
   }
   return true;
@@ -6970,6 +7348,7 @@ function replayStepBack() {
       applyReplayAction(Replay.data.actions[Replay.cursor++]);
     }
   }
+  if (!$('screen-game') || $('screen-game').classList.contains('hidden')) showScreen('game');
   renderAll();
   updateReplayControls();
 }
@@ -7001,8 +7380,11 @@ function replayStep(n) {
 }
 function replayPlay() {
   Replay.playing = true;
+  if (!$('screen-game') || $('screen-game').classList.contains('hidden')) showScreen('game');
   const stepMs = Math.max(80, 600 / Replay.speed);
   if (Replay.timer) clearInterval(Replay.timer);
+  // 再生開始を message にも即反映
+  if (state && state.mode === 'replay') updateActionButtons();
   Replay.timer = setInterval(() => {
     if (!Replay.playing) return;
     if (Replay.cursor >= Replay.data.actions.length) {
@@ -7021,6 +7403,8 @@ function replayPause() {
   Replay.playing = false;
   if (Replay.timer) { clearInterval(Replay.timer); Replay.timer = null; }
   updateReplayControls();
+  // 停止/再生の切り替えを message にも即反映
+  if (state && state.mode === 'replay') updateActionButtons();
 }
 function replaySetSpeed(s) {
   Replay.speed = s;
@@ -7054,6 +7438,7 @@ function replayJumpToHighlight(dir) {
   while (Replay.cursor < target && Replay.cursor < Replay.data.actions.length) {
     applyReplayAction(Replay.data.actions[Replay.cursor++]);
   }
+  if (!$('screen-game') || $('screen-game').classList.contains('hidden')) showScreen('game');
   renderAll();
   updateReplayControls();
 }
@@ -7135,11 +7520,19 @@ function replayReset() {
 function showReplayControls() {
   const el = $('replay-controls');
   if (el) el.classList.remove('hidden');
+  // 帯の高さ分だけ盤面を押し上げて最下段が隠れないようにする
+  requestAnimationFrame(() => {
+    const bar = $('replay-controls');
+    const board = document.querySelector('.board-area');
+    if (bar && board) board.style.paddingBottom = bar.offsetHeight + 'px';
+  });
   updateReplayControls();
 }
 function hideReplayControls() {
   const el = $('replay-controls');
   if (el) el.classList.add('hidden');
+  const board = document.querySelector('.board-area');
+  if (board) board.style.paddingBottom = '';
 }
 function updateReplayControls() {
   if (!Replay.active || !Replay.data) return;
@@ -7261,6 +7654,7 @@ function handleAction(a) {
     }
     case 'online-host-start': startOnlineGame(); break;
     case 'online-leave': netLeave(); break;
+    case 'reconnect-leave': hideReconnectOverlay(); netLeave(); break;
     case 'close-rules': $('overlay-rules').classList.add('hidden'); break;
     case 'close-om': $('overlay-online-msg').classList.add('hidden'); break;
     case 'random-seed': $('setup-seed').value = Math.floor(Math.random() * 1000000); break;
@@ -7281,6 +7675,7 @@ function handleAction(a) {
     case 'surrender': surrenderAction(); break;
     case 'handoff-ready': handoffReady(); break;
     case 'download-replay': downloadReplay(); break;
+    case 'watch-replay': { const d = buildReplayPayload(); if (d) loadReplay(d); break; }
     case 'rematch':
       if (Net.mode === 'online-host') {
         // 接続を維持したまま host がゲームを再生成し、全 client へ game-start を再送
