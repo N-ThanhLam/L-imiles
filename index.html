@@ -3660,45 +3660,45 @@ function netJoin({keyword, name}) {
     Net._connecting = false; // ★ 非同期初期化が実際に始まったのでフラグ解除
     if (Net.mode !== 'online-client') return;
     Net.peer = new Peer(undefined, {debug: 0});
-  Net.peer.on('open', () => {
-    setNetStatus('connecting', 'ホストに接続中…');
-    const conn = Net.peer.connect(Net.roomId, {reliable: true});
-    Net.hostConn = conn;
-    let opened = false;
-    conn.on('open', () => {
-      opened = true;
-      setNetStatus('handshake', 'ハンドシェイク中…');
-      // 再接続トークンがあれば送信して復帰を試みる。観戦者ならrole=spectator
-      const prev = loadReconnectToken(Net.roomCode);
-      const hello = {type:'hello', ver:VERSION, name: Net.myName, ruleHash: null, rating: computeRating(), puzzleRank: puzzleRankFor(getPuzzleHiscore())};
-      if (Net.joinAsSpectator) hello.role = 'spectator';
-      else if (prev && prev.token) hello.reconnectToken = prev.token;
-      conn.send(hello);
+    Net.peer.on('open', () => {
+      setNetStatus('connecting', 'ホストに接続中…');
+      const conn = Net.peer.connect(Net.roomId, {reliable: true});
+      Net.hostConn = conn;
+      let opened = false;
+      conn.on('open', () => {
+        opened = true;
+        setNetStatus('handshake', 'ハンドシェイク中…');
+        // 再接続トークンがあれば送信して復帰を試みる。観戦者ならrole=spectator
+        const prev = loadReconnectToken(Net.roomCode);
+        const hello = {type:'hello', ver:VERSION, name: Net.myName, ruleHash: null, rating: computeRating(), puzzleRank: puzzleRankFor(getPuzzleHiscore())};
+        if (Net.joinAsSpectator) hello.role = 'spectator';
+        else if (prev && prev.token) hello.reconnectToken = prev.token;
+        conn.send(hello);
+      });
+      conn.on('data', d => { conn.__lastRxTime = Date.now(); handleClientMessage(d); });
+      conn.on('close', () => {
+        if (!opened) setNetStatus('error', 'ホストに到達できません');
+        else {
+          // ゲーム途中での切断ならレート負け記録
+          recordOnlineDisconnectLoss();
+          setNetStatus('disconnected', '接続が切断されました');
+        }
+      });
+      conn.on('error', () => setNetStatus('error', '接続エラー'));
     });
-    conn.on('data', d => { conn.__lastRxTime = Date.now(); handleClientMessage(d); });
-    conn.on('close', () => {
-      if (!opened) setNetStatus('error', 'ホストに到達できません');
-      else {
-        // ゲーム途中での切断ならレート負け記録
-        recordOnlineDisconnectLoss();
-        setNetStatus('disconnected', '接続が切断されました');
-      }
+    Net.peer.on('error', err => {
+      let msg = err.type || 'error';
+      if (err.type === 'peer-unavailable') msg = 'ホストが見つかりません (合言葉を確認)';
+      if (err.type === 'network') msg = 'ネットワーク接続失敗';
+      setNetStatus('error', msg);
     });
-    conn.on('error', () => setNetStatus('error', '接続エラー'));
-  });
-  Net.peer.on('error', err => {
-    let msg = err.type || 'error';
-    if (err.type === 'peer-unavailable') msg = 'ホストが見つかりません (合言葉を確認)';
-    if (err.type === 'network') msg = 'ネットワーク接続失敗';
-    setNetStatus('error', msg);
-  });
-  // ★ client 側もシグナリング切断時は reconnect で再登録する。
-  //   切断中に host へ送信できないので fullState 要求や reconnect-claim の信頼性が落ちる。
-  Net.peer.on('disconnected', () => {
-    // ★ 自分で退室した場合 (netLeave) は reconnect しない
-    if (Net._intentionalDisconnect) return;
-    try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
-  });
+    // ★ client 側もシグナリング切断時は reconnect で再登録する。
+    //   切断中に host へ送信できないので fullState 要求や reconnect-claim の信頼性が落ちる。
+    Net.peer.on('disconnected', () => {
+      // ★ 自分で退室した場合 (netLeave) は reconnect しない
+      if (Net._intentionalDisconnect) return;
+      try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
+    });
   }
 }
 
