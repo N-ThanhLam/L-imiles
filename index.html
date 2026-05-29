@@ -133,6 +133,7 @@ html.lowspec #btn-exchange.no-legal-breath { animation: none; opacity: 0.85; }
 .sync-debug .sd-v.ok { color:var(--good); }
 /* ===== 絵文字リアクション (オンライン対戦中のみ) ===== */
 .emoji-bar { display:flex; flex-direction:row; align-items:center; gap:4px; }
+.emoji-bar.emoji-exhausted { opacity:0.35; pointer-events:none; } /* 今手番の上限に達した */
 .emoji-bar button { width:26px; height:26px; padding:0; font-size:15px; line-height:1; border:1px solid var(--border); border-radius:7px; background:rgba(10,12,18,0.5); cursor:pointer; opacity:0.65; transition:opacity .15s, transform .08s; -webkit-tap-highlight-color:transparent; }
 .emoji-bar button:hover { opacity:1; }
 .emoji-bar button:active { transform:scale(0.86); opacity:1; }
@@ -147,8 +148,8 @@ html.lowspec #btn-exchange.no-legal-breath { animation: none; opacity: 0.85; }
   100% { opacity:0; transform:translateX(-50%) translateY(-130px) scale(1); }
 }
 @media (max-width: 720px) {
-  .emoji-bar { gap:4px; }
-  .emoji-bar button { width:30px; height:30px; font-size:16px; }
+  .emoji-bar { gap:3px; }
+  .emoji-bar button { width:26px; height:26px; font-size:15px; }
   .emoji-fx .ef-char { font-size:44px; }
 }
 /* ===== 再接続オーバーレイ (入力ロック) ===== */
@@ -1098,17 +1099,27 @@ html.lowspec .result-row.winner-anim { animation: none; }
             <span class="timer" id="timer">30</span>
           </div>
           <div class="deck-info"><span data-i18n="game.deck">山</span> <span id="deck-count">0</span></div>
+          <div class="spacer"></div>
+          <!-- オンライン対戦中の絵文字リアクション 1/2段目 (相手画面にポッと浮かぶ) -->
+          <div class="emoji-bar hidden">
+            <button type="button" data-action="emoji" data-emoji="👍">👍</button>
+            <button type="button" data-action="emoji" data-emoji="👏">👏</button>
+            <button type="button" data-action="emoji" data-emoji="🔥">🔥</button>
+            <button type="button" data-action="emoji" data-emoji="🎉">🎉</button>
+            <button type="button" data-action="emoji" data-emoji="😂">😂</button>
+          </div>
         </div>
         <!-- 2行目: 現在ラウンド順・次ラウンド順 -->
         <div class="top-bar-row">
           <div class="order-row"><span class="label">NOW</span><span id="now-order"></span></div>
           <div class="order-row"><span class="label">NEXT</span><span id="next-order"></span></div>
           <div class="spacer"></div>
-          <!-- オンライン対戦中の絵文字リアクション (NEXT段の右端 / 相手画面にポッと浮かぶ) -->
-          <div id="emoji-bar" class="emoji-bar hidden">
-            <button type="button" data-action="emoji" data-emoji="👍">👍</button>
-            <button type="button" data-action="emoji" data-emoji="😂">😂</button>
+          <!-- オンライン対戦中の絵文字リアクション 2/2段目 (相手画面にポッと浮かぶ) -->
+          <div class="emoji-bar hidden">
             <button type="button" data-action="emoji" data-emoji="😮">😮</button>
+            <button type="button" data-action="emoji" data-emoji="😱">😱</button>
+            <button type="button" data-action="emoji" data-emoji="🤔">🤔</button>
+            <button type="button" data-action="emoji" data-emoji="😎">😎</button>
             <button type="button" data-action="emoji" data-emoji="😭">😭</button>
           </div>
         </div>
@@ -3843,8 +3854,20 @@ function setNetStatusInGame(s, msg) { Net.status = s; Net.statusMsg = msg || '';
 // ===== 絵文字リアクション (オンライン対戦中のみ) =====
 //   端のボタン → sendEmoji。client は host へ送り、host が他 client へ relay。
 //   host は全 client へ broadcast。送信者の画面にも即フィードバック表示する。
-const EMOJI_ALLOWED = ['👍','😂','😮','😭'];
+const EMOJI_ALLOWED = ['👍','👏','🔥','🎉','😂','😮','😱','🤔','😎','😭'];
+const EMOJI_MAX_PER_TURN = 3; // 1手番あたり各プレイヤー3回まで (4人なら手番中最大12回 / 1ラウンド最大48回)
 let _emojiSendCooldown = 0;
+let _emojiTurnId = '';   // カウント中の手番識別子
+let _emojiTurnCount = 0; // 現手番での自分の送信回数
+// 手番が変わるたびに変化する識別子 (play: round+手番index / init: initIdx)
+function _emojiTurnKey() {
+  if (!state) return '';
+  return state.phase + ':' + state.round + ':' + state.currentTurnIdx + ':' + state.initIdx;
+}
+function _emojiRemaining() {
+  if (_emojiTurnKey() !== _emojiTurnId) return EMOJI_MAX_PER_TURN; // 新しい手番 → 満タン
+  return Math.max(0, EMOJI_MAX_PER_TURN - _emojiTurnCount);
+}
 function _myEmojiName() {
   try {
     const me = Net.hostPlayers && Net.hostPlayers.find(p => p.idx === Net.myPlayerIdx);
@@ -3855,9 +3878,14 @@ function _myEmojiName() {
 function sendEmoji(emoji) {
   if (!emoji || EMOJI_ALLOWED.indexOf(emoji) === -1) return;
   if (Net.mode !== 'online-host' && Net.mode !== 'online-client' && Net.mode !== 'spectator') return;
+  // 手番が変わっていたらカウントをリセット
+  const tkey = _emojiTurnKey();
+  if (tkey !== _emojiTurnId) { _emojiTurnId = tkey; _emojiTurnCount = 0; }
+  if (_emojiTurnCount >= EMOJI_MAX_PER_TURN) { updateEmojiBar(); return; } // 1手番3回まで
   const now = Date.now();
-  if (now - _emojiSendCooldown < 500) return; // 連打スパム防止
+  if (now - _emojiSendCooldown < 400) return; // 二重発火防止
   _emojiSendCooldown = now;
+  _emojiTurnCount++;
   const name = _myEmojiName();
   const payload = { type:'emoji', e: emoji, name };
   if (Net.mode === 'online-host') {
@@ -3866,6 +3894,7 @@ function sendEmoji(emoji) {
     safeSend(Net.hostConn, payload);
   }
   showEmojiReaction(emoji, name); // 送信者にも浮かべる
+  updateEmojiBar(); // 残数に応じてバーの有効/無効を更新
 }
 function showEmojiReaction(emoji, name) {
   if (!emoji || EMOJI_ALLOWED.indexOf(emoji) === -1) return;
@@ -3882,11 +3911,16 @@ function showEmojiReaction(emoji, name) {
   while (layer.childElementCount > 8) layer.removeChild(layer.firstChild); // 暴走防止
 }
 function updateEmojiBar() {
-  const bar = document.getElementById('emoji-bar');
-  if (!bar) return;
+  const bars = document.querySelectorAll('.emoji-bar');
+  if (!bars.length) return;
   const online = (Net.mode === 'online-host' || Net.mode === 'online-client' || Net.mode === 'spectator');
   const inGame = !!(state && state.phase !== 'end');
-  bar.classList.toggle('hidden', !(online && inGame));
+  const show = online && inGame;
+  const exhausted = show && _emojiRemaining() <= 0; // 今手番の上限に達したら無効化
+  bars.forEach(bar => {
+    bar.classList.toggle('hidden', !show);
+    bar.classList.toggle('emoji-exhausted', exhausted);
+  });
 }
 function showOnlineMsg(title, body) {
   $('om-title').textContent = title;
