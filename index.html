@@ -972,7 +972,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
         <div class="setup-row" style="background:var(--panel-2); border-radius:6px; padding:6px 10px; margin-bottom:12px;">
           <label style="min-width:auto;">あなたのレート</label>
           <span id="my-rating-auto" class="rate-badge" style="font-size:13px; padding:3px 10px;">R0</span>
-          <span style="font-size:11px; color:var(--text-dim);">サーバーなしなのでおまけ機能です</span>
+          <span style="font-size:11px; color:var(--text-dim);">サーバー無しなのでおまけ機能です</span>
         </div>
         <div class="setup-row">
           <label>あなたの名前</label>
@@ -7834,7 +7834,10 @@ function handleAction(a) {
       break;
     }
     case 'online-host-start': startOnlineGame(); break;
-    case 'online-leave': netLeave(); break;
+    case 'online-leave':
+      if (AutoMatch && (AutoMatch.active || AutoMatch.state === 'hosting')) cancelAutoMatch();
+      netLeave();
+      break;
     case 'reconnect-leave': hideReconnectOverlay(); netLeave(); break;
     case 'close-rules': $('overlay-rules').classList.add('hidden'); break;
     case 'close-om': $('overlay-online-msg').classList.add('hidden'); break;
