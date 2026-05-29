@@ -54,12 +54,17 @@ h2 { margin:0 0 12px; font-size:20px; }
 h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 .screen { flex:1; display:flex; flex-direction:column; min-height:0; }
 
-#screen-title { align-items:center; justify-content:center; gap:24px; padding:24px; }
+#screen-title { align-items:center; justify-content:flex-start; gap:24px; padding:24px; overflow-y:auto; }
+#screen-title::before, #screen-title::after { content:''; flex:1; min-height:0; }
 .title-logo { font-size:clamp(48px, 11vw, 92px); font-weight:900; letter-spacing:0.06em; background:linear-gradient(135deg,#5ea8ff,#a98cff,#ff8cb8); -webkit-background-clip:text; background-clip:text; color:transparent; line-height:1; }
 .title-sub { color:var(--text-dim); font-size:13px; margin-top:-12px; letter-spacing:0.2em; }
 .title-menu { display:flex; flex-direction:column; gap:10px; width:min(320px, 90vw); }
 .title-menu button { padding:14px; font-size:15px; }
 .title-foot { color:var(--text-dim); font-size:11px; margin-top:8px; }
+.title-disclaimer { color:var(--text-dim); font-size:11px; line-height:1.5; max-width:min(360px, 90vw); text-align:center; opacity:0.8; }
+.lang-row { display:flex; gap:6px; margin-top:-6px; }
+.lang-row button { padding:5px 12px; font-size:12px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px; color:var(--text-dim); cursor:pointer; }
+.lang-row button.active { background:var(--accent); color:var(--forbidden, #111); border-color:var(--accent); font-weight:700; }
 
 #screen-setup, #screen-online { align-items:center; padding:16px; overflow-y:auto; }
 .setup-panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:18px; width:min(560px, 100%); margin-bottom:24px; }
@@ -126,6 +131,26 @@ html.lowspec #btn-exchange.no-legal-breath { animation: none; opacity: 0.85; }
 .sync-debug .sd-v.bad { color:var(--danger); }
 .sync-debug .sd-v.warn { color:var(--warn); }
 .sync-debug .sd-v.ok { color:var(--good); }
+/* ===== 絵文字リアクション (オンライン対戦中のみ) ===== */
+.emoji-bar { display:flex; flex-direction:row; align-items:center; gap:4px; }
+.emoji-bar button { width:26px; height:26px; padding:0; font-size:15px; line-height:1; border:1px solid var(--border); border-radius:7px; background:rgba(10,12,18,0.5); cursor:pointer; opacity:0.65; transition:opacity .15s, transform .08s; -webkit-tap-highlight-color:transparent; }
+.emoji-bar button:hover { opacity:1; }
+.emoji-bar button:active { transform:scale(0.86); opacity:1; }
+.emoji-fx-layer { position:fixed; inset:0; z-index:110; pointer-events:none; overflow:hidden; }
+.emoji-fx { position:absolute; bottom:20%; display:flex; flex-direction:column; align-items:center; gap:3px; animation:emoji-fx-rise 2s ease-out forwards; will-change:transform,opacity; }
+.emoji-fx .ef-char { font-size:54px; line-height:1; filter:drop-shadow(0 3px 8px rgba(0,0,0,0.55)); }
+.emoji-fx .ef-name { font-size:12px; font-weight:700; color:#fff; background:rgba(10,12,18,0.72); padding:2px 9px; border-radius:11px; white-space:nowrap; max-width:140px; overflow:hidden; text-overflow:ellipsis; }
+@keyframes emoji-fx-rise {
+  0% { opacity:0; transform:translateX(-50%) translateY(34px) scale(0.4); }
+  14% { opacity:1; transform:translateX(-50%) translateY(0) scale(1.12); }
+  28% { transform:translateX(-50%) translateY(-6px) scale(1); }
+  100% { opacity:0; transform:translateX(-50%) translateY(-130px) scale(1); }
+}
+@media (max-width: 720px) {
+  .emoji-bar { gap:4px; }
+  .emoji-bar button { width:30px; height:30px; font-size:16px; }
+  .emoji-fx .ef-char { font-size:44px; }
+}
 /* ===== 再接続オーバーレイ (入力ロック) ===== */
 .reconnect-overlay { position:fixed; inset:0; z-index:120; background:rgba(6,8,14,0.72); display:flex; align-items:center; justify-content:center; padding:16px; pointer-events:auto; }
 .reconnect-overlay .rc-box { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:22px 26px; max-width:340px; width:100%; text-align:center; box-shadow:0 18px 50px rgba(0,0,0,0.6); }
@@ -846,203 +871,209 @@ html.lowspec .result-row.winner-anim { animation: none; }
 
   <div id="screen-title" class="screen">
     <div class="title-logo">L-imiles</div>
-    <div class="title-sub">CONNECTION  NETWORK  STRATEGY</div>
-    <div class="title-menu">
-      <button class="primary" data-action="new-game">ローカル / ホットシート</button>
-      <button data-action="puzzle-start">パズルスコア (ソロ)</button>
-      <button data-action="online">オンライン対戦</button>
-      <button data-action="rules">ルール</button>
-      <button data-action="open-replay">リプレイ再生</button>
-      <button data-action="force-update" style="margin-top:6px; background:var(--accent); color:var(--forbidden); font-weight:bold; border-color:var(--accent);">最新版へ更新</button>
+    <div class="title-sub">NETWORK BUILDING STRATEGY</div>
+    <div class="lang-row" id="lang-row">
+      <button data-lang-btn="en" data-action="set-lang-en">English</button>
+      <button data-lang-btn="ja" data-action="set-lang-ja">日本語</button>
+      <button data-lang-btn="zh" data-action="set-lang-zh">中文</button>
     </div>
-    <div class="title-foot">v1.13 · ネットワーク勝負 — single-file build</div>
+    <div class="title-menu">
+      <button class="primary" data-action="new-game" data-i18n="menu.local">ローカル / ホットシート</button>
+      <button data-action="puzzle-start" data-i18n="menu.puzzle">パズルスコア (ソロ)</button>
+      <button data-action="online" data-i18n="menu.online">オンライン対戦</button>
+      <button data-action="rules" data-i18n="menu.rules">ルール</button>
+      <button data-action="open-replay" data-i18n="menu.replay">リプレイ再生</button>
+      <button data-action="force-update" data-i18n="menu.update" style="margin-top:6px; background:var(--accent); color:var(--forbidden); font-weight:bold; border-color:var(--accent);">最新版へ更新</button>
+    </div>
+    <div class="title-disclaimer" id="title-disclaimer" data-i18n="disclaimer.streaming">個人制作の非公式ファンプロジェクトです。配信・実況・動画投稿は自由にどうぞ。</div>
+    <div class="title-foot" data-i18n="title.foot">v1.13 · ネットワーク勝負 — single-file build</div>
   </div>
 
   <div id="screen-setup" class="screen hidden">
     <div class="setup-panel">
-      <h2>ゲーム設定</h2>
+      <h2 data-i18n="setup.title">ゲーム設定</h2>
       <div class="setup-row">
-        <label>プレイヤー数</label>
+        <label data-i18n="common.numPlayers">プレイヤー数</label>
         <select id="setup-num-players">
-          <option value="2" selected>2人</option>
-          <option value="3">3人</option>
-          <option value="4">4人</option>
+          <option value="2" selected data-i18n="opt.p2">2人</option>
+          <option value="3" data-i18n="opt.p3">3人</option>
+          <option value="4" data-i18n="opt.p4">4人</option>
         </select>
       </div>
       <div id="player-rows"></div>
       <div class="setup-row">
-        <label>シード</label>
-        <input type="text" id="setup-seed" placeholder="(空欄=ランダム)">
-        <button data-action="random-seed" style="padding:6px 10px; font-size:12px;">乱数</button>
+        <label data-i18n="setup.seed">シード</label>
+        <input type="text" id="setup-seed" placeholder="(空欄=ランダム)" data-i18n-ph="setup.seed.ph">
+        <button data-action="random-seed" data-i18n="setup.randomSeed" style="padding:6px 10px; font-size:12px;">乱数</button>
       </div>
       <div class="setup-row">
-        <label>ターン制限</label>
+        <label data-i18n="common.turnLimit">ターン制限</label>
         <select id="setup-time">
-          <option value="30" selected>30秒</option>
-          <option value="60">60秒</option>
-          <option value="120">120秒</option>
-          <option value="0">無制限</option>
+          <option value="30" selected data-i18n="opt.t30">30秒</option>
+          <option value="60" data-i18n="opt.t60">60秒</option>
+          <option value="120" data-i18n="opt.t120">120秒</option>
+          <option value="0" data-i18n="opt.t0">無制限</option>
         </select>
       </div>
       <div class="setup-row">
-        <label>合法手表示</label>
+        <label data-i18n="setup.showLegal">合法手表示</label>
         <input type="checkbox" id="setup-show-legal" checked>
-        <span style="font-size:11px; color:var(--text-dim);">配置可能マスを枠線でハイライト</span>
+        <span style="font-size:11px; color:var(--text-dim);" data-i18n="setup.showLegal.hint">配置可能マスを枠線でハイライト</span>
       </div>
       <div class="setup-row">
-        <label>配置確定待機</label>
+        <label data-i18n="setup.confirmDelay">配置確定待機</label>
         <input type="number" id="setup-confirm-delay" value="1.5" min="0" max="9.9" step="0.1" style="width:70px;">
-        <span style="font-size:11px; color:var(--text-dim);">秒後に自動確定 (0=即設置)</span>
+        <span style="font-size:11px; color:var(--text-dim);" data-i18n="setup.confirmDelay.hint">秒後に自動確定 (0=即設置)</span>
       </div>
       <div class="actions-bar">
-        <button data-action="back-to-title">戻る</button>
-        <button class="primary" data-action="start-game">スタート</button>
+        <button data-action="back-to-title" data-i18n="common.back">戻る</button>
+        <button class="primary" data-action="start-game" data-i18n="common.start">スタート</button>
       </div>
     </div>
   </div>
 
   <div id="screen-online" class="screen hidden">
     <div class="setup-panel">
-      <h2>オンライン対戦 (P2P)</h2>
+      <h2 data-i18n="online.title">オンライン対戦 (P2P)</h2>
       <div class="tab-row">
-        <button id="tab-host-btn" class="active" data-action="online-tab-host">ホスト作成</button>
-        <button id="tab-join-btn" data-action="online-tab-join">参加</button>
-        <button id="tab-auto-btn" data-action="online-tab-auto">ランダム</button>
+        <button id="tab-host-btn" class="active" data-action="online-tab-host" data-i18n="online.tab.host">ホスト作成</button>
+        <button id="tab-join-btn" data-action="online-tab-join" data-i18n="online.tab.join">参加</button>
+        <button id="tab-auto-btn" data-action="online-tab-auto" data-i18n="online.tab.auto">ランダム</button>
       </div>
 
       <div id="online-pane-host">
         <div class="setup-row" style="background:var(--panel-2); border-radius:6px; padding:6px 10px; margin-bottom:12px;">
-          <label style="min-width:auto;">あなたのレート</label>
+          <label style="min-width:auto;" data-i18n="online.yourRate">あなたのレート</label>
           <span id="my-rating-host" class="rate-badge" style="font-size:13px; padding:3px 10px;">R0</span>
-          <span style="font-size:11px; color:var(--text-dim);">直近100戦からカウント</span>
+          <span style="font-size:11px; color:var(--text-dim);" data-i18n="online.rate.hint100">直近100戦からカウント</span>
         </div>
         <div class="setup-row">
-          <label>合言葉</label>
-          <input type="text" id="online-host-keyword" placeholder="例: hoge42" maxlength="40">
+          <label data-i18n="online.keyword">合言葉</label>
+          <input type="text" id="online-host-keyword" placeholder="例: hoge42" data-i18n-ph="online.keyword.ph.host" maxlength="40">
         </div>
         <div class="setup-row">
-          <label>あなたの名前</label>
-          <input type="text" id="online-host-name" placeholder="プレイヤー名" maxlength="6" value="Host">
+          <label data-i18n="common.yourName">あなたの名前</label>
+          <input type="text" id="online-host-name" placeholder="プレイヤー名" data-i18n-ph="common.name.ph" maxlength="6" value="Host">
         </div>
         <div class="setup-row">
-          <label>プレイヤー数</label>
+          <label data-i18n="common.numPlayers">プレイヤー数</label>
           <select id="online-host-num">
-            <option value="2" selected>2人</option>
-            <option value="3">3人</option>
-            <option value="4">4人</option>
+            <option value="2" selected data-i18n="opt.p2">2人</option>
+            <option value="3" data-i18n="opt.p3">3人</option>
+            <option value="4" data-i18n="opt.p4">4人</option>
           </select>
         </div>
         <div class="setup-row">
-          <label>ターン制限</label>
+          <label data-i18n="common.turnLimit">ターン制限</label>
           <select id="online-host-time">
-            <option value="30" selected>30秒</option>
-            <option value="60">60秒</option>
-            <option value="120">120秒</option>
-            <option value="0">無制限</option>
+            <option value="30" selected data-i18n="opt.t30">30秒</option>
+            <option value="60" data-i18n="opt.t60">60秒</option>
+            <option value="120" data-i18n="opt.t120">120秒</option>
+            <option value="0" data-i18n="opt.t0">無制限</option>
           </select>
         </div>
         <div class="actions-bar">
-          <button data-action="back-to-title">戻る</button>
-          <button class="primary" data-action="online-host-create">ルーム作成</button>
+          <button data-action="back-to-title" data-i18n="common.back">戻る</button>
+          <button class="primary" data-action="online-host-create" data-i18n="online.createRoom">ルーム作成</button>
         </div>
       </div>
 
       <div id="online-pane-join" class="hidden">
         <div class="setup-row" style="background:var(--panel-2); border-radius:6px; padding:6px 10px; margin-bottom:12px;">
-          <label style="min-width:auto;">あなたのレート</label>
+          <label style="min-width:auto;" data-i18n="online.yourRate">あなたのレート</label>
           <span id="my-rating-join" class="rate-badge" style="font-size:13px; padding:3px 10px;">R0</span>
-          <span style="font-size:11px; color:var(--text-dim);">直近100戦からカウント</span>
+          <span style="font-size:11px; color:var(--text-dim);" data-i18n="online.rate.hint100">直近100戦からカウント</span>
         </div>
         <div class="setup-row">
-          <label>合言葉</label>
-          <input type="text" id="online-join-keyword" placeholder="ホストから共有" maxlength="40">
+          <label data-i18n="online.keyword">合言葉</label>
+          <input type="text" id="online-join-keyword" placeholder="ホストから共有" data-i18n-ph="online.keyword.ph.join" maxlength="40">
         </div>
         <div class="setup-row">
-          <label>あなたの名前</label>
-          <input type="text" id="online-join-name" placeholder="プレイヤー名" maxlength="6" value="Guest">
+          <label data-i18n="common.yourName">あなたの名前</label>
+          <input type="text" id="online-join-name" placeholder="プレイヤー名" data-i18n-ph="common.name.ph" maxlength="6" value="Guest">
         </div>
         <div class="actions-bar">
-          <button data-action="back-to-title">戻る</button>
+          <button data-action="back-to-title" data-i18n="common.back">戻る</button>
           <!-- [観戦封印] <button data-action="join-spectator" title="観戦のみ。手札は見えません">観戦参加</button> -->
-          <button class="primary" data-action="online-join">参加</button>
+          <button class="primary" data-action="online-join" data-i18n="online.tab.join">参加</button>
         </div>
       </div>
 
       <div id="online-pane-auto" class="hidden">
         <div class="setup-row" style="background:var(--panel-2); border-radius:6px; padding:6px 10px; margin-bottom:12px;">
-          <label style="min-width:auto;">あなたのレート</label>
+          <label style="min-width:auto;" data-i18n="online.yourRate">あなたのレート</label>
           <span id="my-rating-auto" class="rate-badge" style="font-size:13px; padding:3px 10px;">R0</span>
-          <span style="font-size:11px; color:var(--text-dim);">サーバー無しなのでおまけ機能です</span>
+          <span style="font-size:11px; color:var(--text-dim);" data-i18n="online.rate.hint.bonus">サーバー無しなのでおまけ機能です</span>
         </div>
         <div class="setup-row">
-          <label>あなたの名前</label>
-          <input type="text" id="online-auto-name" placeholder="プレイヤー名" maxlength="6" value="Auto">
+          <label data-i18n="common.yourName">あなたの名前</label>
+          <input type="text" id="online-auto-name" placeholder="プレイヤー名" data-i18n-ph="common.name.ph" maxlength="6" value="Auto">
         </div>
         <div class="setup-row">
-          <label>プレイヤー数</label>
+          <label data-i18n="common.numPlayers">プレイヤー数</label>
           <select id="online-auto-num">
-            <option value="2" selected>2人</option>
-            <option value="3">3人</option>
-            <option value="4">4人</option>
+            <option value="2" selected data-i18n="opt.p2">2人</option>
+            <option value="3" data-i18n="opt.p3">3人</option>
+            <option value="4" data-i18n="opt.p4">4人</option>
           </select>
-          <span style="font-size:11px; color:var(--text-dim);">ホスト化時のみ有効</span>
+          <span style="font-size:11px; color:var(--text-dim);" data-i18n="online.hostOnly">ホスト化時のみ有効</span>
         </div>
         <div class="setup-row">
-          <label>ターン制限</label>
+          <label data-i18n="common.turnLimit">ターン制限</label>
           <select id="online-auto-time">
-            <option value="30" selected>30秒</option>
-            <option value="60">60秒</option>
-            <option value="120">120秒</option>
-            <option value="0">無制限</option>
+            <option value="30" selected data-i18n="opt.t30">30秒</option>
+            <option value="60" data-i18n="opt.t60">60秒</option>
+            <option value="120" data-i18n="opt.t120">120秒</option>
+            <option value="0" data-i18n="opt.t0">無制限</option>
           </select>
-          <span style="font-size:11px; color:var(--text-dim);">ホスト化時のみ有効</span>
+          <span style="font-size:11px; color:var(--text-dim);" data-i18n="online.hostOnly">ホスト化時のみ有効</span>
         </div>
         <div class="setup-row" style="background:var(--panel-2); border-radius:6px; padding:6px 10px;">
-          <label style="min-width:auto;">状態</label>
-          <span id="automatch-status" style="font-size:12px; color:var(--text-dim);">未開始</span>
+          <label style="min-width:auto;" data-i18n="online.state">状態</label>
+          <span id="automatch-status" style="font-size:12px; color:var(--text-dim);" data-i18n="online.notStarted">未開始</span>
         </div>
-        <p style="font-size:11px; color:var(--text-dim); line-height:1.5; margin:8px 0;">
+        <p style="font-size:11px; color:var(--text-dim); line-height:1.5; margin:8px 0;" data-i18n-html="online.auto.desc">
           空いている部屋を探索し、見つからなければ自動でホスト化します。<br>
           相手と version / protocol / ルールが一致すれば参加できます。
         </p>
         <div class="actions-bar">
-          <button data-action="back-to-title">戻る</button>
-          <button id="btn-auto-reconnect" data-action="online-reconnect" disabled title="戻れる対戦がありません">再接続</button>
-          <button class="primary" data-action="online-auto-start">マッチング開始</button>
+          <button data-action="back-to-title" data-i18n="common.back">戻る</button>
+          <button id="btn-auto-reconnect" data-action="online-reconnect" disabled title="戻れる対戦がありません" data-i18n="online.reconnect" data-i18n-title="online.reconnect.none">再接続</button>
+          <button class="primary" data-action="online-auto-start" data-i18n="online.auto.start">マッチング開始</button>
         </div>
         <div style="margin-top:14px; border-top:1px solid var(--panel-2); padding-top:10px;">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-            <strong style="font-size:13px;">公開ルーム一覧 (最大50)</strong>
-            <button data-action="online-rooms-refresh" style="font-size:11px; padding:3px 10px;">更新</button>
+            <strong style="font-size:13px;" data-i18n="online.publicRooms">公開ルーム一覧 (最大50)</strong>
+            <button data-action="online-rooms-refresh" data-i18n="common.refresh" style="font-size:11px; padding:3px 10px;">更新</button>
           </div>
-          <div id="online-room-list" style="font-size:12px; color:var(--text-dim);">未取得</div>
+          <div id="online-room-list" style="font-size:12px; color:var(--text-dim);" data-i18n="online.notFetched">未取得</div>
         </div>
       </div>
 
       <div id="online-pane-lobby" class="hidden" style="margin-top:14px;">
-        <h3>ルーム</h3>
+        <h3 data-i18n="online.room">ルーム</h3>
         <div class="setup-row" style="margin-bottom:6px;">
-          <label>合言葉</label>
+          <label data-i18n="online.keyword">合言葉</label>
           <span id="lobby-keyword" style="font-family:monospace; background:var(--panel-2); padding:4px 10px; border-radius:4px;"></span>
         </div>
         <div class="setup-row" style="margin-bottom:6px;">
-          <label>同期状態</label>
+          <label data-i18n="online.syncState">同期状態</label>
           <span id="lobby-status" class="net-status warn">…</span>
           <span id="lobby-status-msg" style="font-size:11px; color:var(--text-dim);"></span>
         </div>
         <div class="setup-row" style="margin-bottom:6px;">
-          <label>参加人数</label>
+          <label data-i18n="online.joinCount">参加人数</label>
           <span id="lobby-count">0 / 0</span>
         </div>
         <div class="setup-row" style="margin-bottom:6px;">
-          <label>観戦人数</label>
+          <label data-i18n="online.specCount">観戦人数</label>
           <span id="lobby-spec-count" style="font-variant-numeric:tabular-nums;">0</span>
-          <span style="font-size:11px; color:var(--text-dim);">参加人数とは独立</span>
+          <span style="font-size:11px; color:var(--text-dim);" data-i18n="online.specIndep">参加人数とは独立</span>
         </div>
         <div class="lobby-grid" id="lobby-players"></div>
         <div class="actions-bar">
-          <button data-action="online-leave" class="danger">退室</button>
-          <button id="btn-host-start" class="primary hidden" data-action="online-host-start">ゲーム開始</button>
+          <button data-action="online-leave" class="danger" data-i18n="online.leave">退室</button>
+          <button id="btn-host-start" class="primary hidden" data-action="online-host-start" data-i18n="online.gameStart">ゲーム開始</button>
         </div>
       </div>
     </div>
@@ -1066,19 +1097,27 @@ html.lowspec .result-row.winner-anim { animation: none; }
             <span class="player-chip" id="turn-player">P1</span>
             <span class="timer" id="timer">30</span>
           </div>
-          <div class="deck-info">山 <span id="deck-count">0</span></div>
+          <div class="deck-info"><span data-i18n="game.deck">山</span> <span id="deck-count">0</span></div>
         </div>
         <!-- 2行目: 現在ラウンド順・次ラウンド順 -->
         <div class="top-bar-row">
           <div class="order-row"><span class="label">NOW</span><span id="now-order"></span></div>
           <div class="order-row"><span class="label">NEXT</span><span id="next-order"></span></div>
+          <div class="spacer"></div>
+          <!-- オンライン対戦中の絵文字リアクション (NEXT段の右端 / 相手画面にポッと浮かぶ) -->
+          <div id="emoji-bar" class="emoji-bar hidden">
+            <button type="button" data-action="emoji" data-emoji="👍">👍</button>
+            <button type="button" data-action="emoji" data-emoji="😂">😂</button>
+            <button type="button" data-action="emoji" data-emoji="😮">😮</button>
+            <button type="button" data-action="emoji" data-emoji="😭">😭</button>
+          </div>
         </div>
         <!-- 3行目: ネット接続状況・SYNC・メニュー(右端) -->
         <div class="top-bar-row">
           <span id="net-indicator" class="net-status hidden"></span>
           <div class="spacer"></div>
-          <button id="btn-sync-debug" class="menu-btn" title="同期デバッグ表示切替">SYNC</button>
-          <button id="btn-menu" class="menu-btn">メニュー</button>
+          <button id="btn-sync-debug" class="menu-btn" title="同期デバッグ表示切替" data-i18n-title="game.syncDebug.title">SYNC</button>
+          <button id="btn-menu" class="menu-btn" data-i18n="game.menu">メニュー</button>
         </div>
       </div>
       <div class="side-panel-scroll">
@@ -1088,18 +1127,19 @@ html.lowspec .result-row.winner-anim { animation: none; }
       <div class="bottom-bar">
         <div class="hand-row" id="hand-row"></div>
         <div class="action-row">
-          <button id="btn-confirm" class="primary hidden" data-action="confirm-place">配置確定</button>
-          <button id="btn-cancel" class="hidden" data-action="cancel-place">キャンセル</button>
-          <button id="btn-exchange" data-action="exchange-mode">交換</button>
-          <button id="btn-exchange-confirm" class="warn hidden" data-action="exchange-confirm">交換確定</button>
-          <button id="btn-exchange-cancel" class="hidden" data-action="exchange-cancel">交換キャンセル</button>
-          <button id="btn-giveup" class="danger hidden" data-action="give-up-turn">行動不能</button>
-          <button id="btn-surrender" class="danger hidden" data-action="surrender" title="このゲームを降参します">降参</button>
+          <button id="btn-confirm" class="primary hidden" data-action="confirm-place" data-i18n="game.confirmPlace">配置確定</button>
+          <button id="btn-cancel" class="hidden" data-action="cancel-place" data-i18n="common.cancel">キャンセル</button>
+          <button id="btn-exchange" data-action="exchange-mode" data-i18n="game.exchange">交換</button>
+          <button id="btn-exchange-confirm" class="warn hidden" data-action="exchange-confirm" data-i18n="game.exchangeConfirm">交換確定</button>
+          <button id="btn-exchange-cancel" class="hidden" data-action="exchange-cancel" data-i18n="game.exchangeCancel">交換キャンセル</button>
+          <button id="btn-giveup" class="danger hidden" data-action="give-up-turn" data-i18n="game.giveUp">行動不能</button>
+          <button id="btn-surrender" class="danger hidden" data-action="surrender" title="このゲームを降参します" data-i18n="game.surrender" data-i18n-title="game.surrender.title">降参</button>
           <div class="spacer"></div>
           <span id="message"></span>
         </div>
       </div>
     </div>
+    <div id="emoji-fx-layer" class="emoji-fx-layer"></div>
     <div id="sync-debug" class="sync-debug hidden">
       <div class="sd-row"><span class="sd-k">ver</span><span class="sd-v" id="sd-ver">0</span></div>
       <div class="sd-row"><span class="sd-k">local</span><span class="sd-v" id="sd-local">—</span></div>
@@ -1116,13 +1156,13 @@ html.lowspec .result-row.winner-anim { animation: none; }
 
   <div id="screen-end" class="screen hidden">
     <div style="padding:24px; max-width:560px; margin:0 auto; width:100%;">
-      <h2>結果</h2>
+      <h2 data-i18n="end.result">結果</h2>
       <div class="result-list" id="result-list"></div>
       <div class="actions-bar">
-        <button data-action="download-replay">リプレイ保存</button>
-        <button class="primary" data-action="watch-replay">リプレイを見る</button>
-        <button data-action="back-to-title">タイトルへ</button>
-        <button class="primary" data-action="rematch">もう一度</button>
+        <button data-action="download-replay" data-i18n="end.saveReplay">リプレイ保存</button>
+        <button class="primary" data-action="watch-replay" data-i18n="end.watchReplay">リプレイを見る</button>
+        <button data-action="back-to-title" data-i18n="common.toTitle">タイトルへ</button>
+        <button class="primary" data-action="rematch" data-i18n="common.again">もう一度</button>
       </div>
     </div>
   </div>
@@ -1143,14 +1183,14 @@ html.lowspec .result-row.winner-anim { animation: none; }
             <div class="puzzle-score-num" id="puzzle-score">0</div>
           </div>
           <div class="puzzle-info-block">
-            <div>山<b id="puzzle-deck">0</b></div>
-            <div>手<b id="puzzle-hand-count">0</b>/<b id="puzzle-hand-max">3</b></div>
+            <div><span data-i18n="puzzle.deckShort">山</span><b id="puzzle-deck">0</b></div>
+            <div><span data-i18n="puzzle.handShort">手</span><b id="puzzle-hand-count">0</b>/<b id="puzzle-hand-max">3</b></div>
             <div>BEST <b id="puzzle-hiscore-live" style="color:var(--warn);">0</b></div>
             <div style="margin-top:3px; font-size:11px; letter-spacing:0.06em;">🔢 <span id="puzzle-num-mult" style="font-variant-numeric:tabular-nums; color:var(--text-dim);">x1.00</span></div>
           </div>
           <div class="spacer"></div>
-          <button class="menu-btn" data-action="puzzle-rules">役一覧</button>
-          <button class="menu-btn" data-action="puzzle-quit">終了</button>
+          <button class="menu-btn" data-action="puzzle-rules" data-i18n="puzzle.roles">役一覧</button>
+          <button class="menu-btn" data-action="puzzle-quit" data-i18n="puzzle.quit">終了</button>
         </div>
       </div>
       <div class="side-panel-scroll">
@@ -1161,7 +1201,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
         <div class="action-row">
           <span id="puzzle-msg" class="puzzle-msg"></span>
           <div class="spacer"></div>
-          <button class="danger" data-action="puzzle-restart">リスタート</button>
+          <button class="danger" data-action="puzzle-restart" data-i18n="common.restart">リスタート</button>
         </div>
       </div>
     </div>
@@ -1170,8 +1210,8 @@ html.lowspec .result-row.winner-anim { animation: none; }
   <!-- Puzzle setup overlay -->
   <div id="overlay-puzzle-setup" class="overlay hidden">
     <div class="overlay-content" style="max-width:420px; text-align:center;">
-      <h2>パズルスコア モード</h2>
-      <div style="color:var(--text-dim); font-size:13px; line-height:1.6; margin-bottom:16px;">
+      <h2 data-i18n="puzzle.setup.title">パズルスコア モード</h2>
+      <div style="color:var(--text-dim); font-size:13px; line-height:1.6; margin-bottom:16px;" data-i18n-html="puzzle.setup.desc">
         山札が尽きるまでカードを配置し、役を作って高スコアを目指す。<br>
         配置カード 2枚 / 手持ち 3枚
       </div>
@@ -1181,8 +1221,8 @@ html.lowspec .result-row.winner-anim { animation: none; }
         <div id="puzzle-setup-hiscore-rank" style="font-size:14px; color:var(--text-dim); font-weight:700;"></div>
       </div>
       <div class="confirm-buttons" style="justify-content:center; gap:12px;">
-        <button data-action="puzzle-setup-cancel">キャンセル</button>
-        <button class="primary" data-action="puzzle-start-now" style="padding:14px 32px; font-size:15px;">スタート</button>
+        <button data-action="puzzle-setup-cancel" data-i18n="common.cancel">キャンセル</button>
+        <button class="primary" data-action="puzzle-start-now" style="padding:14px 32px; font-size:15px;" data-i18n="common.start">スタート</button>
       </div>
     </div>
   </div>
@@ -1190,7 +1230,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
   <!-- Puzzle end screen -->
   <div id="screen-puzzle-end" class="screen hidden">
     <div style="padding:20px; max-width:480px; margin:14px auto; width:calc(100% - 24px);">
-      <h2 style="text-align:center;">PUZZLE 結果</h2>
+      <h2 style="text-align:center;" data-i18n="puzzle.end.title">PUZZLE 結果</h2>
       <div class="puzzle-end-card">
         <div class="puzzle-end-rank" id="puzzle-end-rank">—</div>
         <div class="puzzle-end-score">
@@ -1200,8 +1240,8 @@ html.lowspec .result-row.winner-anim { animation: none; }
         <div id="puzzle-end-detail" class="puzzle-end-detail"></div>
       </div>
       <div class="actions-bar">
-        <button data-action="puzzle-quit">タイトルへ</button>
-        <button class="primary" data-action="puzzle-restart">もう一度</button>
+        <button data-action="puzzle-quit" data-i18n="common.toTitle">タイトルへ</button>
+        <button class="primary" data-action="puzzle-restart" data-i18n="common.again">もう一度</button>
       </div>
     </div>
   </div>
@@ -1209,8 +1249,8 @@ html.lowspec .result-row.winner-anim { animation: none; }
   <!-- Puzzle roles cheat-sheet overlay -->
   <div id="overlay-puzzle-rules" class="overlay hidden">
     <div class="overlay-content">
-      <h2>パズル 役一覧</h2>
-      <div style="font-size:12px; line-height:1.7;">
+      <h2 data-i18n="puzzle.rules.title">パズル 役一覧</h2>
+      <div style="font-size:12px; line-height:1.7;" data-i18n-html="puzzle.rules.body">
         <h3 style="color:#ff9933;">数字系（同じ数字が隣接）</h3>
         <p>ペアリンク（同2枚）+50 / トリプルノード（同3枚NW）+150 / フォースポット（同4枚NW）+400</p>
         <h3 style="color:#ffd34d;">連番系（数字±1のパス）</h3>
@@ -1226,24 +1266,24 @@ html.lowspec .result-row.winner-anim { animation: none; }
         <p>2枚目以降は既存カードに隣接する空きマスにのみ配置可。禁止マス（×）には置けない。配置すると山札から1枚補充。手札全部を置き切るかゲーム継続不能でゲーム終了。</p>
       </div>
       <div class="actions-bar">
-        <button class="primary" data-action="close-puzzle-rules">閉じる</button>
+        <button class="primary" data-action="close-puzzle-rules" data-i18n="common.close">閉じる</button>
       </div>
     </div>
   </div>
 
   <div id="overlay-handoff" class="overlay hidden">
     <div class="overlay-content handoff">
-      <div style="font-size:14px; color:var(--text-dim);">次のプレイヤー</div>
+      <div style="font-size:14px; color:var(--text-dim);" data-i18n="handoff.next">次のプレイヤー</div>
       <div class="player-name" id="handoff-name">P1</div>
-      <div style="font-size:13px; color:var(--text-dim);">他のプレイヤーに見られないように<br>画面を渡してください</div>
-      <button class="primary" style="margin-top:18px; padding:14px 28px; font-size:16px;" data-action="handoff-ready">準備完了</button>
+      <div style="font-size:13px; color:var(--text-dim);" data-i18n-html="handoff.hint">他のプレイヤーに見られないように<br>画面を渡してください</div>
+      <button class="primary" style="margin-top:18px; padding:14px 28px; font-size:16px;" data-action="handoff-ready" data-i18n="handoff.ready">準備完了</button>
     </div>
   </div>
 
   <div id="overlay-rules" class="overlay hidden">
     <div class="overlay-content">
-      <h2>ルール</h2>
-      <div style="font-size:13px; line-height:1.7;">
+      <h2 data-i18n="rules.title">ルール</h2>
+      <div style="font-size:13px; line-height:1.7;" data-i18n-html="rules.body">
         <p><b>目的:</b> ゲーム終了時、各プレイヤーの「最大ネットワーク」内の接続線(connection)数を得点とし、最多のプレイヤーが勝利。同点時は最大NWのカード数 → 総接続数で比較。生存だけでは勝てない。</p>
         <p><b>ネットワーク:</b> 自分のカード同士で接続線(隣接成立)で繋がっている塊。Jammerは含まない。盤面に複数のネットワークを持てるが、評価は最大のもの1つのみ。</p>
         <p><b>盤面:</b> ランダムで12マスが禁止マス（配置・隣接通過不可）。</p>
@@ -1258,29 +1298,29 @@ html.lowspec .result-row.winner-anim { animation: none; }
         <p><b>初期配置:</b> 各2枚をスネーク順 (A→B→...→B→A) で配置。隣接条件なし。</p>
         <p><b>ターン制限:</b> 30秒。時間切れで合法手があればランダム配置、なければ行動不能。</p>
       </div>
-      <div class="confirm-buttons"><button class="primary" data-action="close-rules">閉じる</button></div>
+      <div class="confirm-buttons"><button class="primary" data-action="close-rules" data-i18n="common.close">閉じる</button></div>
     </div>
   </div>
 
   <div id="overlay-menu" class="overlay hidden">
     <div class="overlay-content">
-      <h2>メニュー</h2>
+      <h2 data-i18n="menu.title">メニュー</h2>
       <div style="display:flex; flex-direction:column; gap:8px;">
-        <button data-action="resume">再開</button>
-        <button data-action="show-rules">ルール</button>
-        <button data-action="toggle-legal">合法手表示 切替</button>
-        <button data-action="download-replay">リプレイ保存 (JSON)</button>
-        <button class="danger" data-action="abort-game">タイトルへ戻る</button>
+        <button data-action="resume" data-i18n="menu.resume">再開</button>
+        <button data-action="show-rules" data-i18n="menu.rules">ルール</button>
+        <button data-action="toggle-legal" data-i18n="menu.toggleLegal">合法手表示 切替</button>
+        <button data-action="download-replay" data-i18n="menu.saveReplayJson">リプレイ保存 (JSON)</button>
+        <button class="danger" data-action="abort-game" data-i18n="menu.backToTitle">タイトルへ戻る</button>
       </div>
     </div>
   </div>
 
   <div id="overlay-online-msg" class="overlay hidden">
     <div class="overlay-content">
-      <h2 id="om-title">通知</h2>
+      <h2 id="om-title" data-i18n="om.title.default">通知</h2>
       <div id="om-body" style="font-size:13px; line-height:1.6;"></div>
       <div class="confirm-buttons">
-        <button class="primary" data-action="close-om">OK</button>
+        <button class="primary" data-action="close-om" data-i18n="common.ok">OK</button>
       </div>
     </div>
   </div>
@@ -1289,9 +1329,9 @@ html.lowspec .result-row.winner-anim { animation: none; }
   <div id="overlay-reconnect" class="reconnect-overlay hidden">
     <div class="rc-box">
       <div id="rc-spin" class="rc-spin"></div>
-      <div id="rc-msg" class="rc-msg">再接続中…</div>
-      <div class="rc-sub">通信が一時的に途切れています。<br>そのままお待ちください（最大約45秒）。</div>
-      <button id="rc-leave" class="danger rc-leave hidden" data-action="reconnect-leave">退室してタイトルへ</button>
+      <div id="rc-msg" class="rc-msg" data-i18n="rc.reconnecting">再接続中…</div>
+      <div id="rc-sub" class="rc-sub" data-i18n-html="rc.sub.default">通信が一時的に途切れています。<br>そのままお待ちください（最大約45秒）。</div>
+      <button id="rc-leave" class="danger rc-leave hidden" data-action="reconnect-leave" data-i18n="rc.leave">退室してタイトルへ</button>
     </div>
   </div>
 
@@ -1299,26 +1339,26 @@ html.lowspec .result-row.winner-anim { animation: none; }
   <div id="replay-controls" class="hidden">
     <div class="replay-row">
       <span class="replay-label">REPLAY</span>
-      <button id="replay-prev" data-action="replay-prev" title="ハイライトへ戻る">⏮</button>
-      <button id="replay-step-back" data-action="replay-step-back" title="1手戻る">◀</button>
-      <button id="replay-play" class="primary" data-action="replay-play">▶ 再生</button>
-      <button id="replay-step" data-action="replay-step" title="1手進む">▶|</button>
-      <button id="replay-next" data-action="replay-next" title="次のハイライトへ">⏭</button>
+      <button id="replay-prev" data-action="replay-prev" title="ハイライトへ戻る" data-i18n-title="replay.tip.prev">⏮</button>
+      <button id="replay-step-back" data-action="replay-step-back" title="1手戻る" data-i18n-title="replay.tip.stepBack">◀</button>
+      <button id="replay-play" class="primary" data-action="replay-play" data-i18n="replay.play">▶ 再生</button>
+      <button id="replay-step" data-action="replay-step" title="1手進む" data-i18n-title="replay.tip.step">▶|</button>
+      <button id="replay-next" data-action="replay-next" title="次のハイライトへ" data-i18n-title="replay.tip.next">⏭</button>
       <span class="replay-progress"><span id="replay-cursor">0</span>/<span id="replay-total">0</span></span>
       <span class="replay-speeds">
         <button id="replay-speed-1" data-action="replay-speed-1" class="active">x1</button>
         <button id="replay-speed-2" data-action="replay-speed-2">x2</button>
         <button id="replay-speed-4" data-action="replay-speed-4">x4</button>
       </span>
-      <button id="replay-exit" class="danger" data-action="replay-exit">終了</button>
+      <button id="replay-exit" class="danger" data-action="replay-exit" data-i18n="replay.exit">終了</button>
     </div>
   </div>
 
   <!-- 配置確定ポップアップ -->
   <div id="place-confirm-popup" class="hidden">
-    <div class="popup-label" id="popup-label">確定まで…</div>
+    <div class="popup-label" id="popup-label" data-i18n="popup.confirmIn">確定まで…</div>
     <div class="popup-bar-wrap"><div id="popup-timer-fill"></div></div>
-    <button class="popup-cancel" data-action="cancel-place">キャンセル</button>
+    <button class="popup-cancel" data-action="cancel-place" data-i18n="common.cancel">キャンセル</button>
   </div>
 
 </div>
@@ -1326,6 +1366,677 @@ html.lowspec .result-row.winner-anim { animation: none; }
 <script>
 (() => {
 'use strict';
+
+// ============================== I18N (多言語: 英 / 日 / 中) ==============================
+// ブラウザ言語から自動判定し、選択は localStorage に永続化 (一度変えたら戻らない)。
+// 日本語/中国語以外はデフォルト英語。
+const LANG_KEY = 'limiles_lang';
+const SUPPORTED_LANGS = ['en', 'ja', 'zh'];
+function detectLang() {
+  try {
+    const saved = localStorage.getItem(LANG_KEY);
+    if (saved && SUPPORTED_LANGS.includes(saved)) return saved;
+  } catch (e) {}
+  const nav = ((navigator.languages && navigator.languages[0]) || navigator.language || navigator.userLanguage || 'en').toLowerCase();
+  if (nav.startsWith('ja')) return 'ja';
+  if (nav.startsWith('zh')) return 'zh';
+  return 'en';
+}
+let LANG = detectLang();
+
+const I18N = {
+  en: {
+    'common.back': 'Back', 'common.start': 'Start', 'common.cancel': 'Cancel',
+    'common.close': 'Close', 'common.refresh': 'Refresh', 'common.toTitle': 'To Title',
+    'common.again': 'Play Again', 'common.ok': 'OK', 'common.restart': 'Restart',
+    'common.numPlayers': 'Players', 'common.turnLimit': 'Turn Limit',
+    'common.yourName': 'Your Name', 'common.name.ph': 'Player name',
+    'opt.p2': '2 Players', 'opt.p3': '3 Players', 'opt.p4': '4 Players',
+    'opt.t30': '30 sec', 'opt.t60': '60 sec', 'opt.t120': '120 sec', 'opt.t0': 'Unlimited',
+    'menu.local': 'Local / Hot-seat', 'menu.puzzle': 'Puzzle Score (Solo)',
+    'menu.online': 'Online Match', 'menu.rules': 'Rules', 'menu.replay': 'Watch Replay',
+    'menu.update': 'Update to Latest', 'title.foot': 'v1.13 · Network Showdown — single-file build',
+    'disclaimer.streaming': 'Unofficial fan-made project. Streaming, commentary & video uploads are all welcome.',
+    'setup.title': 'Game Setup', 'setup.seed': 'Seed', 'setup.seed.ph': '(blank = random)',
+    'setup.randomSeed': 'Random', 'setup.showLegal': 'Show Legal Moves',
+    'setup.showLegal.hint': 'Highlight placeable cells with an outline',
+    'setup.confirmDelay': 'Placement Delay', 'setup.confirmDelay.hint': 'sec until auto-confirm (0 = instant)',
+    'online.title': 'Online Match (P2P)', 'online.tab.host': 'Host', 'online.tab.join': 'Join',
+    'online.tab.auto': 'Random', 'online.yourRate': 'Your Rating',
+    'online.rate.hint100': 'Based on your last 100 games',
+    'online.rate.hint.bonus': 'No server, so this is just a bonus feature',
+    'online.keyword': 'Passphrase', 'online.keyword.ph.host': 'e.g. hoge42',
+    'online.keyword.ph.join': 'Shared by the host', 'online.createRoom': 'Create Room',
+    'online.hostOnly': 'Only applies when hosting', 'online.state': 'Status',
+    'online.notStarted': 'Not started',
+    'online.auto.desc': 'Searches for an open room; if none is found, it automatically becomes the host.<br>You can join when version / protocol / rules all match.',
+    'online.reconnect': 'Reconnect', 'online.reconnect.none': 'No match to return to',
+    'online.auto.start': 'Start Matching', 'online.publicRooms': 'Public Rooms (max 50)',
+    'online.notFetched': 'Not loaded', 'online.room': 'Room', 'online.syncState': 'Sync',
+    'online.joinCount': 'Players', 'online.specCount': 'Spectators',
+    'online.specIndep': 'Separate from player count', 'online.leave': 'Leave',
+    'online.gameStart': 'Start Game',
+    'game.deck': 'Deck', 'game.menu': 'Menu', 'game.confirmPlace': 'Confirm',
+    'game.exchange': 'Exchange', 'game.exchangeConfirm': 'Confirm Exchange',
+    'game.exchangeCancel': 'Cancel Exchange', 'game.giveUp': 'Pass', 'game.surrender': 'Surrender',
+    'game.surrender.title': 'Surrender this game', 'game.syncDebug.title': 'Toggle sync debug',
+    'end.result': 'Result', 'end.saveReplay': 'Save Replay', 'end.watchReplay': 'Watch Replay',
+    'menu.title': 'Menu', 'menu.resume': 'Resume', 'menu.toggleLegal': 'Toggle Legal Moves',
+    'menu.saveReplayJson': 'Save Replay (JSON)', 'menu.backToTitle': 'Back to Title',
+    'handoff.next': 'Next Player', 'handoff.hint': "Pass the screen without letting<br>other players see it", 'handoff.ready': 'Ready',
+    'rules.title': 'Rules',
+    'rules.body': "<p><b>Goal:</b> At the end of the game, your score is the number of connection lines inside your single largest network. The player with the most wins. Ties break by card count of the largest network, then total connections. Surviving alone is not enough.</p><p><b>Network:</b> A cluster of your own cards joined by connection lines (adjacency). Jammers are excluded. You may hold several networks, but only your largest one is scored.</p><p><b>Board:</b> 12 random cells are forbidden (no placement, no passing through).</p><p><b>Cards:</b> 52 standard cards. A=1, J=11, Q=12, K=13. <b>A↔K wraps around (treated as ±1)</b>.</p><p><b>Adjacency:</b> Between your own cards, when up/down/left/right share the same number, same suit, or differ by ±1. No diagonals.</p><p><b>Normal placement:</b> Only on empty cells next to your own card that satisfies adjacency. No isolated placement.</p><p><b>Jammer placement:</b> If it matches an opponent card's number, you may place it isolated next to that opponent. It creates/extends no connection of your own and cannot be an adjacency source.</p><p><b>Forced placement:</b> If you can place any card, you must (no exchange/pass).</p><p><b>Exchange:</b> Only when no card can be placed, swap any number. Returned cards go to the bottom of the deck in hand order (no shuffle). Once per turn.</p><p><b>Pass:</b> When you cannot exchange / still cannot place after exchanging. Return your hand to the bottom of the deck in order.</p><p><b>Round order:</b> At each round's end, the previous leader is fixed to last; the rest are drawn randomly. NEXT order is always public.<br><b>2-player special:</b> Rotation is ignored — fixed alternating order (P0→P1→P0...).</p><p><b>Initial placement:</b> Each places 2 cards in snake order (A→B→...→B→A). No adjacency required.</p><p><b>Turn limit:</b> 30 sec. On timeout, a random legal move is placed if one exists, otherwise pass.</p>",
+    'om.title.default': 'Notice',
+    'rc.reconnecting': 'Reconnecting…', 'rc.syncing': 'Syncing…',
+    'rc.sub.default': 'The connection dropped temporarily.<br>Please wait (up to ~45 sec).',
+    'rc.leave': 'Leave to Title',
+    'net.hostLeft': 'The host left the match', 'net.hostLeft.sub': 'The match has ended.<br>Please return to the title.',
+    'net.disconnected': 'Disconnected', 'net.recoverFailed': "Couldn't restore the connection",
+    'lang.label': 'Language',
+    'puzzle.setup.title': 'Puzzle Score Mode',
+    'puzzle.setup.desc': 'Place cards until the deck runs out, build roles, and aim for a high score.<br>2 seed cards / 3 in hand',
+    'puzzle.rules.title': 'Puzzle Roles', 'puzzle.roles': 'Roles', 'puzzle.quit': 'Quit',
+    'puzzle.end.title': 'PUZZLE Result', 'puzzle.restart': 'Restart',
+    'replay.play': '▶ Play', 'replay.pause': '⏸ Pause', 'replay.exit': 'Exit',
+    'replay.tip.prev': 'Back to highlight', 'replay.tip.stepBack': 'Step back',
+    'replay.tip.step': 'Step forward', 'replay.tip.next': 'Next highlight',
+    'popup.confirmIn': 'Confirming…',
+    // --- in-game dynamic ---
+    'game.spectating': 'Spectating — all hands are hidden',
+    'game.cpuThinking': 'CPU ({0} Lv{1}) thinking…',
+    'game.waiting': 'Waiting…',
+    'game.phaseInit': ' [Initial]',
+    'game.replayPlaying': '▶ Playing', 'game.replayPaused': '⏸ Paused',
+    'game.replayTurn': "🎬 {0} — {1}'s turn",
+    'game.endgame': 'End Game',
+    'game.turnWait': "Waiting for {0}'s turn",
+    'game.initPlace': 'Initial placement: place freely ({0}/{1})',
+    'game.pendingJammer': 'Jammer placement — awaiting confirm',
+    'game.pendingPlace': 'Placement — awaiting confirm',
+    'game.exchangePick': 'Select cards to exchange (deck: {0})',
+    'game.selectCard': 'Select a card → tap a cell',
+    'game.noPlace': 'No placeable card — please exchange',
+    'game.noPlaceNoExchange': "Can't place or exchange — press the Pass button",
+    'game.confirmInSec': '{0}s to confirm',
+    // --- log ---
+    'log.place': 'R{0} {1}: {2} → ({3},{4}){5}',
+    'log.jammerTag': ' [Jammer]',
+    'log.exchange': 'R{0} {1}: exchange {2} ({3} drawn)',
+    'log.unable': 'R{0} {1}: unable to act',
+    'log.disconnect': 'R{0} {1}: disconnected',
+    'log.roundStart': '— Round {0} start —',
+    'log.gameEnd': '★ End — winner: {0}',
+    // --- scores panel ---
+    'score.tagDisc': 'Disconnected · CPU proxy',
+    'score.netMax': 'Max <b>{0}</b> lines/{1}',
+    'score.hand': 'Hand {0}',
+    'score.rateTitle': 'Rating (last 100 games)',
+    'score.puzzleRankTitle': 'Puzzle Score Mode rank',
+    // --- result screen ---
+    'end.rematchHost': 'Play Again (start rematch)',
+    'end.rematchWait': 'Play Again (waiting for host)',
+    'end.rematchWaitTitle': 'Wait for the host to start a rematch',
+    'end.rank': '#{0}',
+    'end.netMax': 'Max NW {0} lines ({1} cards)',
+    'end.netMeta': 'NWs {0} · Total {1}',
+    // --- setup CPU level ---
+    'setup.cpuLv1': 'Lv1 Random', 'setup.cpuLv2': 'Lv2 1-ply', 'setup.cpuLv3': 'Lv3 2-ply',
+    // --- awards ---
+    'award.resonance-king.label': 'Resonance King', 'award.resonance-king.desc': 'Best max NW: {0}',
+    'award.invader.label': 'Invader', 'award.invader.desc': 'Jammed {0}×',
+    'award.breeder.label': 'Breeder', 'award.breeder.desc': 'NW updated {0}×',
+    'award.solitude.label': 'Lone Wolf', 'award.solitude.desc': 'Won as the sole survivor',
+    'award.survivor.label': 'Survivor', 'award.survivor.desc': 'Recovered from a disconnect and won',
+    // --- surrender confirm ---
+    'confirm.endgame': 'End the game?\nThe game will end and results will be shown.',
+    'confirm.surrender': 'Surrender for real?\nYour hand returns to the deck and you become unable to act.',
+    // --- networking: status / popups ---
+    'net.err.title': 'Error', 'net.err.noKeyword': 'Please enter a passphrase',
+    'net.status.registering': 'Registering with PeerServer…',
+    'net.status.peerCreateFail': 'Failed to create Peer',
+    'net.status.hostWaiting': 'Waiting — share the passphrase',
+    'net.status.releasing': 'Releasing previous session… ({0}/3)',
+    'net.err.idTaken': 'This passphrase is in use elsewhere. Wait a moment and retry',
+    'net.err.network': 'Network connection failed',
+    'net.err.serverNoResp': 'No response from signaling server',
+    'net.status.signalLost': 'Signaling disconnected (reconnecting…)',
+    'net.status.connectingHost': 'Connecting to host…',
+    'net.status.handshake': 'Handshaking…',
+    'net.err.hostUnreachable': "Can't reach the host",
+    'net.err.connError': 'Connection error',
+    'net.err.hostNotFound': 'Host not found (check the passphrase)',
+    'net.status.spectating': 'Spectating',
+    'net.status.lobbyWaiting': 'Waiting in lobby',
+    'net.indicator.unstable': 'Unstable',
+    'net.reject.title': 'Join Rejected',
+    'net.reject.versionMismatch': 'Version mismatch (host: {0}, you: {1})',
+    'net.reject.ruleMismatch': 'Rule settings mismatch',
+    'net.reject.gameStarted': 'Game already started',
+    'net.reject.roomFull': 'Room is full',
+    'net.reject.spectatorFull': 'Spectator limit reached (max {0})',
+    'net.err.badAction.title': 'Invalid Action',
+    'net.start.title': "Can't Start", 'net.start.notEnough': 'Not enough players',
+    'net.lobby.hostWaiting': 'Waiting (host)', 'net.lobby.lobby': 'Lobby',
+    'net.reconnect.failTitle': "Can't Reconnect",
+    'net.reconnect.failBody': "No match found to return to.<br>(timed out, or you haven't played yet)",
+    'net.reconnect.btnTitle': 'Reconnect to “{0}”',
+    // --- networking: room browser ---
+    'net.room.loading': 'Loading…',
+    'net.room.err.unconfigured': 'Worker URL not set (LOBBY_URL is still a placeholder)',
+    'net.room.err.fetch': 'Failed to reach Worker (down / CORS / DNS / network)',
+    'net.room.err.http': 'Worker returned an error (see DevTools console)',
+    'net.room.err.badJson': 'Malformed Worker response (see DevTools console)',
+    'net.room.err.generic': 'Fetch failed: {0}',
+    'net.room.empty': 'No public rooms (nobody is hosting / waiting for heartbeat)',
+    'net.room.verMismatch': ' <span style="color:#c66;">(version)</span>',
+    'net.room.inGame': ' <span style="color:#c66;">[in game]</span>',
+    'net.room.join': 'Join', 'net.room.spec': 'Spec {0}',
+    // --- networking: automatch ---
+    'net.auto.fetchingLobby': 'Fetching lobby…',
+    'net.auto.stopped': 'Stopped',
+    'net.auto.searching': 'Searching {0}-player rooms… (fixed-slot direct scan)',
+    'net.auto.noRoom': 'No open/joinable rooms → rescanning',
+    'net.auto.probing': 'Scanning {0}/{1} ({2})…',
+    'net.auto.joined': 'Joined ({0})',
+    'net.auto.slotEmpty': '{0} is empty → hosting',
+    'net.auto.netFail': 'Network/signaling failure → retrying',
+    'net.auto.hostTry': 'Trying to host {0}…',
+    'net.auto.idTaken': '{0} is in use → trying to join…',
+    'net.auto.signalFail': 'Signaling failure ({0}) → retrying',
+    'net.auto.hostFail': 'Hosting failed ({0}) → next slot',
+    'net.auto.hostWait': 'Hosting, waiting {0}/{1}',
+    'net.auto.congested': "Couldn't match due to congestion.",
+    'net.auto.failTitle': 'Matchmaking Failed',
+    'net.auto.failBody': 'Repeatedly failed to secure an open room.<br>Please wait a bit and try again.',
+    'net.auto.rescanWait': 'Rescan in {0}s… ({1}/5)',
+    // --- networking: rematch / spectator ---
+    'net.rematch.waitTitle': 'Rematch Pending',
+    'net.rematch.waitBody': 'The rematch starts when the host presses “Play Again”',
+    'net.spectatorSuffix': ' (spectator)',
+    'net.spectatorDefault': 'Spectator',
+    'score.isolated': '·iso{0}',
+    'sync.pending': '{0} waiting',
+    // --- replay popups ---
+    'replay.title': 'Replay', 'replay.url.title': 'Replay URL',
+    'replay.url.copied': 'Copied to clipboard.<br><small style="word-break:break-all;">{0}</small>',
+    'replay.err.badData': 'Invalid data format',
+    'replay.err.noPlayers': 'No player info',
+    'replay.err.loadFail': 'Load error: {0}',
+    'replay.err.title': 'Replay Error',
+    'replay.err.actionFail': 'Failed to replay action {0}. Data may be corrupted.',
+    'replay.err.urlDecode': "Couldn't decode the replay data in the URL",
+    // --- puzzle ---
+    'puzzle.deckShort': 'Deck', 'puzzle.handShort': 'Hand',
+    'puzzle.logEmpty': 'Activated roles will appear here',
+    'puzzle.selectFirst': 'First select a card from your hand',
+    'puzzle.cantPlace': "Can't place there (must be adjacent to a same-suit / same-number / ±1-rank card)",
+    'puzzle.startHint': 'Pick a card and tap a blue-framed cell',
+    'puzzle.gameOver': 'No legal move — game over',
+    'puzzle.rankBadgeTitle': 'Puzzle Score Mode high-score rank ({0}pt)',
+    'puzzle.rank': 'RANK: {0}',
+    'puzzle.end.best': 'Best score: <b style="color:var(--warn);">{0}</b><br>',
+    'puzzle.end.placements': 'Placed: <b>{0}</b><br>',
+    'puzzle.end.deckLeft': 'Deck left: <b>{0}</b><br>',
+    'puzzle.end.handLeft': 'Hand left: <b>{0}</b><br>',
+    'puzzle.end.roleCount': 'Roles fired: <b>{0}</b><br>',
+    'puzzle.end.numMult': '🔢 Number multiplier: <b style="color:var(--warn);">x{0}</b> (+{1}%)',
+    'puzzle.role.pair': 'Pair Link', 'puzzle.role.triple': 'Triple Node', 'puzzle.role.four': 'Four Spot',
+    'puzzle.role.chain3': 'Run Chain', 'puzzle.role.street': 'Street', 'puzzle.role.long': 'Long Road',
+    'puzzle.role.perfect': 'Perfect Line', 'puzzle.role.web': 'Color Web', 'puzzle.role.storm': 'Suit Storm',
+    'puzzle.role.mono': 'Monochrome', 'puzzle.role.flush1': 'Suit Flush', 'puzzle.role.flush2': 'Double Flush',
+    'puzzle.role.flush3': 'Triple Flush', 'puzzle.role.flush4': 'Perfect Flush', 'puzzle.role.cluster': 'Cluster',
+    'puzzle.role.mega': 'Mega Net', 'puzzle.role.galaxy': 'Galaxy', 'puzzle.role.bridge': 'Royal Bridge',
+    'puzzle.role.cross': 'Mid Cross', 'puzzle.role.fullhouse': 'Full House Node',
+    'puzzle.rules.body': '<h3 style="color:#ff9933;">Numbers (same number adjacent)</h3><p>Pair Link (2 same) +50 / Triple Node (3-same NW) +150 / Four Spot (4-same NW) +400</p><h3 style="color:#ffd34d;">Sequences (±1 number path)</h3><p>Run Chain (3 in a row) +80 / Street (5 in a row) +250 / Long Road (7 in a row) +600 / Perfect Line (A→K all 13) +5000</p><h3 style="color:#7ec8ff;">Suits (same-suit links)</h3><p>Color Web (4 cards) +200 / Suit Storm (7 cards) +500 / Monochrome (10 cards) +1500</p><h3 style="color:#a3d9c8;">Network size (cards in one NW)</h3><p>Cluster (5 cards) +100 / Mega Net (10 cards) +300 / Galaxy (20 cards) +800</p><h3 style="color:#c39cff;">Special</h3><p>Royal Bridge (A↔K adjacent) +300 / Mid Cross (a 7 surrounded on all 4 sides) +500 / Full House Node (2+ same-number pairs in one NW) +350</p><h3>Placement rules</h3><p><b>Adjacency:</b> two cards are adjacent only when they share the same suit, the same number, or are consecutive (±1). You cannot place next to any other card.</p><p>From the 2nd card on, you may only place on empty cells adjacent to an existing card. Forbidden cells (×) are off-limits. Each placement draws 1 from the deck. The game ends when you place your whole hand or can no longer continue.</p>',
+  },
+  ja: {
+    'common.back': '戻る', 'common.start': 'スタート', 'common.cancel': 'キャンセル',
+    'common.close': '閉じる', 'common.refresh': '更新', 'common.toTitle': 'タイトルへ',
+    'common.again': 'もう一度', 'common.ok': 'OK', 'common.restart': 'リスタート',
+    'common.numPlayers': 'プレイヤー数', 'common.turnLimit': 'ターン制限',
+    'common.yourName': 'あなたの名前', 'common.name.ph': 'プレイヤー名',
+    'opt.p2': '2人', 'opt.p3': '3人', 'opt.p4': '4人',
+    'opt.t30': '30秒', 'opt.t60': '60秒', 'opt.t120': '120秒', 'opt.t0': '無制限',
+    'menu.local': 'ローカル / ホットシート', 'menu.puzzle': 'パズルスコア (ソロ)',
+    'menu.online': 'オンライン対戦', 'menu.rules': 'ルール', 'menu.replay': 'リプレイ再生',
+    'menu.update': '最新版へ更新', 'title.foot': 'v1.13 · ネットワーク勝負 — single-file build',
+    'disclaimer.streaming': '個人制作の非公式ファンプロジェクトです。配信・実況・動画投稿は自由にどうぞ。',
+    'setup.title': 'ゲーム設定', 'setup.seed': 'シード', 'setup.seed.ph': '(空欄=ランダム)',
+    'setup.randomSeed': '乱数', 'setup.showLegal': '合法手表示',
+    'setup.showLegal.hint': '配置可能マスを枠線でハイライト',
+    'setup.confirmDelay': '配置確定待機', 'setup.confirmDelay.hint': '秒後に自動確定 (0=即設置)',
+    'online.title': 'オンライン対戦 (P2P)', 'online.tab.host': 'ホスト作成', 'online.tab.join': '参加',
+    'online.tab.auto': 'ランダム', 'online.yourRate': 'あなたのレート',
+    'online.rate.hint100': '直近100戦からカウント',
+    'online.rate.hint.bonus': 'サーバー無しなのでおまけ機能です',
+    'online.keyword': '合言葉', 'online.keyword.ph.host': '例: hoge42',
+    'online.keyword.ph.join': 'ホストから共有', 'online.createRoom': 'ルーム作成',
+    'online.hostOnly': 'ホスト化時のみ有効', 'online.state': '状態',
+    'online.notStarted': '未開始',
+    'online.auto.desc': '空いている部屋を探索し、見つからなければ自動でホスト化します。<br>相手と version / protocol / ルールが一致すれば参加できます。',
+    'online.reconnect': '再接続', 'online.reconnect.none': '戻れる対戦がありません',
+    'online.auto.start': 'マッチング開始', 'online.publicRooms': '公開ルーム一覧 (最大50)',
+    'online.notFetched': '未取得', 'online.room': 'ルーム', 'online.syncState': '同期状態',
+    'online.joinCount': '参加人数', 'online.specCount': '観戦人数',
+    'online.specIndep': '参加人数とは独立', 'online.leave': '退室',
+    'online.gameStart': 'ゲーム開始',
+    'game.deck': '山', 'game.menu': 'メニュー', 'game.confirmPlace': '配置確定',
+    'game.exchange': '交換', 'game.exchangeConfirm': '交換確定',
+    'game.exchangeCancel': '交換キャンセル', 'game.giveUp': '行動不能', 'game.surrender': '降参',
+    'game.surrender.title': 'このゲームを降参します', 'game.syncDebug.title': '同期デバッグ表示切替',
+    'end.result': '結果', 'end.saveReplay': 'リプレイ保存', 'end.watchReplay': 'リプレイを見る',
+    'menu.title': 'メニュー', 'menu.resume': '再開', 'menu.toggleLegal': '合法手表示 切替',
+    'menu.saveReplayJson': 'リプレイ保存 (JSON)', 'menu.backToTitle': 'タイトルへ戻る',
+    'handoff.next': '次のプレイヤー', 'handoff.hint': '他のプレイヤーに見られないように<br>画面を渡してください', 'handoff.ready': '準備完了',
+    'rules.title': 'ルール',
+    'rules.body': "<p><b>目的:</b> ゲーム終了時、各プレイヤーの「最大ネットワーク」内の接続線(connection)数を得点とし、最多のプレイヤーが勝利。同点時は最大NWのカード数 → 総接続数で比較。生存だけでは勝てない。</p><p><b>ネットワーク:</b> 自分のカード同士で接続線(隣接成立)で繋がっている塊。Jammerは含まない。盤面に複数のネットワークを持てるが、評価は最大のもの1つのみ。</p><p><b>盤面:</b> ランダムで12マスが禁止マス（配置・隣接通過不可）。</p><p><b>カード:</b> トランプ52枚。A=1, J=11, Q=12, K=13。<b>A↔K循環あり (±1扱い)</b>。</p><p><b>隣接成立条件:</b> 自分のカード間で、上下左右いずれかが「同数字」「同スート」「数字±1」を満たすとき。斜め禁止。</p><p><b>通常配置:</b> 隣接条件を満たす自カードの隣マスのみ。単独配置禁止。</p><p><b>妨害配置:</b> 相手カードと同数字なら、相手隣に単独配置可。自分の隣接線は生成しない・延長しない・隣接元にもならない。</p><p><b>強制配置:</b> 1枚でも置けるカードがあれば必ず配置（交換・パス禁止）。</p><p><b>交換:</b> 全カード置けないときのみ、好きな枚数交換。返却分は山札下へ手札順で戻す（シャッフルなし）。1ターン1回限り。</p><p><b>行動不能:</b> 交換も不可／交換後も置けないとき。手札を山札下へ順序通り戻す。</p><p><b>ラウンド順:</b> 各ラウンド終了時、前ラウンドの先頭を最後尾に固定、他はランダム抽選。NEXT順は常時公開。<br><b>2人戦特例:</b> ローテーション規則を無視し、固定交互順 (P0→P1→P0...)。</p><p><b>初期配置:</b> 各2枚をスネーク順 (A→B→...→B→A) で配置。隣接条件なし。</p><p><b>ターン制限:</b> 30秒。時間切れで合法手があればランダム配置、なければ行動不能。</p>",
+    'om.title.default': '通知',
+    'rc.reconnecting': '再接続中…', 'rc.syncing': '同期中…',
+    'rc.sub.default': '通信が一時的に途切れています。<br>そのままお待ちください（最大約45秒）。',
+    'rc.leave': '退室してタイトルへ',
+    'net.hostLeft': 'ホストが退出しました', 'net.hostLeft.sub': '対戦は終了しました。<br>タイトルに戻ってください。',
+    'net.disconnected': '接続が切断されました', 'net.recoverFailed': '接続が回復できませんでした',
+    'lang.label': '言語',
+    'puzzle.setup.title': 'パズルスコア モード',
+    'puzzle.setup.desc': '山札が尽きるまでカードを配置し、役を作って高スコアを目指す。<br>配置カード 2枚 / 手持ち 3枚',
+    'puzzle.rules.title': 'パズル 役一覧', 'puzzle.roles': '役一覧', 'puzzle.quit': '終了',
+    'puzzle.end.title': 'PUZZLE 結果', 'puzzle.restart': 'もう一度',
+    'replay.play': '▶ 再生', 'replay.pause': '⏸ 停止', 'replay.exit': '終了',
+    'replay.tip.prev': 'ハイライトへ戻る', 'replay.tip.stepBack': '1手戻る',
+    'replay.tip.step': '1手進む', 'replay.tip.next': '次のハイライトへ',
+    'popup.confirmIn': '確定まで…',
+    // --- in-game dynamic ---
+    'game.spectating': '観戦中 — 全プレイヤーの手札は非公開',
+    'game.cpuThinking': 'CPU ({0} Lv{1}) 思考中…',
+    'game.waiting': '待機中…',
+    'game.phaseInit': ' [初期]',
+    'game.replayPlaying': '▶ 再生中', 'game.replayPaused': '⏸ 停止中',
+    'game.replayTurn': '🎬 {0} — {1} のターン',
+    'game.endgame': '終局',
+    'game.turnWait': '{0} のターン待機',
+    'game.initPlace': '初期配置: 隣接条件なしで配置({0}/{1})',
+    'game.pendingJammer': '妨害配置 — 確定待ち',
+    'game.pendingPlace': '配置 — 確定待ち',
+    'game.exchangePick': '交換するカードを選択 (山札残{0})',
+    'game.selectCard': 'カードを選択 → マスをタップ',
+    'game.noPlace': '置けるカードなし — 交換してください',
+    'game.noPlaceNoExchange': '置けず交換も不可 — 行動不能ボタンを押してください',
+    'game.confirmInSec': '{0}秒後に確定',
+    // --- log ---
+    'log.place': 'R{0} {1}: {2} → ({3},{4}){5}',
+    'log.jammerTag': ' [妨害]',
+    'log.exchange': 'R{0} {1}: 交換 {2} ({3}枚)',
+    'log.unable': 'R{0} {1}: 行動不能',
+    'log.disconnect': 'R{0} {1}: 切断',
+    'log.roundStart': '— ラウンド {0} 開始 —',
+    'log.gameEnd': '★ 終了 勝者: {0}',
+    // --- scores panel ---
+    'score.tagDisc': '切断中 CPU代行',
+    'score.netMax': '最大 <b>{0}</b>線/{1}枚',
+    'score.hand': '手{0}',
+    'score.rateTitle': 'レート (直近100戦)',
+    'score.puzzleRankTitle': 'パズルスコアモード ランク',
+    // --- result screen ---
+    'end.rematchHost': 'もう一度 (再戦開始)',
+    'end.rematchWait': 'もう一度 (ホスト待ち)',
+    'end.rematchWaitTitle': 'ホストが再戦を開始するまでお待ちください',
+    'end.rank': '{0}位',
+    'end.netMax': '最大NW {0}線 ({1}枚)',
+    'end.netMeta': 'NW数 {0} · 総接続 {1}',
+    // --- setup CPU level ---
+    'setup.cpuLv1': 'Lv1 ランダム', 'setup.cpuLv2': 'Lv2 1手読み', 'setup.cpuLv3': 'Lv3 2手読み',
+    // --- awards ---
+    'award.resonance-king.label': '共鳴王', 'award.resonance-king.desc': '最大NWベスト {0}',
+    'award.invader.label': '侵食者', 'award.invader.desc': '妨害 {0}回',
+    'award.breeder.label': '増殖炉', 'award.breeder.desc': 'NW更新 {0}回',
+    'award.solitude.label': '孤高', 'award.solitude.desc': '単独残存で勝利',
+    'award.survivor.label': '生還者', 'award.survivor.desc': '切断から復帰し勝利',
+    // --- surrender confirm ---
+    'confirm.endgame': '終局しますか?\nゲームを終了して結果を表示します。',
+    'confirm.surrender': '本当に降参しますか?\n手札は山札へ返却され行動不能となります。',
+    // --- networking: status / popups ---
+    'net.err.title': 'エラー', 'net.err.noKeyword': '合言葉を入力してください',
+    'net.status.registering': 'PeerServerに登録中…',
+    'net.status.peerCreateFail': 'Peer 生成失敗',
+    'net.status.hostWaiting': '待機中。合言葉を共有してください',
+    'net.status.releasing': '前回セッションを解放中… ({0}/3)',
+    'net.err.idTaken': 'この合言葉は他で使用中です。少し時間を置いて再試行してください',
+    'net.err.network': 'ネットワーク接続失敗',
+    'net.err.serverNoResp': 'シグナリングサーバ応答なし',
+    'net.status.signalLost': 'シグナリング切断 (再接続試行中…)',
+    'net.status.connectingHost': 'ホストに接続中…',
+    'net.status.handshake': 'ハンドシェイク中…',
+    'net.err.hostUnreachable': 'ホストに到達できません',
+    'net.err.connError': '接続エラー',
+    'net.err.hostNotFound': 'ホストが見つかりません (合言葉を確認)',
+    'net.status.spectating': '観戦中',
+    'net.status.lobbyWaiting': 'ロビー待機中',
+    'net.indicator.unstable': '不安定',
+    'net.reject.title': '参加拒否',
+    'net.reject.versionMismatch': 'バージョン不一致 (host: {0}, you: {1})',
+    'net.reject.ruleMismatch': 'ルール設定不一致',
+    'net.reject.gameStarted': '既にゲーム開始済み',
+    'net.reject.roomFull': 'ルーム満員',
+    'net.reject.spectatorFull': '観戦者上限 (最大{0}人) に達しています',
+    'net.err.badAction.title': '不正アクション',
+    'net.start.title': '開始不可', 'net.start.notEnough': '参加者が足りません',
+    'net.lobby.hostWaiting': '待機中(ホスト)', 'net.lobby.lobby': 'ロビー',
+    'net.reconnect.failTitle': '再接続できません',
+    'net.reconnect.failBody': '戻れる対戦が見つかりません。<br>(時間切れ、またはまだ対戦していません)',
+    'net.reconnect.btnTitle': '「{0}」の対戦に再接続します',
+    // --- networking: room browser ---
+    'net.room.loading': '取得中…',
+    'net.room.err.unconfigured': 'Worker URL 未設定 (LOBBY_URL がプレースホルダのまま)',
+    'net.room.err.fetch': 'Worker への接続に失敗 (Worker down / CORS / DNS / ネットワーク)',
+    'net.room.err.http': 'Worker からエラー応答 (詳細は DevTools コンソール)',
+    'net.room.err.badJson': 'Worker のレスポンス形式が不正 (詳細は DevTools コンソール)',
+    'net.room.err.generic': '取得失敗: {0}',
+    'net.room.empty': '公開ルームはありません (誰もホスト化していない / heartbeat 反映待ち)',
+    'net.room.verMismatch': ' <span style="color:#c66;">(版違い)</span>',
+    'net.room.inGame': ' <span style="color:#c66;">[試合中]</span>',
+    'net.room.join': '参加', 'net.room.spec': '観 {0}',
+    // --- networking: automatch ---
+    'net.auto.fetchingLobby': 'ロビー取得中…',
+    'net.auto.stopped': '停止しました',
+    'net.auto.searching': '{0}人部屋を探索中… (固定スロット直接探索)',
+    'net.auto.noRoom': '空き/参加可能な部屋が見つかりません → 再スキャン',
+    'net.auto.probing': '探索 {0}/{1} ({2})…',
+    'net.auto.joined': '参加成功 ({0})',
+    'net.auto.slotEmpty': '{0} は空き → ホスト化',
+    'net.auto.netFail': 'ネットワーク/シグナリング障害 → 再試行',
+    'net.auto.hostTry': '{0} をホスト化試行…',
+    'net.auto.idTaken': '{0} は使用中 → 参加を試行…',
+    'net.auto.signalFail': 'シグナリング障害 ({0}) → 再試行',
+    'net.auto.hostFail': 'ホスト化失敗 ({0}) → 次スロット',
+    'net.auto.hostWait': 'ホスト待機 {0}/{1}',
+    'net.auto.congested': '混雑のためマッチングできませんでした。',
+    'net.auto.failTitle': 'マッチング失敗',
+    'net.auto.failBody': '空き部屋の確保に繰り返し失敗しました。<br>少し時間を置いてから再度お試しください。',
+    'net.auto.rescanWait': '再スキャン待機 {0}s… ({1}/5)',
+    // --- networking: rematch / spectator ---
+    'net.rematch.waitTitle': '再戦待機',
+    'net.rematch.waitBody': 'ホストが「もう一度」を押すと再戦が開始されます',
+    'net.spectatorSuffix': ' (観戦)',
+    'net.spectatorDefault': '観戦者',
+    'score.isolated': '·孤{0}',
+    'sync.pending': '{0}件待機',
+    // --- replay popups ---
+    'replay.title': 'リプレイ', 'replay.url.title': '棋譜URL',
+    'replay.url.copied': 'クリップボードへコピーしました。<br><small style="word-break:break-all;">{0}</small>',
+    'replay.err.badData': '不正なデータ形式',
+    'replay.err.noPlayers': 'プレイヤー情報なし',
+    'replay.err.loadFail': '読み込みエラー: {0}',
+    'replay.err.title': 'リプレイエラー',
+    'replay.err.actionFail': 'アクション {0} の再生に失敗しました。データが破損している可能性があります。',
+    'replay.err.urlDecode': 'URLの棋譜データを解読できませんでした',
+    // --- puzzle ---
+    'puzzle.deckShort': '山', 'puzzle.handShort': '手',
+    'puzzle.logEmpty': '発動した役がここに表示されます',
+    'puzzle.selectFirst': 'まず手札のカードを選択してください',
+    'puzzle.cantPlace': 'そのマスには配置できません（同スート・同数字・±1ランクのカードに隣接する必要があります）',
+    'puzzle.startHint': 'カードを選んで盤面の青枠マスをタップ',
+    'puzzle.gameOver': '合法手なし — ゲーム終了',
+    'puzzle.rankBadgeTitle': 'パズルスコアモード ハイスコアランク ({0}pt)',
+    'puzzle.rank': 'RANK: {0}',
+    'puzzle.end.best': 'ベストスコア: <b style="color:var(--warn);">{0}</b><br>',
+    'puzzle.end.placements': '配置数: <b>{0}</b> 枚<br>',
+    'puzzle.end.deckLeft': '残山札: <b>{0}</b> 枚<br>',
+    'puzzle.end.handLeft': '残手札: <b>{0}</b> 枚<br>',
+    'puzzle.end.roleCount': '役発動: <b>{0}</b> 回<br>',
+    'puzzle.end.numMult': '🔢 数字系倍率: <b style="color:var(--warn);">x{0}</b> ({1}%アップ)',
+    'puzzle.role.pair': 'ペアリンク', 'puzzle.role.triple': 'トリプルノード', 'puzzle.role.four': 'フォースポット',
+    'puzzle.role.chain3': 'ランチェーン', 'puzzle.role.street': 'ストリート', 'puzzle.role.long': 'ロングロード',
+    'puzzle.role.perfect': 'パーフェクトライン', 'puzzle.role.web': 'カラーウェブ', 'puzzle.role.storm': 'スートストーム',
+    'puzzle.role.mono': 'モノクローム', 'puzzle.role.flush1': 'スートフラッシュ', 'puzzle.role.flush2': 'ダブルフラッシュ',
+    'puzzle.role.flush3': 'トリプルフラッシュ', 'puzzle.role.flush4': 'パーフェクトフラッシュ', 'puzzle.role.cluster': 'クラスター',
+    'puzzle.role.mega': 'メガネット', 'puzzle.role.galaxy': 'ギャラクシー', 'puzzle.role.bridge': 'ロイヤルブリッジ',
+    'puzzle.role.cross': 'ミッドクロス', 'puzzle.role.fullhouse': 'フルハウスノード',
+    'puzzle.rules.body': '<h3 style="color:#ff9933;">数字系（同じ数字が隣接）</h3><p>ペアリンク（同2枚）+50 / トリプルノード（同3枚NW）+150 / フォースポット（同4枚NW）+400</p><h3 style="color:#ffd34d;">連番系（数字±1のパス）</h3><p>ランチェーン（3連）+80 / ストリート（5連）+250 / ロングロード（7連）+600 / パーフェクトライン（A→K 全13連）+5000</p><h3 style="color:#7ec8ff;">スート系（同スートの繋がり）</h3><p>カラーウェブ（4枚）+200 / スートストーム（7枚）+500 / モノクローム（10枚）+1500</p><h3 style="color:#a3d9c8;">ネットワーク規模系（NW内カード数）</h3><p>クラスター（5枚）+100 / メガネット（10枚）+300 / ギャラクシー（20枚）+800</p><h3 style="color:#c39cff;">特殊系</h3><p>ロイヤルブリッジ（A↔K隣接）+300 / ミッドクロス（7が中心で4方向全埋）+500 / フルハウスノード（同NW内に同数字ペアが2種以上）+350</p><h3>配置ルール</h3><p><b>隣接条件:</b> カード同士は「同スート」「同数字」「数字が±1の連番」のいずれかを満たすときのみ隣接とみなされる。それ以外のカードに隣接するマスには置けない。</p><p>2枚目以降は既存カードに隣接する空きマスにのみ配置可。禁止マス（×）には置けない。配置すると山札から1枚補充。手札全部を置き切るかゲーム継続不能でゲーム終了。</p>',
+  },
+  zh: {
+    'common.back': '返回', 'common.start': '开始', 'common.cancel': '取消',
+    'common.close': '关闭', 'common.refresh': '刷新', 'common.toTitle': '返回标题',
+    'common.again': '再来一局', 'common.ok': '确定', 'common.restart': '重新开始',
+    'common.numPlayers': '玩家人数', 'common.turnLimit': '回合时限',
+    'common.yourName': '你的名字', 'common.name.ph': '玩家名',
+    'opt.p2': '2人', 'opt.p3': '3人', 'opt.p4': '4人',
+    'opt.t30': '30秒', 'opt.t60': '60秒', 'opt.t120': '120秒', 'opt.t0': '无限制',
+    'menu.local': '本地 / 轮流', 'menu.puzzle': '解谜得分 (单人)',
+    'menu.online': '在线对战', 'menu.rules': '规则', 'menu.replay': '观看回放',
+    'menu.update': '更新到最新版', 'title.foot': 'v1.13 · 网络对决 — single-file build',
+    'disclaimer.streaming': '个人制作的非官方同人项目。欢迎直播、解说与视频投稿。',
+    'setup.title': '游戏设置', 'setup.seed': '种子', 'setup.seed.ph': '(留空 = 随机)',
+    'setup.randomSeed': '随机', 'setup.showLegal': '显示合法落子',
+    'setup.showLegal.hint': '用边框高亮可放置的格子',
+    'setup.confirmDelay': '落子确认延迟', 'setup.confirmDelay.hint': '秒后自动确定 (0=立即)',
+    'online.title': '在线对战 (P2P)', 'online.tab.host': '创建房间', 'online.tab.join': '加入',
+    'online.tab.auto': '随机匹配', 'online.yourRate': '你的评分',
+    'online.rate.hint100': '基于最近100场',
+    'online.rate.hint.bonus': '无服务器，仅为附加功能',
+    'online.keyword': '暗号', 'online.keyword.ph.host': '例: hoge42',
+    'online.keyword.ph.join': '由房主分享', 'online.createRoom': '创建房间',
+    'online.hostOnly': '仅在作为房主时有效', 'online.state': '状态',
+    'online.notStarted': '未开始',
+    'online.auto.desc': '搜索空闲房间，找不到则自动成为房主。<br>当版本 / 协议 / 规则一致时即可加入。',
+    'online.reconnect': '重新连接', 'online.reconnect.none': '没有可返回的对战',
+    'online.auto.start': '开始匹配', 'online.publicRooms': '公开房间列表 (最多50)',
+    'online.notFetched': '未获取', 'online.room': '房间', 'online.syncState': '同步状态',
+    'online.joinCount': '参加人数', 'online.specCount': '观战人数',
+    'online.specIndep': '与参加人数独立', 'online.leave': '离开',
+    'online.gameStart': '开始游戏',
+    'game.deck': '牌堆', 'game.menu': '菜单', 'game.confirmPlace': '确定落子',
+    'game.exchange': '交换', 'game.exchangeConfirm': '确定交换',
+    'game.exchangeCancel': '取消交换', 'game.giveUp': '无法行动', 'game.surrender': '投降',
+    'game.surrender.title': '投降本局', 'game.syncDebug.title': '切换同步调试显示',
+    'end.result': '结果', 'end.saveReplay': '保存回放', 'end.watchReplay': '观看回放',
+    'menu.title': '菜单', 'menu.resume': '继续', 'menu.toggleLegal': '切换合法落子显示',
+    'menu.saveReplayJson': '保存回放 (JSON)', 'menu.backToTitle': '返回标题',
+    'handoff.next': '下一位玩家', 'handoff.hint': '请在不让其他玩家看到的<br>情况下传递屏幕', 'handoff.ready': '准备完成',
+    'rules.title': '规则',
+    'rules.body': "<p><b>目标:</b> 游戏结束时，以你「最大网络」内的连接线(connection)数量作为得分，最多者获胜。平局时依次比较最大网络的卡牌数、总连接数。仅靠存活无法获胜。</p><p><b>网络:</b> 你自己的卡牌通过连接线(相邻成立)连成的一团。不含 Jammer。盘面上可拥有多个网络，但只计算最大的一个。</p><p><b>盘面:</b> 随机12格为禁止格(不可放置、不可作为相邻通路)。</p><p><b>卡牌:</b> 扑克52张。A=1, J=11, Q=12, K=13。<b>A↔K 循环(按±1处理)</b>。</p><p><b>相邻条件:</b> 你自己的卡牌之间，上下左右任一满足「同数字」「同花色」「数字±1」时成立。禁止斜向。</p><p><b>普通放置:</b> 仅可放在满足相邻条件的自己卡牌旁的空格。禁止孤立放置。</p><p><b>干扰放置:</b> 若与对手卡牌同数字，可在对手旁孤立放置。不生成/延伸自己的连接线，也不能作为相邻来源。</p><p><b>强制放置:</b> 只要有任意一张可放置就必须放置(禁止交换/跳过)。</p><p><b>交换:</b> 仅当所有卡都无法放置时，可任意张数交换。退回的卡按手牌顺序放到牌堆底(不洗牌)。每回合限一次。</p><p><b>无法行动:</b> 既不能交换/交换后仍无法放置时。将手牌按顺序退回牌堆底。</p><p><b>回合顺序:</b> 每轮结束时，上一轮的首位固定排到最后，其余随机抽选。NEXT 顺序始终公开。<br><b>2人对战特例:</b> 忽略轮换规则，固定交替顺序 (P0→P1→P0...)。</p><p><b>初始放置:</b> 各放2张，按蛇形顺序 (A→B→...→B→A)。无相邻条件。</p><p><b>回合时限:</b> 30秒。超时若有合法手则随机放置，否则无法行动。</p>",
+    'om.title.default': '通知',
+    'rc.reconnecting': '正在重新连接…', 'rc.syncing': '同步中…',
+    'rc.sub.default': '连接暂时中断。<br>请稍候（最长约45秒）。',
+    'rc.leave': '离开并返回标题',
+    'net.hostLeft': '房主已离开对战', 'net.hostLeft.sub': '对战已结束。<br>请返回标题。',
+    'net.disconnected': '连接已断开', 'net.recoverFailed': '无法恢复连接',
+    'lang.label': '语言',
+    'puzzle.setup.title': '解谜得分模式',
+    'puzzle.setup.desc': '在牌堆耗尽前放置卡牌，组成役型争取高分。<br>初始2张 / 手牌3张',
+    'puzzle.rules.title': '解谜役型一览', 'puzzle.roles': '役型', 'puzzle.quit': '退出',
+    'puzzle.end.title': 'PUZZLE 结果', 'puzzle.restart': '再来一次',
+    'replay.play': '▶ 播放', 'replay.pause': '⏸ 暂停', 'replay.exit': '退出',
+    'replay.tip.prev': '回到亮点', 'replay.tip.stepBack': '后退一手',
+    'replay.tip.step': '前进一手', 'replay.tip.next': '下一个亮点',
+    'popup.confirmIn': '确定中…',
+    // --- in-game dynamic ---
+    'game.spectating': '观战中 — 所有玩家手牌不公开',
+    'game.cpuThinking': 'CPU ({0} Lv{1}) 思考中…',
+    'game.waiting': '等待中…',
+    'game.phaseInit': ' [初始]',
+    'game.replayPlaying': '▶ 播放中', 'game.replayPaused': '⏸ 暂停中',
+    'game.replayTurn': '🎬 {0} — {1} 的回合',
+    'game.endgame': '终局',
+    'game.turnWait': '等待 {0} 的回合',
+    'game.initPlace': '初始放置: 无相邻条件放置({0}/{1})',
+    'game.pendingJammer': '干扰放置 — 等待确定',
+    'game.pendingPlace': '放置 — 等待确定',
+    'game.exchangePick': '选择要交换的卡 (牌堆剩{0})',
+    'game.selectCard': '选择卡牌 → 点击格子',
+    'game.noPlace': '没有可放置的卡 — 请交换',
+    'game.noPlaceNoExchange': '无法放置也无法交换 — 请按无法行动按钮',
+    'game.confirmInSec': '{0}秒后确定',
+    // --- log ---
+    'log.place': 'R{0} {1}: {2} → ({3},{4}){5}',
+    'log.jammerTag': ' [干扰]',
+    'log.exchange': 'R{0} {1}: 交换 {2} ({3}张)',
+    'log.unable': 'R{0} {1}: 无法行动',
+    'log.disconnect': 'R{0} {1}: 断线',
+    'log.roundStart': '— 第{0}回合 开始 —',
+    'log.gameEnd': '★ 结束 胜者: {0}',
+    // --- scores panel ---
+    'score.tagDisc': '断线中 CPU代理',
+    'score.netMax': '最大 <b>{0}</b>线/{1}张',
+    'score.hand': '手{0}',
+    'score.rateTitle': '评分 (最近100场)',
+    'score.puzzleRankTitle': '解谜得分模式 等级',
+    // --- result screen ---
+    'end.rematchHost': '再来一局 (开始重赛)',
+    'end.rematchWait': '再来一局 (等待房主)',
+    'end.rematchWaitTitle': '请等待房主开始重赛',
+    'end.rank': '第{0}名',
+    'end.netMax': '最大NW {0}线 ({1}张)',
+    'end.netMeta': 'NW数 {0} · 总连接 {1}',
+    // --- setup CPU level ---
+    'setup.cpuLv1': 'Lv1 随机', 'setup.cpuLv2': 'Lv2 预读1步', 'setup.cpuLv3': 'Lv3 预读2步',
+    // --- awards ---
+    'award.resonance-king.label': '共鸣王', 'award.resonance-king.desc': '最大NW最佳 {0}',
+    'award.invader.label': '侵蚀者', 'award.invader.desc': '干扰 {0}次',
+    'award.breeder.label': '增殖炉', 'award.breeder.desc': 'NW更新 {0}次',
+    'award.solitude.label': '孤高', 'award.solitude.desc': '单独存活获胜',
+    'award.survivor.label': '生还者', 'award.survivor.desc': '断线恢复后获胜',
+    // --- surrender confirm ---
+    'confirm.endgame': '要终局吗?\n游戏将结束并显示结果。',
+    'confirm.surrender': '确定要投降吗?\n手牌将退回牌堆，你将无法行动。',
+    // --- networking: status / popups ---
+    'net.err.title': '错误', 'net.err.noKeyword': '请输入暗号',
+    'net.status.registering': '正在向 PeerServer 注册…',
+    'net.status.peerCreateFail': 'Peer 创建失败',
+    'net.status.hostWaiting': '等待中。请分享暗号',
+    'net.status.releasing': '正在释放上次会话… ({0}/3)',
+    'net.err.idTaken': '该暗号正在别处使用。请稍后再试',
+    'net.err.network': '网络连接失败',
+    'net.err.serverNoResp': '信令服务器无响应',
+    'net.status.signalLost': '信令已断开 (正在尝试重连…)',
+    'net.status.connectingHost': '正在连接房主…',
+    'net.status.handshake': '正在握手…',
+    'net.err.hostUnreachable': '无法连接到房主',
+    'net.err.connError': '连接错误',
+    'net.err.hostNotFound': '未找到房主 (请检查暗号)',
+    'net.status.spectating': '观战中',
+    'net.status.lobbyWaiting': '大厅等待中',
+    'net.indicator.unstable': '不稳定',
+    'net.reject.title': '加入被拒绝',
+    'net.reject.versionMismatch': '版本不一致 (host: {0}, you: {1})',
+    'net.reject.ruleMismatch': '规则设置不一致',
+    'net.reject.gameStarted': '游戏已开始',
+    'net.reject.roomFull': '房间已满',
+    'net.reject.spectatorFull': '已达观战人数上限 (最多{0}人)',
+    'net.err.badAction.title': '非法操作',
+    'net.start.title': '无法开始', 'net.start.notEnough': '玩家不足',
+    'net.lobby.hostWaiting': '等待中(房主)', 'net.lobby.lobby': '大厅',
+    'net.reconnect.failTitle': '无法重连',
+    'net.reconnect.failBody': '未找到可返回的对战。<br>(已超时，或你尚未对战过)',
+    'net.reconnect.btnTitle': '重连到「{0}」的对战',
+    // --- networking: room browser ---
+    'net.room.loading': '获取中…',
+    'net.room.err.unconfigured': '未设置 Worker URL (LOBBY_URL 仍为占位符)',
+    'net.room.err.fetch': '无法连接 Worker (宕机 / CORS / DNS / 网络)',
+    'net.room.err.http': 'Worker 返回错误 (详见 DevTools 控制台)',
+    'net.room.err.badJson': 'Worker 响应格式不正确 (详见 DevTools 控制台)',
+    'net.room.err.generic': '获取失败: {0}',
+    'net.room.empty': '没有公开房间 (无人创建 / 等待心跳同步)',
+    'net.room.verMismatch': ' <span style="color:#c66;">(版本不符)</span>',
+    'net.room.inGame': ' <span style="color:#c66;">[对战中]</span>',
+    'net.room.join': '加入', 'net.room.spec': '观 {0}',
+    // --- networking: automatch ---
+    'net.auto.fetchingLobby': '正在获取大厅…',
+    'net.auto.stopped': '已停止',
+    'net.auto.searching': '正在搜索{0}人房间… (固定槽位直接扫描)',
+    'net.auto.noRoom': '未找到空闲/可加入的房间 → 重新扫描',
+    'net.auto.probing': '扫描 {0}/{1} ({2})…',
+    'net.auto.joined': '加入成功 ({0})',
+    'net.auto.slotEmpty': '{0} 空闲 → 创建房间',
+    'net.auto.netFail': '网络/信令故障 → 重试',
+    'net.auto.hostTry': '尝试创建房间 {0}…',
+    'net.auto.idTaken': '{0} 正在使用 → 尝试加入…',
+    'net.auto.signalFail': '信令故障 ({0}) → 重试',
+    'net.auto.hostFail': '创建失败 ({0}) → 下一槽位',
+    'net.auto.hostWait': '房主等待 {0}/{1}',
+    'net.auto.congested': '由于拥堵无法匹配。',
+    'net.auto.failTitle': '匹配失败',
+    'net.auto.failBody': '多次未能确保空闲房间。<br>请稍后再试。',
+    'net.auto.rescanWait': '重新扫描等待 {0}秒… ({1}/5)',
+    // --- networking: rematch / spectator ---
+    'net.rematch.waitTitle': '等待重赛',
+    'net.rematch.waitBody': '房主按下「再来一局」后开始重赛',
+    'net.spectatorSuffix': ' (观战)',
+    'net.spectatorDefault': '观战者',
+    'score.isolated': '·孤{0}',
+    'sync.pending': '{0}个等待',
+    // --- replay popups ---
+    'replay.title': '回放', 'replay.url.title': '棋谱URL',
+    'replay.url.copied': '已复制到剪贴板。<br><small style="word-break:break-all;">{0}</small>',
+    'replay.err.badData': '数据格式无效',
+    'replay.err.noPlayers': '无玩家信息',
+    'replay.err.loadFail': '加载错误: {0}',
+    'replay.err.title': '回放错误',
+    'replay.err.actionFail': '动作 {0} 回放失败。数据可能已损坏。',
+    'replay.err.urlDecode': '无法解码 URL 中的棋谱数据',
+    // --- puzzle ---
+    'puzzle.deckShort': '牌堆', 'puzzle.handShort': '手',
+    'puzzle.logEmpty': '触发的役型会显示在这里',
+    'puzzle.selectFirst': '请先从手牌中选择一张卡',
+    'puzzle.cantPlace': '无法放置在该格（需与同花色・同数字・±1点数的卡相邻）',
+    'puzzle.startHint': '选择一张卡并点击盘面的蓝框格子',
+    'puzzle.gameOver': '无合法手 — 游戏结束',
+    'puzzle.rankBadgeTitle': '拼图分数模式 最高分排名 ({0}pt)',
+    'puzzle.rank': 'RANK: {0}',
+    'puzzle.end.best': '最佳分数: <b style="color:var(--warn);">{0}</b><br>',
+    'puzzle.end.placements': '放置数: <b>{0}</b> 张<br>',
+    'puzzle.end.deckLeft': '剩余牌堆: <b>{0}</b> 张<br>',
+    'puzzle.end.handLeft': '剩余手牌: <b>{0}</b> 张<br>',
+    'puzzle.end.roleCount': '役型触发: <b>{0}</b> 次<br>',
+    'puzzle.end.numMult': '🔢 数字系倍率: <b style="color:var(--warn);">x{0}</b> (提升{1}%)',
+    'puzzle.role.pair': '配对连接', 'puzzle.role.triple': '三连节点', 'puzzle.role.four': '四连点',
+    'puzzle.role.chain3': '顺子链', 'puzzle.role.street': '小顺', 'puzzle.role.long': '长路',
+    'puzzle.role.perfect': '完美顺', 'puzzle.role.web': '花色网', 'puzzle.role.storm': '花色风暴',
+    'puzzle.role.mono': '单色', 'puzzle.role.flush1': '同花', 'puzzle.role.flush2': '双同花',
+    'puzzle.role.flush3': '三同花', 'puzzle.role.flush4': '完美同花', 'puzzle.role.cluster': '集群',
+    'puzzle.role.mega': '巨型网络', 'puzzle.role.galaxy': '银河', 'puzzle.role.bridge': '皇家桥',
+    'puzzle.role.cross': '中心十字', 'puzzle.role.fullhouse': '葫芦节点',
+    'puzzle.rules.body': '<h3 style="color:#ff9933;">数字系（相同数字相邻）</h3><p>配对连接（2张同数）+50 / 三连节点（3张同数NW）+150 / 四连点（4张同数NW）+400</p><h3 style="color:#ffd34d;">连号系（数字±1的通路）</h3><p>顺子链（3连）+80 / 小顺（5连）+250 / 长路（7连）+600 / 完美顺（A→K 全13连）+5000</p><h3 style="color:#7ec8ff;">花色系（同花色相连）</h3><p>花色网（4张）+200 / 花色风暴（7张）+500 / 单色（10张）+1500</p><h3 style="color:#a3d9c8;">网络规模系（NW内卡牌数）</h3><p>集群（5张）+100 / 巨型网络（10张）+300 / 银河（20张）+800</p><h3 style="color:#c39cff;">特殊系</h3><p>皇家桥（A↔K相邻）+300 / 中心十字（7为中心且四方向全填）+500 / 葫芦节点（同NW内有2种以上同数字对）+350</p><h3>放置规则</h3><p><b>相邻条件:</b> 卡牌之间仅当满足「同花色」「同数字」「数字±1连号」之一时才视为相邻。无法放在与其他卡牌相邻的格子。</p><p>第2张起只能放在与现有卡牌相邻的空格。禁止格（×）不可放置。每次放置会从牌堆补充1张。当手牌全部放完或无法继续时游戏结束。</p>',
+  },
+};
+
+function t(key, ...args) {
+  const dict = I18N[LANG] || I18N.en;
+  let s = (dict && dict[key] != null) ? dict[key]
+        : (I18N.en[key] != null ? I18N.en[key] : key);
+  if (args.length) s = String(s).replace(/\{(\d+)\}/g, (m, i) => (args[i] != null ? args[i] : m));
+  return s;
+}
+
+function applyI18n(root) {
+  const r = root || document;
+  r.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.getAttribute('data-i18n')); });
+  r.querySelectorAll('[data-i18n-html]').forEach(el => { el.innerHTML = t(el.getAttribute('data-i18n-html')); });
+  r.querySelectorAll('[data-i18n-ph]').forEach(el => { el.setAttribute('placeholder', t(el.getAttribute('data-i18n-ph'))); });
+  r.querySelectorAll('[data-i18n-title]').forEach(el => { el.setAttribute('title', t(el.getAttribute('data-i18n-title'))); });
+  try { document.documentElement.lang = LANG; } catch (e) {}
+  updateLangButtons();
+}
+
+function updateLangButtons() {
+  document.querySelectorAll('[data-lang-btn]').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-lang-btn') === LANG);
+  });
+}
+
+function setLang(lang) {
+  if (!SUPPORTED_LANGS.includes(lang)) return;
+  if (lang === LANG) { updateLangButtons(); return; }
+  LANG = lang;
+  try { localStorage.setItem(LANG_KEY, lang); } catch (e) {}
+  applyI18n();
+  // 動的描画中の画面があれば可能な範囲で再構築 (失敗しても無視)
+  try {
+    if (typeof state !== 'undefined' && state && typeof renderAll === 'function'
+        && !document.getElementById('screen-game').classList.contains('hidden')) {
+      renderAll();
+    }
+  } catch (e) {}
+}
 
 // ============================== LOCAL STORAGE ==============================
 const LS_KEY = 'limiles_settings';
@@ -1520,7 +2231,7 @@ function getPuzzleHiscore() {
 function puzzleRankBadgeHtml() {
   const best = getPuzzleHiscore();
   const rank = puzzleRankFor(best);
-  return '<span class="puzzle-rank-badge rank-'+rank+'" title="パズルスコアモード ハイスコアランク ('+best.toLocaleString()+'pt)">'+rank+'</span>';
+  return '<span class="puzzle-rank-badge rank-'+rank+'" title="'+escapeHtml(t('puzzle.rankBadgeTitle', best.toLocaleString()))+'">'+rank+'</span>';
 }
 // オンライン setup 画面の自分のレート表示を更新
 function updateMyRatingDisplay() {
@@ -2302,7 +3013,7 @@ function computeTitles() {
     if (v > best) { best = v; bestList = [p.idx]; }
     else if (v === best && v > 0) bestList.push(p.idx);
   }
-  if (best > 0) for (const i of bestList) out[i].push({key:'resonance-king', label:'共鳴王', desc:'最大NWベスト '+best});
+  if (best > 0) for (const i of bestList) out[i].push({key:'resonance-king', arg:best});
 
   // 侵食者: 妨害配置数が最多
   let jBest = -1, jList = [];
@@ -2311,7 +3022,7 @@ function computeTitles() {
     if (v > jBest) { jBest = v; jList = [p.idx]; }
     else if (v === jBest && v > 0) jList.push(p.idx);
   }
-  if (jBest > 0) for (const i of jList) out[i].push({key:'invader', label:'侵食者', desc:'妨害 '+jBest+'回'});
+  if (jBest > 0) for (const i of jList) out[i].push({key:'invader', arg:jBest});
 
   // 増殖炉: 最大NW更新回数が最多
   let uBest = -1, uList = [];
@@ -2320,14 +3031,14 @@ function computeTitles() {
     if (v > uBest) { uBest = v; uList = [p.idx]; }
     else if (v === uBest && v > 0) uList.push(p.idx);
   }
-  if (uBest > 0) for (const i of uList) out[i].push({key:'breeder', label:'増殖炉', desc:'NW更新 '+uBest+'回'});
+  if (uBest > 0) for (const i of uList) out[i].push({key:'breeder', arg:uBest});
 
   // 孤高: 自分以外全員exhaustedの状況で生存しつつ勝利（盤面の単一プレイヤー残存で勝利）
   if (state.winners && state.winners.length === 1) {
     const winner = state.winners[0];
     const others = state.players.filter(p => p.idx !== winner);
     if (others.every(p => p.exhausted || p.surrendered)) {
-      out[winner].push({key:'solitude', label:'孤高', desc:'単独残存で勝利'});
+      out[winner].push({key:'solitude'});
     }
   }
 
@@ -2336,7 +3047,7 @@ function computeTitles() {
     for (const idx of state.winners) {
       const p = state.players[idx];
       if (p && p.stats && p.stats.disconnects > 0) {
-        out[idx].push({key:'survivor', label:'生還者', desc:'切断から復帰し勝利'});
+        out[idx].push({key:'survivor'});
       }
     }
   }
@@ -2785,6 +3496,7 @@ const Net = {
   _connHealthTimer: null,      // client: __lastRxTime の沈黙を監視するタイマー
   _health: 'ok',               // client: 'ok' | 'unstable' (silence ベースの主観的健全性)
   _lastPingMs: 0,              // client: 直近 ping RTT(ms)。sync-debug 表示用
+  _matchEndedByHost: false,    // client: host が意図的に退出 → 再接続不可。loss を記録せず終了する目印
 };
 // ★ 過剰防御の見直し: heartbeat を低頻度化してモバイルでの帯域/GC圧迫を抑える。
 //    state/action は変化時にすぐbroadcastされるので、heartbeat は単なる安全網として 15s 間隔で十分。
@@ -3128,6 +3840,54 @@ function setNetStatus(s, msg) { Net.status = s; Net.statusMsg = msg || ''; rende
 // ★ 対戦中の状態更新用: renderLobby()(=showScreen('online') でロビーへ遷移する) を呼ばず、
 //   game 画面に留まったまま net-indicator だけ更新する。再接続オーバーレイ表示中に使う。
 function setNetStatusInGame(s, msg) { Net.status = s; Net.statusMsg = msg || ''; renderNetIndicator(); }
+// ===== 絵文字リアクション (オンライン対戦中のみ) =====
+//   端のボタン → sendEmoji。client は host へ送り、host が他 client へ relay。
+//   host は全 client へ broadcast。送信者の画面にも即フィードバック表示する。
+const EMOJI_ALLOWED = ['👍','😂','😮','😭'];
+let _emojiSendCooldown = 0;
+function _myEmojiName() {
+  try {
+    const me = Net.hostPlayers && Net.hostPlayers.find(p => p.idx === Net.myPlayerIdx);
+    if (me && me.name) return String(me.name).slice(0, 16);
+  } catch(e) {}
+  return '';
+}
+function sendEmoji(emoji) {
+  if (!emoji || EMOJI_ALLOWED.indexOf(emoji) === -1) return;
+  if (Net.mode !== 'online-host' && Net.mode !== 'online-client' && Net.mode !== 'spectator') return;
+  const now = Date.now();
+  if (now - _emojiSendCooldown < 500) return; // 連打スパム防止
+  _emojiSendCooldown = now;
+  const name = _myEmojiName();
+  const payload = { type:'emoji', e: emoji, name };
+  if (Net.mode === 'online-host') {
+    for (const conn of Net.conns.values()) safeSend(conn, payload);
+  } else if (Net.hostConn) {
+    safeSend(Net.hostConn, payload);
+  }
+  showEmojiReaction(emoji, name); // 送信者にも浮かべる
+}
+function showEmojiReaction(emoji, name) {
+  if (!emoji || EMOJI_ALLOWED.indexOf(emoji) === -1) return;
+  const layer = document.getElementById('emoji-fx-layer');
+  if (!layer) return;
+  const el = document.createElement('div');
+  el.className = 'emoji-fx';
+  el.style.left = (28 + Math.random() * 44) + '%'; // 中央寄りに散らす
+  const c = document.createElement('div'); c.className = 'ef-char'; c.textContent = emoji;
+  el.appendChild(c);
+  if (name) { const n = document.createElement('div'); n.className = 'ef-name'; n.textContent = name; el.appendChild(n); }
+  layer.appendChild(el);
+  setTimeout(() => { try { el.remove(); } catch(e){} }, 2100);
+  while (layer.childElementCount > 8) layer.removeChild(layer.firstChild); // 暴走防止
+}
+function updateEmojiBar() {
+  const bar = document.getElementById('emoji-bar');
+  if (!bar) return;
+  const online = (Net.mode === 'online-host' || Net.mode === 'online-client' || Net.mode === 'spectator');
+  const inGame = !!(state && state.phase !== 'end');
+  bar.classList.toggle('hidden', !(online && inGame));
+}
 function showOnlineMsg(title, body) {
   $('om-title').textContent = title;
   $('om-body').innerHTML = body;
@@ -3238,7 +3998,7 @@ async function fetchLobbyRooms() {
 //   即座に onIdTaken を呼ぶ (AutoMatch 側で「join に切り替える」判断をするため)。
 function netHostCreate({keyword, name, numPlayers, turnTime}, hooks) {
   hooks = hooks || {};
-  if (!keyword) { showOnlineMsg('エラー','合言葉を入力してください'); return; }
+  if (!keyword) { showOnlineMsg(t('net.err.title'), t('net.err.noKeyword')); return; }
   // ★ 既に接続中の場合は先にクリーンアップする。
   //    mode を先に書き換えず、古い peer/conn を完全に閉じてから新規作成する。
   //    これをしないと「前のセッションが残ったまま上から新規接続」という壊れた状態になる。
@@ -3263,7 +4023,7 @@ function netHostCreate({keyword, name, numPlayers, turnTime}, hooks) {
   // ★ 自分が同じ合言葉で過去に client/spectator として入った時のトークン残骸を破棄する。
   //    残ったままだと「hostなのに過去のclientトークンを抱えている」異常状態になる。
   clearReconnectToken(keyword);
-  setNetStatus('creating', 'PeerServerに登録中…');
+  setNetStatus('creating', t('net.status.registering'));
 
   // ★ 古い peer の完全破棄を保証してから新しい peer を作る (rejoin バグ対策の本丸)。
   //    PeerJS の destroy() はシグナリングサーバへの登録解除を非同期に行うので、
@@ -3274,10 +4034,10 @@ function netHostCreate({keyword, name, numPlayers, turnTime}, hooks) {
     Net._connecting = false; // ★ 非同期初期化が実際に始まったのでフラグ解除
     if (Net.mode !== 'online-host') return; // 退室済み
     try { Net.peer = new Peer(Net.roomId, {debug: 0}); } catch(e) {
-      setNetStatus('error', 'Peer 生成失敗'); return;
+      setNetStatus('error', t('net.status.peerCreateFail')); return;
     }
     Net.peer.on('open', id => {
-      setNetStatus('hosting', '待機中。合言葉を共有してください');
+      setNetStatus('hosting', t('net.status.hostWaiting'));
       // ★ host が PeerJS シグナリングに登録成功した段階で Worker /heartbeat 開始。
       //   この時点で roomCode/roomId/config が確定済み = room を公開できる状態。
       startLobbyHeartbeat();
@@ -3298,24 +4058,24 @@ function netHostCreate({keyword, name, numPlayers, turnTime}, hooks) {
   // Safari/iOS では destroy() 後もしばらく ID が残ることがある。
   // 段階的 backoff で数回 (最大 ~4.5s) まで頑張る。
   if (retry < 3) {
-    setNetStatus('creating', '前回セッションを解放中… ('+(retry+1)+'/3)');
+    setNetStatus('creating', t('net.status.releasing', retry+1));
     try { Net.peer.destroy(); } catch(e){}
     Net.peer = null;
     setTimeout(() => _createHostPeer(retry + 1), 700 + retry * 400);
     return;
   }
 
-  msg = 'この合言葉は他で使用中です。少し時間を置いて再試行してください';
+  msg = t('net.err.idTaken');
 }
-      if (err.type === 'network') msg = 'ネットワーク接続失敗';
-      if (err.type === 'server-error') msg = 'シグナリングサーバ応答なし';
+      if (err.type === 'network') msg = t('net.err.network');
+      if (err.type === 'server-error') msg = t('net.err.serverNoResp');
       setNetStatus('error', msg);
       if (hooks.onHostFailed) { try { hooks.onHostFailed(err.type || 'error'); } catch(e){} }
     });
     Net.peer.on('disconnected', () => {
       // ★ 自分で退室した場合 (netLeave) は reconnect しない
       if (Net._intentionalDisconnect) return;
-      setNetStatus('error', 'シグナリング切断 (再接続試行中…)');
+      setNetStatus('error', t('net.status.signalLost'));
       try { if (Net.peer && !Net.peer.destroyed) Net.peer.reconnect(); } catch(e){}
     });
     Net.peer.on('connection', conn => {
@@ -3409,6 +4169,14 @@ function handleHostMessage(conn, msg) {
   // ★ Fix9: ping-pong — クライアントからの keepalive に即座に応答 (t を echo して相手の RTT 計測を助ける)
   if (msg.type === 'ping') { try { conn.send({type:'pong', t: msg.t}); } catch(e){} return; }
   if (msg.type === 'pong') { if (typeof msg.t === 'number') conn.__rtt = Date.now() - msg.t; return; } // host→client ping への応答
+  // ★ 絵文字リアクション: 送信元以外の全 client へ relay し、host 自身の画面にも表示
+  if (msg.type === 'emoji') {
+    if (typeof msg.e !== 'string' || EMOJI_ALLOWED.indexOf(msg.e) === -1) return;
+    const nm = (typeof msg.name === 'string') ? msg.name.slice(0, 16) : '';
+    for (const [peerId, c] of Net.conns.entries()) { if (peerId !== conn.peer) safeSend(c, {type:'emoji', e: msg.e, name: nm}); }
+    showEmojiReaction(msg.e, nm);
+    return;
+  }
   if (msg.type === 'hello') {
     if (msg.ver !== VERSION) { conn.send({type:'reject', reason:'version-mismatch', expected:VERSION}); setTimeout(()=>conn.close(), 200); return; }
     if (msg.ruleHash !== null && msg.ruleHash !== Net.ruleHash) { conn.send({type:'reject', reason:'rule-mismatch', expected:Net.ruleHash}); setTimeout(()=>conn.close(), 200); return; }
@@ -3474,7 +4242,7 @@ function handleHostMessage(conn, msg) {
         setTimeout(()=>conn.close(), 200);
         return;
       }
-      const sp = {peerId: conn.peer, name: (msg.name||'観戦者').slice(0,16)};
+      const sp = {peerId: conn.peer, name: (msg.name||t('net.spectatorDefault')).slice(0,16)};
       spList.push(sp);
       Net.conns.set(conn.peer, conn);
       conn.send({
@@ -3736,7 +4504,7 @@ function stopIcePingTimer() {
 }
 
 function netJoin({keyword, name}) {
-  if (!keyword) { showOnlineMsg('エラー','合言葉を入力してください'); return; }
+  if (!keyword) { showOnlineMsg(t('net.err.title'), t('net.err.noKeyword')); return; }
   // ★ 既に接続中の場合は先にクリーンアップする。
   if (Net.mode !== 'none') { try { netLeave(); } catch(e){} }
   // ★ 新規接続開始時に意図的切断フラグをリセットする。
@@ -3755,7 +4523,7 @@ function netJoin({keyword, name}) {
   //    fresh join でも reconnect でも host 側は seq=0 起点として受理待ちするため、
   //    旧試合の残留値を持ち越さないようにする。
   Net._actionSeq = 0;
-  setNetStatus('connecting', 'PeerServerに登録中…');
+  setNetStatus('connecting', t('net.status.registering'));
 
   // ★ rejoin バグ対策: 古い peer の完全破棄を待ってから新規 peer を建てる。
   _resetPeerInstance().then(() => _createClientPeer());
@@ -3766,13 +4534,13 @@ function netJoin({keyword, name}) {
     Net._lastJoinError = ''; // ★ AutoMatch スロット判定用: 新規 join 試行の開始でクリア
     Net.peer = new Peer(undefined, {debug: 0});
     Net.peer.on('open', () => {
-      setNetStatus('connecting', 'ホストに接続中…');
+      setNetStatus('connecting', t('net.status.connectingHost'));
       const conn = Net.peer.connect(Net.roomId, {reliable: true});
       Net.hostConn = conn;
       let opened = false;
       conn.on('open', () => {
         opened = true;
-        setNetStatus('handshake', 'ハンドシェイク中…');
+        setNetStatus('handshake', t('net.status.handshake'));
         // 再接続トークンがあれば送信して復帰を試みる。観戦者ならrole=spectator
         const prev = loadReconnectToken(Net.roomCode);
         const hello = {type:'hello', ver:VERSION, name: Net.myName, ruleHash: null, rating: computeRating(), puzzleRank: puzzleRankFor(getPuzzleHiscore())};
@@ -3782,26 +4550,26 @@ function netJoin({keyword, name}) {
       });
       conn.on('data', d => { conn.__lastRxTime = Date.now(); handleClientMessage(d); });
       conn.on('close', () => {
-        if (!opened) { Net._lastJoinError = Net._lastJoinError || 'unreachable'; setNetStatus('error', 'ホストに到達できません'); return; }
+        if (!opened) { Net._lastJoinError = Net._lastJoinError || 'unreachable'; setNetStatus('error', t('net.err.hostUnreachable')); return; }
         if (Net.hostConn && Net.hostConn !== conn) return; // 再接続で差し替え済みの古い conn は無視
         if (Net._intentionalDisconnect) return;
         // ★ 即敗北記録せず自動再接続へ。最終的に諦めたときだけ _giveUpReconnect() が loss を記録する。
         //   online-client かつ試合中のみ再接続。観戦/ロビー/試合終了は従来どおり切断表示。
         if (Net.mode === 'online-client' && state && state.phase !== 'end') { _startClientReconnect('initial-conn-close'); }
-        else { setNetStatus('disconnected', '接続が切断されました'); }
+        else { setNetStatus('disconnected', t('net.disconnected')); }
       });
       conn.on('error', () => {
         if (Net.hostConn && Net.hostConn !== conn) return; // 差し替え済みの古い conn は無視
         // open 後のエラーは切断扱いとして再接続へ委ねる。open 前は接続エラー表示のまま。
         if (opened && Net.mode === 'online-client' && !Net._intentionalDisconnect && state && state.phase !== 'end') { _startClientReconnect('initial-conn-error'); }
-        else if (!opened) { setNetStatus('error', '接続エラー'); }
+        else if (!opened) { setNetStatus('error', t('net.err.connError')); }
       });
     });
     Net.peer.on('error', err => {
       let msg = err.type || 'error';
       Net._lastJoinError = err.type || 'error'; // ★ AutoMatch: 'peer-unavailable'(=スロット空き) 等を記録
-      if (err.type === 'peer-unavailable') msg = 'ホストが見つかりません (合言葉を確認)';
-      if (err.type === 'network') msg = 'ネットワーク接続失敗';
+      if (err.type === 'peer-unavailable') msg = t('net.err.hostNotFound');
+      if (err.type === 'network') msg = t('net.err.network');
       // ★ 再接続ループ中は host 不在(peer-unavailable)等が頻発する。画面遷移させず loop に任せる。
       if (Net._reconnecting) return;
       setNetStatus('error', msg);
@@ -3835,16 +4603,18 @@ function _startClientReconnect(reason) {
   if (Net._intentionalDisconnect) return;              // netLeave 中は再接続しない
   if (Net._reconnecting) return;                       // 二重起動防止
   if (!state || state.phase === 'end') return;         // 試合終了/ロビーは対象外
+  if (Net._matchEndedByHost) return;                   // host 退出済みなら再接続しない
   Net._reconnecting = true;
   Net._autoReconnectActive = true;
   Net._reconnectAttempt = 0;
+  Net._peerUnavailCount = 0;                           // host の deterministic ID 不在カウンタをリセット
   Net._reconnectDeadline = Date.now() + RECONNECT_MAX_MS;
   Net.isRecovering = true;     // action 送信を止め、既存の復帰機構に合流
   Net.acceptInput = false;     // 入力ガード
   Net.syncState = 'recovering';
   Net._health = 'unstable';
-  setNetStatusInGame('reconnecting', '再接続中…'); // game 画面に留まったまま overlay を出す
-  showReconnectOverlay('再接続中…');
+  setNetStatusInGame('reconnecting', t('rc.reconnecting')); // game 画面に留まったまま overlay を出す
+  showReconnectOverlay(t('rc.reconnecting'));
   try { console.warn('[reconnect] start:', reason); } catch(e){}
   _clientReconnectAttempt();
 }
@@ -3871,6 +4641,16 @@ function _clientReconnectAttempt() {
     if (!peer) { _scheduleNextReconnect(); return; }
     if (Date.now() >= Net._reconnectDeadline) { _giveUpReconnect(); return; }
     let conn;
+    // ★ host の deterministic peer ID が PeerServer から消えていれば 'peer-unavailable' が飛ぶ。
+    //   host ID は合言葉から決まり生存中は数秒で再登録されるため、連続して不在 = host が意図的に退出
+    //   (=再接続不能)の強いシグナル。45秒待たず clean に終了し、敗北も記録しない。
+    const onPeerErr = (err) => {
+      if (err && err.type === 'peer-unavailable') {
+        Net._peerUnavailCount = (Net._peerUnavailCount || 0) + 1;
+        if (Net._peerUnavailCount >= 2) _hostGoneGiveUp();
+      }
+    };
+    try { peer.once('error', onPeerErr); } catch(e){}
     try { conn = peer.connect(Net.roomId, {reliable: true}); }
     catch(e) { _scheduleNextReconnect(); return; }
     Net._reconnectConn = conn;
@@ -3902,8 +4682,10 @@ function _clientReconnectAttempt() {
       Net._reconnecting = false;
       if (Net._reconnectTimer) { clearTimeout(Net._reconnectTimer); Net._reconnectTimer = null; }
       Net._reconnectAttempt = 0;
-      setNetStatusInGame('resyncing', '同期中…');
-      showReconnectOverlay('同期中…');
+      Net._peerUnavailCount = 0;
+      try { peer.off && peer.off('error', onPeerErr); } catch(e){}
+      setNetStatusInGame('resyncing', t('rc.syncing'));
+      showReconnectOverlay(t('rc.syncing'));
       startConnHealthTimer();
       startIcePingTimer();
       // 保険: welcome が来なくても fullState を要求しておく(replaceGameState で overlay は自動的に閉じる)
@@ -3927,8 +4709,8 @@ function _giveUpReconnect() {
   Net._autoReconnectActive = false;
   Net._health = 'ok';
   recordOnlineDisconnectLoss();         // ここで初めて「敗北」を確定する
-  setNetStatusInGame('disconnected', '接続が切断されました'); // overlay(退室ボタン)を出すので game 画面に留まる
-  showReconnectOverlay('接続が回復できませんでした', true); // 退室ボタン付き
+  setNetStatusInGame('disconnected', t('net.disconnected')); // overlay(退室ボタン)を出すので game 画面に留まる
+  showReconnectOverlay(t('net.recoverFailed'), true); // 退室ボタン付き
 }
 
 // host への signaling 経路 (Net.peer) を確実に open 状態にして返す。
@@ -4005,16 +4787,40 @@ function _connHealthTick() {
 // 再接続オーバーレイ。再接続/同期中は pointer-events で入力を遮断する。
 // lowspec ではスピナーアニメを無効化 (CSS 側 html.lowspec で対応)。
 // ============================================================================
-function showReconnectOverlay(text, isFinal) {
+const RC_SUB_DEFAULT_KEY = 'rc.sub.default';
+function showReconnectOverlay(text, isFinal, sub) {
   const el = document.getElementById('overlay-reconnect');
   if (!el) return;
   const msgEl = document.getElementById('rc-msg');
-  if (msgEl) msgEl.textContent = text || '再接続中…';
+  if (msgEl) msgEl.textContent = text || t('rc.reconnecting');
+  // sub: undefined=既定の「お待ちください」, ''=非表示, 文字列=任意(host 退出メッセージ等)
+  const subEl = document.getElementById('rc-sub');
+  if (subEl) {
+    const subHtml = (sub === undefined) ? t(RC_SUB_DEFAULT_KEY) : sub;
+    subEl.innerHTML = subHtml;
+    subEl.classList.toggle('hidden', subHtml === '');
+  }
   const btn = document.getElementById('rc-leave');
   if (btn) btn.classList.toggle('hidden', !isFinal);
   const spin = document.getElementById('rc-spin');
   if (spin) spin.classList.toggle('hidden', !!isFinal);
   el.classList.remove('hidden');
+}
+// ★ ホスト消失時の確定終了。クライアントの責ではないので敗北は記録しない。
+function _hostGoneGiveUp() {
+  if (Net.mode !== 'online-client') return;
+  if (Net._matchEndedByHost) return;
+  Net._matchEndedByHost = true;
+  _stopClientReconnect();
+  Net._autoReconnectActive = false;
+  Net._reconnecting = false;
+  Net._health = 'ok';
+  stopConnHealthTimer();
+  stopIcePingTimer();
+  stopTurnTimer();
+  setNetStatusInGame('disconnected', t('net.hostLeft'));
+  // 退室ボタンのみ。「最大約45秒お待ちください」は出さない (再接続不可能なため)。
+  showReconnectOverlay(t('net.hostLeft'), true, t('net.hostLeft.sub'));
 }
 function hideReconnectOverlay() {
   const el = document.getElementById('overlay-reconnect');
@@ -4052,6 +4858,8 @@ function disposeOnlineGameState() {
   Net._lastStateVersion = 0;
   Net.localHash = '';
   Net.hostHash = '';
+  Net._matchEndedByHost = false;   // 再戦時に host-left フラグを引きずらない
+  Net._peerUnavailCount = 0;
   Net.isRecovering = false;
   Net.syncState = 'idle';
   Net._pendingFullReqAt = 0;
@@ -4200,6 +5008,13 @@ function handleClientMessage(msg) {
   // ★ Fix9: ping-pong — ホストからの keepalive に応答し、逆方向の pong も受理
   if (msg.type === 'ping') { try { if (Net.hostConn) Net.hostConn.send({type:'pong', t: msg.t}); } catch(e){} return; }
   if (msg.type === 'pong') { if (typeof msg.t === 'number') { Net._lastPingMs = Date.now() - msg.t; renderSyncDebug(); } return; } // client→host ping への応答
+  // ★ host が意図的に退出 (netLeave) → 再接続は不可能。45秒の再接続待ちを出さず即終了する。
+  if (msg.type === 'host-left') { _hostGoneGiveUp(); return; }
+  // ★ 絵文字リアクション: host が relay してきたものを表示
+  if (msg.type === 'emoji') {
+    if (typeof msg.e === 'string') showEmojiReaction(msg.e, (typeof msg.name === 'string') ? msg.name.slice(0, 16) : '');
+    return;
+  }
   if (msg.type === 'welcome') {
     // Verify host's rule hash matches what client expects? Host is authoritative.
     Net.myPlayerIdx = msg.yourIdx;
@@ -4215,7 +5030,7 @@ function handleClientMessage(msg) {
     if (msg.role === 'spectator') {
       Net.mode = 'spectator';
       Net._lastStateVersion = 0;
-      setNetStatus('spectating', '観戦中');
+      setNetStatus('spectating', t('net.status.spectating'));
     } else if (msg.reconnected) {
       // 再接続: 続いて届く fullState を必ず受理するようリセットし、復帰中フラグを立てる
       Net._lastStateVersion = 0;
@@ -4223,16 +5038,13 @@ function handleClientMessage(msg) {
       Net.syncState = 'recovering';
       // ★ Bug D: 古い試合の currentMatchId を引きずらない。直後の fullState で正しい値が設定される。
       Net.currentMatchId = '';
-      // 自動再接続中は overlay(同期中…)で状態を見せるので modal は出さない。
-      // 手動 rejoin (netJoin) の場合のみ従来どおり成功 modal を表示する。
-      if (Net._autoReconnectActive) {
-        setNetStatusInGame('resyncing', '同期中…'); // overlay 表示中なので game 画面に留まる
-      } else {
-        setNetStatus('lobby', '再接続成功');
-        showOnlineMsg('再接続成功', 'ゲームに復帰しました');
-      }
+      // ★ 「再接続しました」OK 確認モーダルは廃止 (ユーザ要望: シームレス復帰)。
+      //   自動 / 手動どちらも overlay「同期中…」だけ出し、直後に届く fullState が
+      //   game 画面表示 + overlay クリアを行う。OK ボタンを押させる画面は出さない。
+      setNetStatusInGame('resyncing', t('rc.syncing'));
+      showReconnectOverlay(t('rc.syncing'));
     } else {
-      setNetStatus('lobby', 'ロビー待機中');
+      setNetStatus('lobby', t('net.status.lobbyWaiting'));
     }
   } else if (msg.type === 'reject') {
     // ★ 自動再接続中の一時的な拒否 (game-started / room-full) は「host がまだ
@@ -4245,22 +5057,22 @@ function handleClientMessage(msg) {
       Net.hostConn = null; // close ハンドラ(:reconnected-conn-close)が二重起動しないよう先に外す
       if (!Net._reconnecting) {
         Net._reconnecting = true;            // deadline はリセットしない（無限再試行を防ぐ）
-        setNetStatusInGame('reconnecting', '再接続中…');
-        showReconnectOverlay('再接続中…');
+        setNetStatusInGame('reconnecting', t('rc.reconnecting'));
+        showReconnectOverlay(t('rc.reconnecting'));
       }
       _scheduleNextReconnect();
       return;
     }
     let txt = msg.reason;
-    if (msg.reason === 'version-mismatch') txt = 'バージョン不一致 (host: ' + (msg.expected||'?') + ', you: '+VERSION+')';
-    if (msg.reason === 'rule-mismatch') txt = 'ルール設定不一致';
-    if (msg.reason === 'game-started') txt = '既にゲーム開始済み';
-    if (msg.reason === 'room-full') txt = 'ルーム満員';
-    if (msg.reason === 'spectator-full') txt = '観戦者上限 (最大' + SPECTATOR_MAX + '人) に達しています';
+    if (msg.reason === 'version-mismatch') txt = t('net.reject.versionMismatch', (msg.expected||'?'), VERSION);
+    if (msg.reason === 'rule-mismatch') txt = t('net.reject.ruleMismatch');
+    if (msg.reason === 'game-started') txt = t('net.reject.gameStarted');
+    if (msg.reason === 'room-full') txt = t('net.reject.roomFull');
+    if (msg.reason === 'spectator-full') txt = t('net.reject.spectatorFull', SPECTATOR_MAX);
     Net._lastJoinError = 'reject:' + msg.reason; // ★ AutoMatch: 占有だが参加不可 = 次スロットへ
     setNetStatus('error', txt);
     // ★ AutoMatch のスロット探索中は reject が連発するため modal を出さない (UX 保護)。
-    if (!AutoMatch.active) showOnlineMsg('参加拒否', txt);
+    if (!AutoMatch.active) showOnlineMsg(t('net.reject.title'), txt);
     try { Net.hostConn?.close(); } catch(e){}
   } else if (msg.type === 'lobby-update') {
     Net.hostPlayers = msg.players;
@@ -4558,7 +5370,7 @@ function handleClientMessage(msg) {
       // ★ Client Prediction: host が拒否 → rollback
       rollbackPendingAction(msg.actionId);
     } else {
-      showOnlineMsg('不正アクション', msg.reason || '');
+      showOnlineMsg(t('net.err.badAction.title'), msg.reason || '');
     }
   }
 }
@@ -4997,6 +5809,12 @@ function netLeave(opts) {
   // ★ silent: AutoMatch のスロット探索中などで「画面遷移なし・レート記録なし」で
   //   ネットワークだけ畳みたいときに true。AutoMatch.active 中は常に silent 扱いにする。
   const silent = (opts && opts.silent === true) || (typeof AutoMatch !== 'undefined' && AutoMatch.active);
+  // ★ host が意図的に退出するときは、conn を閉じる前に全 client へ host-left を通知する。
+  //   これで client は「再接続45秒待ち」を出さずに即座に対戦終了へ移行できる (再接続不能なので)。
+  //   best-effort 速攻パス。届かなくても client 側の peer-unavailable 検知が保険になる。
+  if (!silent && Net.mode === 'online-host') {
+    try { for (const conn of Net.conns.values()) { try { if (conn && conn.open) conn.send({type:'host-left'}); } catch(e){} } } catch(e){}
+  }
   // ★ 手動「再接続」用スナップショットを保存する (clear 系より先に、まだ値が生きているうちに)。
   //   試合中のクライアントが抜けたときだけ対象。事故/意図に関わらず「同じ相手」へ戻れるようにする。
   //   Net.reconnectToken は初回 join 時に host から受領した値で、退室まで保持されている。
@@ -5010,7 +5828,8 @@ function netLeave(opts) {
   //   先に止めないと、この後の Net 状態リセット中にタイマーが発火して stale な payload が登録される恐れがある。
   stopLobbyHeartbeat();
   // ゲーム途中の退出はレートに「負け」として記録 (探索プローブでは記録しない)
-  if (!silent) recordOnlineDisconnectLoss();
+  // ★ host が退出して試合が終わった場合 (client 側 _matchEndedByHost) は client の責任ではないので負けにしない。
+  if (!silent && !Net._matchEndedByHost) recordOnlineDisconnectLoss();
   // ★ 明示的退室時は再接続トークンを破棄する。
   //    同じ合言葉で部屋を作り直すケース (rejoin バグの主原因) で
   //    旧トークンを誤って host へ提示しないようにする。
@@ -5028,6 +5847,8 @@ function netLeave(opts) {
   Net._autoReconnectActive = false;
   Net._health = 'ok';
   Net._lastPingMs = 0;
+  Net._matchEndedByHost = false;   // 次の対戦のためにリセット (loss 判定はこの行より前で済んでいる)
+  Net._peerUnavailCount = 0;
   // ★ placeConfirm タイマー/rAF も停止 (退室後に古い操作が発火しないよう)
   try { if (_placeConfirmTimer) { clearTimeout(_placeConfirmTimer); _placeConfirmTimer = null; } } catch(e){}
   try { if (_placeConfirmRaf) { cancelAnimationFrame(_placeConfirmRaf); _placeConfirmRaf = null; } } catch(e){}
@@ -5135,7 +5956,7 @@ function startAutoMatch({numPlayers, turnTime, name}) {
 
   const pane = document.getElementById('online-pane-auto');
   if (pane) pane.classList.remove('hidden');
-  _autoMsg('ロビー取得中…');
+  _autoMsg(t('net.auto.fetchingLobby'));
   _autoFetchAndJoin();
 }
 
@@ -5145,7 +5966,7 @@ function cancelAutoMatch() {
   AutoMatch.state = 'idle';
   AutoMatch.trySeq++; // in-flight ポーリング/コールバックを失効させる
   _autoClearTimers();
-  _autoMsg('停止しました');
+  _autoMsg(t('net.auto.stopped'));
   const pane = document.getElementById('online-pane-auto');
   if (pane) pane.classList.add('hidden');
   if (Net.mode !== 'none') { try { netLeave(); } catch(e){} }
@@ -5157,12 +5978,12 @@ function cancelAutoMatch() {
 //    host 側は reconnectToken 一致で受理 → fullState で復帰する (相手が居なければ失敗表示)。
 function reconnectLastMatch() {
   const snap = loadLastMatch();
-  if (!snap) { showOnlineMsg('再接続できません', '戻れる対戦が見つかりません。<br>(時間切れ、またはまだ対戦していません)'); return; }
+  if (!snap) { showOnlineMsg(t('net.reconnect.failTitle'), t('net.reconnect.failBody')); return; }
   // 既存接続があれば畳む。netLeave は RECONNECT_KEY を消すので token 復元はこの後で行う。
   if (Net.mode !== 'none') { try { netLeave(); } catch(e){} }
   // netJoin が読む RECONNECT_KEY に token を復元 (ts を更新して 5 分有効判定を通す)。
   saveReconnectToken(snap.roomCode, snap.token, snap.idx);
-  setNetStatus('connecting', '再接続中…');
+  setNetStatus('connecting', t('rc.reconnecting'));
   netJoin({ keyword: snap.roomCode, name: snap.name || Net.myName || 'Guest' });
   renderLobby();
 }
@@ -5173,7 +5994,7 @@ function updateReconnectBtn() {
   if (!btn) return;
   const snap = loadLastMatch();
   btn.disabled = !snap;
-  btn.title = snap ? ('「' + (snap.roomCode || '?') + '」の対戦に再接続します') : '戻れる対戦がありません';
+  btn.title = snap ? t('net.reconnect.btnTitle', (snap.roomCode || '?')) : t('online.reconnect.none');
 }
 
 // ★ Worker /rooms には依存しない (auto-match のみ)。
@@ -5185,7 +6006,7 @@ function updateReconnectBtn() {
 function _autoFetchAndJoin() {
   if (!AutoMatch.active) return;
   const order = _autoSlotCodes(AutoMatch.numPlayers);
-  _autoMsg(AutoMatch.numPlayers + '人部屋を探索中… (固定スロット直接探索)');
+  _autoMsg(t('net.auto.searching', AutoMatch.numPlayers));
   _autoScanSlots(order, 0);
 }
 
@@ -5202,14 +6023,14 @@ function _autoScanSlots(order, idx) {
   if (!AutoMatch.active) return;
   if (idx >= order.length) {
     // 空きスロットが 1 つも無かった = 全部占有 & 参加不可 → 待って再スキャン
-    _autoMsg('空き/参加可能な部屋が見つかりません → 再スキャン');
+    _autoMsg(t('net.auto.noRoom'));
     _autoRescanAfterDelay();
     return;
   }
   const code = order[idx];
   const seq = AutoMatch.trySeq;
   AutoMatch.state = 'connecting';
-  _autoMsg('探索 ' + (idx+1) + '/' + order.length + ' (' + code + ')…');
+  _autoMsg(t('net.auto.probing', idx+1, order.length, code));
 
   Net.joinAsSpectator = false;
   Net._lastJoinError = '';
@@ -5225,7 +6046,7 @@ function _autoScanSlots(order, idx) {
     if (Net.status === 'lobby') {
       AutoMatch.active = false;
       AutoMatch.state = 'joined';
-      _autoMsg('参加成功 (' + code + ')');
+      _autoMsg(t('net.auto.joined', code));
       const pane = document.getElementById('online-pane-auto');
       if (pane) pane.classList.add('hidden');
       return;
@@ -5235,11 +6056,11 @@ function _autoScanSlots(order, idx) {
       try { netLeave(); } catch(e){}
       if (err === 'peer-unavailable' || err === 'unreachable') {
         // このスロットは空 → ホスト化 (占有済みなら netHostCreate が join へ自動救済)
-        _autoMsg(code + ' は空き → ホスト化');
+        _autoMsg(t('net.auto.slotEmpty', code));
         _autoHostFallback(order, idx);
       } else if (err === 'network' || err === 'server-error' || err === 'socket-error' || err === 'socket-closed') {
         // シグナリング/ネットワーク障害: どのスロットでも同じく失敗するので churn せず待つ
-        _autoMsg('ネットワーク/シグナリング障害 → 再試行');
+        _autoMsg(t('net.auto.netFail'));
         _autoRescanAfterDelay();
       } else {
         // reject:* (満室/試合中/版違い) や不明 → 次スロット
@@ -5273,7 +6094,7 @@ function _autoHostFallback(order, idx) {
   const keyword = order[idx];
   AutoMatch.state = 'hosting';
   const seq = AutoMatch.trySeq;
-  _autoMsg(keyword + ' をホスト化試行…');
+  _autoMsg(t('net.auto.hostTry', keyword));
 
   netHostCreate(
     { keyword, name: AutoMatch.myName, numPlayers: AutoMatch.numPlayers, turnTime: AutoMatch.turnTime },
@@ -5286,18 +6107,18 @@ function _autoHostFallback(order, idx) {
       onIdTaken: () => {
         // ID 占有中 → 本物のホストかゾンビか不明。実際に join して確認する。
         if (!AutoMatch.active || seq !== AutoMatch.trySeq) return;
-        _autoMsg(keyword + ' は使用中 → 参加を試行…');
+        _autoMsg(t('net.auto.idTaken', keyword));
         _autoProbeJoin(order, idx);   // netJoin は内部で失敗 host peer を netLeave して掃除する
       },
       onHostFailed: (type) => {
         // unavailable-id 以外 (network / server-error 等)
         if (!AutoMatch.active || seq !== AutoMatch.trySeq) return;
         if (type === 'network' || type === 'server-error') {
-          _autoMsg('シグナリング障害 (' + type + ') → 再試行');
+          _autoMsg(t('net.auto.signalFail', type));
           _autoRescanAfterDelay();
         } else {
           // この slot ではホスト化できない → 次スロットへ
-          _autoMsg('ホスト化失敗 (' + type + ') → 次スロット');
+          _autoMsg(t('net.auto.hostFail', type));
           try { netLeave(); } catch(e){}
           setTimeout(() => _autoScanSlots(order, idx + 1), AUTO_NEXT_DELAY_MS);
         }
@@ -5317,7 +6138,7 @@ function _autoHostWaitLoop() {
       return;
     }
     if (state) return;  // 既に開始済み
-    _autoMsg('ホスト待機 ' + Net.hostPlayers.length + '/' + need);
+    _autoMsg(t('net.auto.hostWait', Net.hostPlayers.length, need));
     if (Net.hostPlayers.length >= need) {
       AutoMatch.active = false;
       AutoMatch.state = 'done';
@@ -5353,7 +6174,7 @@ function _autoProbeJoin(order, idx) {
       AutoMatch.active = false;
       AutoMatch.state = 'joined';
       AutoMatch._rescanCount = 0;
-      _autoMsg('参加成功 (' + keyword + ')');
+      _autoMsg(t('net.auto.joined', keyword));
       const pane = document.getElementById('online-pane-auto');
       if (pane) pane.classList.add('hidden');
       return;
@@ -5379,15 +6200,15 @@ function _autoRescanAfterDelay() {
   if (!AutoMatch.active) return;
   AutoMatch._rescanCount = (AutoMatch._rescanCount || 0) + 1;
   if (AutoMatch._rescanCount > 5) {
-    _autoMsg('混雑のためマッチングできませんでした。');
+    _autoMsg(t('net.auto.congested'));
     AutoMatch.active = false;
     AutoMatch.state = 'idle';
     // ★ netLeave 経由で title 画面に飛んでいる可能性があるため、modal で確実に通知する。
-    showOnlineMsg('マッチング失敗', '空き部屋の確保に繰り返し失敗しました。<br>少し時間を置いてから再度お試しください。');
+    showOnlineMsg(t('net.auto.failTitle'), t('net.auto.failBody'));
     return;
   }
   const delay = 1200 + AutoMatch._rescanCount * 600;
-  _autoMsg('再スキャン待機 ' + Math.round(delay/1000) + 's… (' + AutoMatch._rescanCount + '/5)');
+  _autoMsg(t('net.auto.rescanWait', Math.round(delay/1000), AutoMatch._rescanCount));
   const seq = ++AutoMatch.trySeq;  // 進行中の古いコールバックを失効させる
   AutoMatch.pollTimer = setTimeout(() => {
     if (!AutoMatch.active || seq !== AutoMatch.trySeq) return;
@@ -5756,6 +6577,7 @@ function $(id) { return document.getElementById(id); }
 function showScreen(name) {
   ['title','setup','online','game','end','puzzle','puzzle-end'].forEach(n => $('screen-'+n).classList.add('hidden'));
   $('screen-' + name).classList.remove('hidden');
+  updateEmojiBar();
 }
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
@@ -5781,9 +6603,9 @@ function renderSetup() {
       '<input type="text" id="p-name-'+i+'" value="'+escapeHtml(p.name)+'">'+
       '<label><input type="checkbox" id="p-cpu-'+i+'" '+(p.cpu?'checked':'')+'> CPU</label>'+
       '<select id="p-lvl-'+i+'">'+
-        '<option value="1"'+(p.lvl=='1'?' selected':'')+'>Lv1 ランダム</option>'+
-        '<option value="2"'+(p.lvl=='2'?' selected':'')+'>Lv2 1手読み</option>'+
-        '<option value="3"'+(p.lvl=='3'?' selected':'')+'>Lv3 2手読み</option>'+
+        '<option value="1"'+(p.lvl=='1'?' selected':'')+'>'+escapeHtml(t('setup.cpuLv1'))+'</option>'+
+        '<option value="2"'+(p.lvl=='2'?' selected':'')+'>'+escapeHtml(t('setup.cpuLv2'))+'</option>'+
+        '<option value="3"'+(p.lvl=='3'?' selected':'')+'>'+escapeHtml(t('setup.cpuLv3'))+'</option>'+
       '</select>';
     rowsEl.appendChild(row);
   }
@@ -5901,8 +6723,13 @@ function renderBoard() {
           if (p.x === x && p.y === y) { isNetPending = true; break; }
         }
       }
+      const isCardPending = !!(card && (card._pending || isNetPending));
+      // ★ pending フラグは cardKey に含めない。pending→確定の遷移でカード要素を作り直すと
+      //   進行中の配置アニメ (place-pop / dir-flash / ripple) が 1 フレームで破棄され、
+      //   client 側で「エフェクトが一瞬しか出ない」症状になる。要素は維持し、
+      //   pending-card クラスだけ後段で classList.toggle する。
       const cardKey = card
-        ? `${card.id}|${card.owner}|${!!card.isJammer}|${!!(card._pending || isNetPending)}`
+        ? `${card.id}|${card.owner}|${!!card.isJammer}`
         : (isPendingPreview ? `pre|${UI_PENDING.card.id}|${!!UI_PENDING.isJammer}` : '');
 
       if (entry.cardKey !== cardKey) {
@@ -5913,7 +6740,6 @@ function renderBoard() {
         // 新しいカード要素を挿入
         if (card) {
           const cardEl = renderCardInCell(card);
-          if (card._pending || isNetPending) cardEl.classList.add('pending-card');
           el.appendChild(cardEl);
         } else if (isPendingPreview) {
           const tmp = {...UI_PENDING.card, owner: localPlayerIdx(), isJammer: UI_PENDING.isJammer};
@@ -5921,6 +6747,11 @@ function renderBoard() {
           ce.style.opacity = '0.65';
           el.appendChild(ce);
         }
+      }
+      // pending-card は要素を作り直さずトグルする (確定遷移で配置アニメを切らない)
+      if (card) {
+        const cEl = el.querySelector('.card');
+        if (cEl) cEl.classList.toggle('pending-card', isCardPending);
       }
     }
   }
@@ -6050,7 +6881,7 @@ function renderHand() {
 
   // 観戦モード: 手札表示なし (localIdx < 0 は観戦者かオフライン未割当のいずれか)
   if (isOnline && (state.isSpectator || localIdx < 0)) {
-    el.innerHTML = '<div class="hidden-hand">観戦中 — 全プレイヤーの手札は非公開</div>';
+    el.innerHTML = '<div class="hidden-hand">'+escapeHtml(t('game.spectating'))+'</div>';
     return;
   }
   if (localIdx < 0) return;
@@ -6063,8 +6894,8 @@ function renderHand() {
   }
 
   // Local hot-seat
-  if (player.isCPU) { el.innerHTML = '<div class="hidden-hand">CPU ('+escapeHtml(player.name)+' Lv'+player.cpuLevel+') 思考中…</div>'; return; }
-  if (!$('overlay-handoff').classList.contains('hidden')) { el.innerHTML = '<div class="hidden-hand">待機中…</div>'; return; }
+  if (player.isCPU) { el.innerHTML = '<div class="hidden-hand">'+escapeHtml(t('game.cpuThinking', player.name, player.cpuLevel))+'</div>'; return; }
+  if (!$('overlay-handoff').classList.contains('hidden')) { el.innerHTML = '<div class="hidden-hand">'+escapeHtml(t('game.waiting'))+'</div>'; return; }
   appendHandCards(el, player, localIdx);
 }
 
@@ -6096,8 +6927,29 @@ function appendHandCards(el, player, pIdx) {
   }
 }
 
+// リプレイ表示専用: NOW/NEXT/手番者は「次に再生されるアクション」の録画時コンテキストを
+// 権威として表示する。ラウンド境界では computeNextRoundOrder が replay 中に確定できず
+// nextRoundOrder がプレースホルダ (= current と同一) になるため NOW/NEXT がズレる。
+// 録画済みアクションは roundOrder / turnIndex / nextRoundOrder を保持しているので、
+// 次手のコンテキストへ表示状態を合わせれば NOW/NEXT/手番者のズレを一括解消できる。
+function _replaySyncOrderForDisplay() {
+  if (!state || state.mode !== 'replay') return;
+  if (typeof Replay === 'undefined' || !Replay.data || !Array.isArray(Replay.data.actions)) return;
+  let next = null;
+  for (let i = Replay.cursor; i < Replay.data.actions.length; i++) {
+    const a = Replay.data.actions[i];
+    if (a && a.phase === 'play' && Array.isArray(a.roundOrder)) { next = a; break; }
+    if (i - Replay.cursor > 8) break; // 数手先までに play アクションが無ければ諦める
+  }
+  if (!next) return;
+  state.currentRoundOrder = [...next.roundOrder];
+  if (typeof next.turnIndex === 'number') state.currentTurnIdx = next.turnIndex;
+  if (Array.isArray(next.nextRoundOrder)) state.nextRoundOrder = [...next.nextRoundOrder];
+}
+
 function renderTopBar() {
   if (!state) return;
+  _replaySyncOrderForDisplay();
   $('round-num').textContent = state.round;
   const pIdx = currentPlayerIdx();
   const tp = $('turn-player');
@@ -6106,7 +6958,7 @@ function renderTopBar() {
     // モード表示: リプレイ中は「🎬 再生」、通常録画中は何も付けない
     const modeSuffix = state.mode === 'replay'
       ? ' 🎬'
-      : (state.phase === 'init' ? ' [初期]' : '');
+      : (state.phase === 'init' ? t('game.phaseInit') : '');
     tp.textContent = PLAYER_COLORS[pIdx].badge + ' ' + state.players[pIdx].name + modeSuffix;
   }
   const nowEl = $('now-order'), nextEl = $('next-order');
@@ -6166,15 +7018,15 @@ function renderNetIndicator() {
   el.classList.remove('hidden');
   if (Net.mode === 'online-host') {
     el.className = 'net-status ok';
-    el.textContent = 'HOST · 接続' + Net.conns.size;
+    el.textContent = 'HOST · ' + Net.conns.size;
   } else {
     let cls, tag;
-    if (Net._reconnecting || Net.status === 'reconnecting') { cls = 'bad'; tag = '再接続中…'; }
-    else if (Net._autoReconnectActive || Net.status === 'resyncing') { cls = 'warn'; tag = '同期中…'; }
-    else if (Net.isRecovering) { cls = 'warn'; tag = '同期中…'; }
+    if (Net._reconnecting || Net.status === 'reconnecting') { cls = 'bad'; tag = t('rc.reconnecting'); }
+    else if (Net._autoReconnectActive || Net.status === 'resyncing') { cls = 'warn'; tag = t('rc.syncing'); }
+    else if (Net.isRecovering) { cls = 'warn'; tag = t('rc.syncing'); }
     else if (Net.syncState === 'desync-detected') { cls = 'bad'; tag = 'desync'; }
     else if (Net.status === 'disconnected' || (Net.status || '').startsWith('error')) { cls = 'bad'; tag = Net.status; }
-    else if (Net._health === 'unstable') { cls = 'warn'; tag = '不安定'; }
+    else if (Net._health === 'unstable') { cls = 'warn'; tag = t('net.indicator.unstable'); }
     else if (Net.status === 'lobby' || Net.status === 'connecting' || Net.status === 'handshake') { cls = 'warn'; tag = Net.status; }
     else { cls = 'ok'; tag = Net.status || 'OK'; }
     el.className = 'net-status ' + cls;
@@ -6210,7 +7062,7 @@ function renderSyncDebug() {
   const pqEl = document.getElementById('sd-pendingq');
   if (pqEl) {
     const n = (Net._pendingActionQueue || []).length;
-    pqEl.textContent = n > 0 ? String(n) + '件待機' : '0';
+    pqEl.textContent = n > 0 ? t('sync.pending', n) : '0';
     pqEl.className = 'sd-v ' + (n > 0 ? 'warn' : 'ok');
   }
   // ★ deckFp 表示 (host は localDeckFp = hostDeckFp 常に一致)
@@ -6265,22 +7117,22 @@ function renderScores(networkScores) {
     let netStr = realNets.length
       ? realNets.map((n, i) => '<span class="net-item'+(i===0?' net-main':'')+'">'+n.edges+'</span>').join(' / ')
       : '<span class="net-item-none">—</span>';
-    if (isolated > 0) netStr += ' <span class="net-isolated">·孤'+isolated+'</span>';
+    if (isolated > 0) netStr += ' <span class="net-isolated">'+escapeHtml(t('score.isolated', isolated))+'</span>';
     const r = document.createElement('div');
     r.className = 'score-row' + (currentPlayerIdx() === p.idx ? ' active' : '') + (!p.alive ? ' dead' : '');
     const handLen = p.hand ? p.hand.length : 0;
     const ratingStr = (isOnline && typeof p.rating === 'number')
-      ? '<span class="rate-badge" title="レート (直近100戦)">R'+p.rating+'</span>' : '';
+      ? '<span class="rate-badge" title="'+escapeHtml(t('score.rateTitle'))+'">R'+p.rating+'</span>' : '';
     const puzzleRankStr = isOnline ? (() => {
       const localIdx = localPlayerIdx();
       if (p.idx === localIdx) return puzzleRankBadgeHtml();
-      if (typeof p.puzzleRank === 'string') return '<span class="puzzle-rank-badge rank-'+p.puzzleRank+'" title="パズルスコアモード ランク">'+p.puzzleRank+'</span>';
+      if (typeof p.puzzleRank === 'string') return '<span class="puzzle-rank-badge rank-'+p.puzzleRank+'" title="'+escapeHtml(t('score.puzzleRankTitle'))+'">'+p.puzzleRank+'</span>';
       return '';
     })() : '';
     const statusTags = [];
-    if (p.disconnected) statusTags.push('<span class="status-tag tag-disc">切断中 CPU代行</span>');
-    if (p.surrendered) statusTags.push('<span class="status-tag tag-surr">降参</span>');
-    else if (!p.alive) statusTags.push('<span class="status-tag tag-exh">行動不能</span>');
+    if (p.disconnected) statusTags.push('<span class="status-tag tag-disc">'+escapeHtml(t('score.tagDisc'))+'</span>');
+    if (p.surrendered) statusTags.push('<span class="status-tag tag-surr">'+escapeHtml(t('game.surrender'))+'</span>');
+    else if (!p.alive) statusTags.push('<span class="status-tag tag-exh">'+escapeHtml(t('game.giveUp'))+'</span>');
     r.innerHTML =
       '<div class="name">'+
         '<span class="color-dot" style="width:10px;height:10px;background:'+PLAYER_COLORS[p.idx].bg+'"></span>'+
@@ -6291,8 +7143,8 @@ function renderScores(networkScores) {
         ' '+statusTags.join(' ')+
       '</div>'+
       '<div class="net-stat">'+
-        '<div class="net-main-score">最大 <b>'+score.edges+'</b>線/'+score.cards+'枚</div>'+
-        '<div class="net-meta">手'+handLen+'</div>'+
+        '<div class="net-main-score">'+t('score.netMax', score.edges, score.cards)+'</div>'+
+        '<div class="net-meta">'+escapeHtml(t('score.hand', handLen))+'</div>'+
       '</div>';
     el.appendChild(r);
   }
@@ -6309,18 +7161,18 @@ function renderLog() {
     e.className = 'log-entry';
     let txt = '';
     if (entry.type === 'place') {
-      txt = 'R'+entry.round+' '+pname(entry.player)+': '+entry.card+' → ('+entry.x+','+entry.y+')'+(entry.isJammer?' [妨害]':'');
+      txt = t('log.place', entry.round, pname(entry.player), entry.card, entry.x, entry.y, entry.isJammer ? t('log.jammerTag') : '');
     } else if (entry.type === 'exchange') {
-      txt = 'R'+entry.round+' '+pname(entry.player)+': 交換 '+(entry.returned||[]).join(',')+' ('+entry.drawn+'枚)';
+      txt = t('log.exchange', entry.round, pname(entry.player), (entry.returned||[]).join(','), entry.drawn);
     } else if (entry.type === 'action-unable') {
-      txt = 'R'+entry.round+' '+pname(entry.player)+': 行動不能';
+      txt = t('log.unable', entry.round, pname(entry.player));
     } else if (entry.type === 'disconnect') {
-      txt = 'R'+entry.round+' '+pname(entry.player)+': 切断';
+      txt = t('log.disconnect', entry.round, pname(entry.player));
     } else if (entry.type === 'round-start') {
-      txt = '— ラウンド '+entry.round+' 開始 —';
+      txt = t('log.roundStart', entry.round);
     } else if (entry.type === 'game-end') {
       const ws = (entry.winners||[]).map(i => pname(i)).join(', ');
-      txt = '★ 終了 勝者: '+ws;
+      txt = t('log.gameEnd', ws);
     }
     e.textContent = txt;
     el.appendChild(e);
@@ -6342,6 +7194,7 @@ function renderAll() {
   renderScores(networkScores);
   renderLog();
   updateActionButtons();
+  updateEmojiBar(); // ★ オンライン対戦中のみ絵文字バーを表示 (試合終了 phase==='end' で自動的に隠れる)
   // 盤面共鳴 — 密度演出を適用 (スコアをクロージャでキャプチャして再計算を排除)
   requestAnimationFrame(() => applyResonanceToBoard(networkScores));
 }
@@ -6370,8 +7223,8 @@ function updateActionButtons() {
     // renderTopBar と同じ pIdx 計算で表示ズレを防ぐ
     const pIdx = curIdx >= 0 ? curIdx : -1;
     const pName = (pIdx >= 0 && state.players[pIdx]) ? state.players[pIdx].name : '?';
-    const playState = Replay.playing ? '▶ 再生中' : '⏸ 停止中';
-    $('message').textContent = '🎬 ' + playState + ' — ' + pName + ' のターン';
+    const playState = Replay.playing ? t('game.replayPlaying') : t('game.replayPaused');
+    $('message').textContent = t('game.replayTurn', playState, pName);
     return;
   }
 
@@ -6414,18 +7267,18 @@ function updateActionButtons() {
   }
   $('btn-surrender').classList.toggle('hidden', !canSurrender);
   // 残り1人（自分のみ）なら「終局」、それ以外は「降参」
-  $('btn-surrender').textContent = aliveCount() <= 1 ? '終局' : '降参';
+  $('btn-surrender').textContent = aliveCount() <= 1 ? t('game.endgame') : t('game.surrender');
 
   let msg = '';
   if (!isMyTurn) {
-    if (state.phase !== 'end') msg = (state.players[curIdx]?.name||'?') + ' のターン待機';
-  } else if (state.phase === 'init') msg = '初期配置: 隣接条件なしで配置(' + (state.initIdx+1) + '/' + state.initOrder.length + ')';
-  else if (UI_PENDING) msg = UI_PENDING.isJammer ? '妨害配置 — 確定待ち' : '配置 — 確定待ち';
-  else if (UI_EXCHANGE_MODE) msg = '交換するカードを選択 (山札残' + state.deck.length + ')';
+    if (state.phase !== 'end') msg = t('game.turnWait', (state.players[curIdx]?.name||'?'));
+  } else if (state.phase === 'init') msg = t('game.initPlace', state.initIdx+1, state.initOrder.length);
+  else if (UI_PENDING) msg = UI_PENDING.isJammer ? t('game.pendingJammer') : t('game.pendingPlace');
+  else if (UI_EXCHANGE_MODE) msg = t('game.exchangePick', state.deck.length);
   else {
-    if (hasLegal()) msg = 'カードを選択 → マスをタップ';
-    else if (state.deck.length > 0 && state.players[localIdx].hand.length > 0) msg = '置けるカードなし — 交換してください';
-    else msg = '置けず交換も不可 — 行動不能ボタンを押してください';
+    if (hasLegal()) msg = t('game.selectCard');
+    else if (state.deck.length > 0 && state.players[localIdx].hand.length > 0) msg = t('game.noPlace');
+    else msg = t('game.noPlaceNoExchange');
   }
   $('message').textContent = msg;
 }
@@ -6509,7 +7362,7 @@ function showPlacePopup(x, y) {
   const fill = $('popup-timer-fill');
   const label = $('popup-label');
   if (PLACE_CONFIRM_DELAY > 0) {
-    label.textContent = PLACE_CONFIRM_DELAY.toFixed(1) + '秒後に確定';
+    label.textContent = t('game.confirmInSec', PLACE_CONFIRM_DELAY.toFixed(1));
     fill.style.width = '100%';
   }
   // カウントダウン開始
@@ -6522,7 +7375,7 @@ function showPlacePopup(x, y) {
     const remaining = Math.max(0, 1 - elapsed / delayMs);
     if (fill) fill.style.width = (remaining * 100) + '%';
     const remSec = Math.max(0, (delayMs - elapsed) / 1000);
-    if (label) label.textContent = remSec.toFixed(1) + '秒後に確定';
+    if (label) label.textContent = t('game.confirmInSec', remSec.toFixed(1));
     if (remaining > 0) {
       _placeConfirmRaf = requestAnimationFrame(rafTick);
     }
@@ -6620,8 +7473,8 @@ function surrenderAction() {
   if (localIdx < 0) return;
   const isLast = aliveCount() <= 1;
   const confirmMsg = isLast
-    ? '終局しますか?\nゲームを終了して結果を表示します。'
-    : '本当に降参しますか?\n手札は山札へ返却され行動不能となります。';
+    ? t('confirm.endgame')
+    : t('confirm.surrender');
   if (!confirm(confirmMsg)) return;
   stopTurnTimer();
   if (state.mode === 'online-client') {
@@ -6970,15 +7823,15 @@ function showResult() {
     // 「もう一度」ボタンをオンラインモード別に調整
     if (rematchBtn) {
       if (Net.mode === 'online-host') {
-        rematchBtn.textContent = 'もう一度 (再戦開始)';
+        rematchBtn.textContent = t('end.rematchHost');
         rematchBtn.disabled = false;
         rematchBtn.title = '';
       } else if (Net.mode === 'online-client' || Net.mode === 'spectator') {
-        rematchBtn.textContent = 'もう一度 (ホスト待ち)';
+        rematchBtn.textContent = t('end.rematchWait');
         rematchBtn.disabled = false; // クリック時に待機メッセージを表示
-        rematchBtn.title = 'ホストが再戦を開始するまでお待ちください';
+        rematchBtn.title = t('end.rematchWaitTitle');
       } else {
-        rematchBtn.textContent = 'もう一度';
+        rematchBtn.textContent = t('common.again');
         rematchBtn.disabled = false;
         rematchBtn.title = '';
       }
@@ -7028,15 +7881,17 @@ function showResult() {
     const winner = (state.winners || []).includes(idx);
     const r = document.createElement('div');
     r.className = 'result-row' + (winner ? ' winner winner-anim' : ' loser');
-    const tagList = (titles[idx] || []).map(t =>
-      '<span class="title-badge" title="'+escapeHtml(t.desc)+'">'+escapeHtml(t.label)+'</span>'
-    ).join('');
+    const tagList = (titles[idx] || []).map(tt => {
+      const label = t('award.'+tt.key+'.label');
+      const desc = t('award.'+tt.key+'.desc', tt.arg);
+      return '<span class="title-badge" title="'+escapeHtml(desc)+'">'+escapeHtml(label)+'</span>';
+    }).join('');
     let statusTxt = '';
-    if (p.surrendered) statusTxt = ' <span style="opacity:0.75; font-size:11px;">降参</span>';
-    else if (!p.alive) statusTxt = ' <span style="opacity:0.75; font-size:11px;">行動不能</span>';
+    if (p.surrendered) statusTxt = ' <span style="opacity:0.75; font-size:11px;">'+escapeHtml(t('game.surrender'))+'</span>';
+    else if (!p.alive) statusTxt = ' <span style="opacity:0.75; font-size:11px;">'+escapeHtml(t('game.giveUp'))+'</span>';
     r.innerHTML =
       '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">'+
-        '<span style="font-size:14px; font-weight:800; min-width:24px;">'+rank+'位</span>'+
+        '<span style="font-size:14px; font-weight:800; min-width:24px;">'+escapeHtml(t('end.rank', rank))+'</span>'+
         (winner ? '<span style="font-size:18px;">🏆</span>' : '')+
         '<span class="color-dot" style="width:14px;height:14px;background:'+PLAYER_COLORS[idx].bg+'"></span>'+
         '<span style="font-weight:700">' + PLAYER_COLORS[idx].badge + ' ' + escapeHtml(p.name) + '</span>'+
@@ -7044,8 +7899,8 @@ function showResult() {
         statusTxt + tagList +
       '</div>'+
       '<div style="text-align:right; font-variant-numeric:tabular-nums; font-size:12px; line-height:1.45;">'+
-        '<div style="font-size:14px; font-weight:800;">最大NW '+score.edges+'線 ('+score.cards+'枚)</div>'+
-        '<div style="opacity:0.75; font-size:11px;">NW数 '+score.networkCount+' · 総接続 '+score.totalConnections+'</div>'+
+        '<div style="font-size:14px; font-weight:800;">'+escapeHtml(t('end.netMax', score.edges, score.cards))+'</div>'+
+        '<div style="opacity:0.75; font-size:11px;">'+escapeHtml(t('end.netMeta', score.networkCount, score.totalConnections))+'</div>'+
       '</div>';
     el.appendChild(r);
   });
@@ -7084,7 +7939,7 @@ function startGame() {
 
 function startOnlineGame() {
   if (Net.mode !== 'online-host') return;
-  if (Net.hostPlayers.length < 2) { showOnlineMsg('開始不可','参加者が足りません'); return; }
+  if (Net.hostPlayers.length < 2) { showOnlineMsg(t('net.start.title'), t('net.start.notEnough')); return; }
   // 旧ゲームの timer/pending/overlay/heartbeat/同期状態を完全破棄してから新ゲーム生成
   stopFullStateHeartbeat();
   stopIcePingTimer(); // ★ Fix9: ゲーム開始時にも一旦停止 (1秒後に再開)
@@ -7154,7 +8009,7 @@ function renderLobby() {
   $('lobby-keyword').textContent = Net.roomCode || '(?)';
   const stEl = $('lobby-status');
   let cls = 'warn', txt = Net.status;
-  if (Net.status === 'hosting' || Net.status === 'lobby') { cls = 'ok'; txt = Net.mode === 'online-host' ? '待機中(ホスト)' : 'ロビー'; }
+  if (Net.status === 'hosting' || Net.status === 'lobby') { cls = 'ok'; txt = Net.mode === 'online-host' ? t('net.lobby.hostWaiting') : t('net.lobby.lobby'); }
   else if (Net.status.startsWith('error') || Net.status === 'disconnected') { cls = 'bad'; txt = Net.status; }
   else if (Net.status === 'connecting' || Net.status === 'handshake' || Net.status === 'creating') { cls = 'warn'; }
   stEl.className = 'net-status ' + cls;
@@ -7184,8 +8039,8 @@ function renderLobby() {
     row.innerHTML =
       '<span class="color-dot" style="background:'+PLAYER_COLORS[p.idx].bg+'"></span>'+
       '<span style="font-weight:700">'+PLAYER_COLORS[p.idx].badge+' '+escapeHtml(p.name)+'</span>'+
-      '<span class="'+rateCls+'" title="レート (直近100戦)">R'+r+'</span>'+
-      (isMe ? puzzleRankBadgeHtml() : (typeof p.puzzleRank === 'string' ? '<span class="puzzle-rank-badge rank-'+p.puzzleRank+'" title="パズルスコアモード ランク">'+p.puzzleRank+'</span>' : ''))+
+      '<span class="'+rateCls+'" title="'+escapeHtml(t('score.rateTitle'))+'">R'+r+'</span>'+
+      (isMe ? puzzleRankBadgeHtml() : (typeof p.puzzleRank === 'string' ? '<span class="puzzle-rank-badge rank-'+p.puzzleRank+'" title="'+escapeHtml(t('score.puzzleRankTitle'))+'">'+p.puzzleRank+'</span>' : ''))+
       (p.isHost ? '<span class="badge-host">HOST</span>' : '');
     lp.appendChild(row);
   });
@@ -7204,37 +8059,37 @@ async function renderRoomBrowser() {
   if (!el) return;
   if (_roomBrowserBusy) return;
   _roomBrowserBusy = true;
-  el.textContent = '取得中…';
+  el.textContent = t('net.room.loading');
   const { rooms, status } = await fetchLobbyRooms();
   _roomBrowserBusy = false;
   if (status !== 'ok') {
     const msg = {
-      'unconfigured': 'Worker URL 未設定 (LOBBY_URL がプレースホルダのまま)',
-      'fetch-error':  'Worker への接続に失敗 (Worker down / CORS / DNS / ネットワーク)',
-      'http-error':   'Worker からエラー応答 (詳細は DevTools コンソール)',
-      'bad-json':     'Worker のレスポンス形式が不正 (詳細は DevTools コンソール)',
-    }[status] || ('取得失敗: ' + status);
+      'unconfigured': t('net.room.err.unconfigured'),
+      'fetch-error':  t('net.room.err.fetch'),
+      'http-error':   t('net.room.err.http'),
+      'bad-json':     t('net.room.err.badJson'),
+    }[status] || t('net.room.err.generic', status);
     el.textContent = msg;
     return;
   }
   if (rooms.length === 0) {
-    el.textContent = '公開ルームはありません (誰もホスト化していない / heartbeat 反映待ち)';
+    el.textContent = t('net.room.empty');
     return;
   }
   el.innerHTML = '';
   rooms.forEach(r => {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:6px; padding:6px 8px; margin-bottom:4px; background:var(--panel-2); border-radius:4px;';
-    const ver = (r.version === VERSION) ? '' : ' <span style="color:#c66;">(版違い)</span>';
-    const startedTxt = (r.started === true) ? ' <span style="color:#c66;">[試合中]</span>' : '';
+    const ver = (r.version === VERSION) ? '' : t('net.room.verMismatch');
+    const startedTxt = (r.started === true) ? t('net.room.inGame') : '';
     const full = (r.players >= r.maxPlayers);
     const code = (typeof r.roomCode === 'string' && r.roomCode) ? r.roomCode : '(no-code)';
     row.innerHTML =
       '<span style="font-family:monospace; flex:1; overflow:hidden; text-overflow:ellipsis;">'+escapeHtml(code)+ver+startedTxt+'</span>'+
       '<span style="font-variant-numeric:tabular-nums; min-width:48px; text-align:right;">'+r.players+'/'+r.maxPlayers+'</span>'+
-      '<span style="font-size:10px; color:var(--text-dim); min-width:44px; text-align:right;">観 '+(r.spectators||0)+'</span>';
+      '<span style="font-size:10px; color:var(--text-dim); min-width:44px; text-align:right;">'+escapeHtml(t('net.room.spec', (r.spectators||0)))+'</span>';
     const btn = document.createElement('button');
-    btn.textContent = '参加';
+    btn.textContent = t('net.room.join');
     btn.style.cssText = 'font-size:11px; padding:3px 10px;';
     btn.disabled = (r.version !== VERSION) || (r.started === true) || full;
     btn.addEventListener('click', () => {
@@ -7246,6 +8101,30 @@ async function renderRoomBrowser() {
     row.appendChild(btn);
     el.appendChild(row);
   });
+}
+
+// ===== 公開ルーム一覧の自動更新 =====
+// 旧来は「更新」ボタンを押さないと一覧が古いまま = ボタンが実質意味なし。
+// ランダムタブを開いている間は数秒ごとに自動取得し、常に最新の部屋を表示する。
+// (手動「更新」ボタンは即時取得のショートカットとして残す)
+let _roomBrowserTimer = null;
+const ROOM_BROWSER_POLL_MS = 4000;
+function _autoPaneVisible() {
+  const pane = document.getElementById('online-pane-auto');
+  const screen = document.getElementById('screen-online');
+  return !!(pane && screen && !pane.classList.contains('hidden') && !screen.classList.contains('hidden'));
+}
+function startRoomBrowserPolling() {
+  stopRoomBrowserPolling();
+  renderRoomBrowser();   // 即時1回
+  _roomBrowserTimer = setInterval(() => {
+    // 自動パネルが見えていて、まだ接続(ロビー/対戦)に入っていないときだけ更新
+    if (!_autoPaneVisible() || (Net.mode && Net.mode !== 'none')) { stopRoomBrowserPolling(); return; }
+    renderRoomBrowser();
+  }, ROOM_BROWSER_POLL_MS);
+}
+function stopRoomBrowserPolling() {
+  if (_roomBrowserTimer) { clearInterval(_roomBrowserTimer); _roomBrowserTimer = null; }
 }
 
 // ============================== REPLAY ==============================
@@ -7320,8 +8199,8 @@ function shareReplayUrl() {
   u.searchParams.set('replay', enc);
   u.searchParams.delete('t');
   const url = u.toString();
-  try { navigator.clipboard.writeText(url); showOnlineMsg('棋譜URL', 'クリップボードへコピーしました。<br><small style="word-break:break-all;">'+escapeHtml(url.length>200 ? url.slice(0,200)+'…' : url)+'</small>'); }
-  catch(e) { showOnlineMsg('棋譜URL', '<input type="text" style="width:100%;" value="'+escapeHtml(url)+'" readonly>'); }
+  try { navigator.clipboard.writeText(url); showOnlineMsg(t('replay.url.title'), t('replay.url.copied', escapeHtml(url.length>200 ? url.slice(0,200)+'…' : url))); }
+  catch(e) { showOnlineMsg(t('replay.url.title'), '<input type="text" style="width:100%;" value="'+escapeHtml(url)+'" readonly>'); }
 }
 
 // ===== Replay player =====
@@ -7336,7 +8215,7 @@ const Replay = {
 };
 function loadReplay(data) {
   if (!data || !data.actions || !Array.isArray(data.actions)) {
-    showOnlineMsg('リプレイ', '不正なデータ形式');
+    showOnlineMsg(t('replay.title'), t('replay.err.badData'));
     return;
   }
   Replay.data = data;
@@ -7345,7 +8224,7 @@ function loadReplay(data) {
   Replay.speed = 1;
   // 初期状態を再構築
   const players = (data.settings.playerNames || []).map((n, i) => ({name:n, isCPU:false, cpuLevel:2}));
-  if (!players.length) { showOnlineMsg('リプレイ', 'プレイヤー情報なし'); return; }
+  if (!players.length) { showOnlineMsg(t('replay.title'), t('replay.err.noPlayers')); return; }
   Net.mode = 'none';
   // 修正3/4: constで宣言してグローバルoptsを汚染しない
   const replayInitOpts = {players, seed: data.seed, turnTime: data.settings.turnTime || 0, mode:'replay'};
@@ -7419,7 +8298,7 @@ function openReplayFile() {
       try {
         const data = JSON.parse(reader.result);
         loadReplay(data);
-      } catch(err) { showOnlineMsg('リプレイ', '読み込みエラー: '+err.message); }
+      } catch(err) { showOnlineMsg(t('replay.title'), t('replay.err.loadFail', err.message)); }
     };
     reader.readAsText(file);
   };
@@ -7547,7 +8426,7 @@ function replayStep(n) {
     const ok = applyReplayAction(act);
     if (ok === false) {
       replayPause();
-      showOnlineMsg('リプレイエラー', 'アクション ' + Replay.cursor + ' の再生に失敗しました。データが破損している可能性があります。');
+      showOnlineMsg(t('replay.err.title'), t('replay.err.actionFail', Replay.cursor));
       renderAll();
       updateReplayControls();
       return;
@@ -7721,7 +8600,7 @@ function updateReplayControls() {
   const pp = $('replay-play');
   if (ts) ts.textContent = Replay.cursor;
   if (tt) tt.textContent = Replay.data.actions.length;
-  if (pp) pp.textContent = Replay.playing ? '⏸ 停止' : '▶ 再生';
+  if (pp) pp.textContent = Replay.playing ? t('replay.pause') : t('replay.play');
   for (const s of [1,2,4]) {
     const b = $('replay-speed-'+s);
     if (b) b.classList.toggle('active', Replay.speed === s);
@@ -7746,15 +8625,16 @@ function openSpectatorJoin() {
   saveSettings();
   const keyword = $('online-join-keyword').value.trim();
   const name = $('online-join-name').value.trim();
-  if (!keyword) { showOnlineMsg('エラー', '合言葉を入力してください'); return; }
+  if (!keyword) { showOnlineMsg(t('net.err.title'), t('net.err.noKeyword')); return; }
   Net.joinAsSpectator = true;
-  netJoin({keyword, name: name + ' (観戦)'});
+  netJoin({keyword, name: name + t('net.spectatorSuffix')});
   renderLobby();
 }
 
 // ============================== ACTION DISPATCH ==============================
-function handleAction(a) {
+function handleAction(a, el) {
   switch (a) {
+    case 'emoji': if (el) sendEmoji(el.dataset.emoji); break;
     case 'new-game': renderSetup(); break;
     case 'puzzle-start': Puzzle.open(); break;
     case 'puzzle-start-now': Puzzle.start(); break;
@@ -7765,6 +8645,7 @@ function handleAction(a) {
     case 'close-puzzle-rules': $('overlay-puzzle-rules').classList.add('hidden'); break;
     case 'rules': $('overlay-rules').classList.remove('hidden'); break;
     case 'online':
+      stopRoomBrowserPolling();
       try { localStorage.removeItem('limiles_reconnect'); } catch(e) {}
       try { if ('caches' in window) caches.keys().then(ks => ks.forEach(k => caches.delete(k))); } catch(e) {}
       showScreen('online');
@@ -7778,6 +8659,7 @@ function handleAction(a) {
       updateMyRatingDisplay();
       break;
     case 'online-tab-host':
+      stopRoomBrowserPolling();
       $('online-pane-host').classList.remove('hidden');
       $('online-pane-join').classList.add('hidden');
       { const p = $('online-pane-auto'); if (p) p.classList.add('hidden'); }
@@ -7786,6 +8668,7 @@ function handleAction(a) {
       { const b = $('tab-auto-btn'); if (b) b.classList.remove('active'); }
       break;
     case 'online-tab-join':
+      stopRoomBrowserPolling();
       $('online-pane-host').classList.add('hidden');
       $('online-pane-join').classList.remove('hidden');
       { const p = $('online-pane-auto'); if (p) p.classList.add('hidden'); }
@@ -7802,8 +8685,8 @@ function handleAction(a) {
       { const b = $('tab-auto-btn'); if (b) b.classList.add('active'); }
       updateMyRatingDisplay();
       updateReconnectBtn(); // ★ 戻れる対戦があれば「再接続」ボタンを活性化
-      // Auto タブを開いたら room browser を自動更新 (Worker /rooms 取得)
-      renderRoomBrowser();
+      // Auto タブを開いている間は room browser を自動更新し続ける (Worker /rooms 取得)
+      startRoomBrowserPolling();
       break;
     case 'online-rooms-refresh': renderRoomBrowser(); break;
     case 'online-auto-start': {
@@ -7843,6 +8726,7 @@ function handleAction(a) {
     case 'close-om': $('overlay-online-msg').classList.add('hidden'); break;
     case 'random-seed': $('setup-seed').value = Math.floor(Math.random() * 1000000); break;
     case 'back-to-title':
+      stopRoomBrowserPolling();
       stopTurnTimer();
       // ★ AutoMatch 探索中の場合も忘れず停止
       if (AutoMatch && (AutoMatch.active || AutoMatch.state === 'hosting')) cancelAutoMatch();
@@ -7866,7 +8750,7 @@ function handleAction(a) {
         startOnlineGame();
       } else if (Net.mode === 'online-client' || Net.mode === 'spectator') {
         // client はリマッチ開始権なし — ホストが「もう一度」を押すまで待機
-        showOnlineMsg('再戦待機', 'ホストが「もう一度」を押すと再戦が開始されます');
+        showOnlineMsg(t('net.rematch.waitTitle'), t('net.rematch.waitBody'));
       } else {
         // ローカル対戦: 従来通り
         startGame();
@@ -7895,6 +8779,9 @@ function handleAction(a) {
     case 'replay-exit': exitReplay(); break;
     case 'share-replay-url': shareReplayUrl(); break;
     case 'join-spectator': openSpectatorJoin(); break;
+    case 'set-lang-en': setLang('en'); break;
+    case 'set-lang-ja': setLang('ja'); break;
+    case 'set-lang-zh': setLang('zh'); break;
   }
 }
 
@@ -8011,7 +8898,7 @@ if ('serviceWorker' in navigator) {
 window.addEventListener('load', () => {
   document.body.addEventListener('click', e => {
     const t = e.target.closest('[data-action]');
-    if (t) handleAction(t.dataset.action);
+    if (t) handleAction(t.dataset.action, t);
   });
   $('setup-num-players').addEventListener('change', () => {
     saveSettings();
@@ -8064,6 +8951,7 @@ window.addEventListener('load', () => {
     }, 300);
   });
   loadSettings();
+  applyI18n();   // ★ 多言語: ブラウザ言語 or 保存済み選択を全 data-i18n 要素へ適用
   showScreen('title');
   // ?replay= が付いていれば自動でリプレイ再生
   try {
@@ -8077,7 +8965,7 @@ window.addEventListener('load', () => {
         window.history.replaceState({}, '', u.toString());
         loadReplay(data);
       } else {
-        showOnlineMsg('リプレイ', 'URLの棋譜データを解読できませんでした');
+        showOnlineMsg(t('replay.title'), t('replay.err.urlDecode'));
       }
     }
   } catch(e) {}
@@ -8507,7 +9395,7 @@ const Puzzle = (() => {
     const totalPts = roles.reduce((s, r) => s + r.pts, 0);
     st.score += totalPts;
     for (const r of roles) {
-      st.log.push({name: r.role.name, pts: r.pts, cat: r.role.cat, ts: Date.now()});
+      st.log.push({roleKey: r.role.key, name: r.role.name, pts: r.pts, cat: r.role.cat, ts: Date.now()});
     }
     // 数字系役が成立した回数分だけ乗数を1.10倍
     for (let i = 0; i < numRoleCountThisTurn; i++) {
@@ -8533,7 +9421,7 @@ const Puzzle = (() => {
   function autoSkip() {
     if (!st || st.ended) return;
     // スコアアタックモード: 合法手なし → 山札交換なし、即終了
-    showMsg('合法手なし — ゲーム終了');
+    showMsg(t('puzzle.gameOver'));
     setTimeout(endPuzzle, 800);
   }
 
@@ -8558,12 +9446,12 @@ const Puzzle = (() => {
     $('puzzle-end-score').textContent = st.score.toLocaleString();
     $('puzzle-end-detail').innerHTML =
       (isNewBest ? '<div style="color:var(--warn);font-weight:900;font-size:16px;margin-bottom:6px;">🏆 NEW BEST!</div>' : '') +
-      'ベストスコア: <b style="color:var(--warn);">' + best.toLocaleString() + '</b><br>' +
-      '配置数: <b>'+st.placements+'</b> 枚<br>' +
-      '残山札: <b>'+st.deck.length+'</b> 枚<br>' +
-      '残手札: <b>'+st.hand.length+'</b> 枚<br>' +
-      '役発動: <b>'+st.log.length+'</b> 回<br>' +
-      '🔢 数字系倍率: <b style="color:var(--warn);">x'+st.numMult.toFixed(2)+'</b> ('+Math.round((st.numMult-1)*100)+'%アップ)';
+      t('puzzle.end.best', best.toLocaleString()) +
+      t('puzzle.end.placements', st.placements) +
+      t('puzzle.end.deckLeft', st.deck.length) +
+      t('puzzle.end.handLeft', st.hand.length) +
+      t('puzzle.end.roleCount', st.log.length) +
+      t('puzzle.end.numMult', st.numMult.toFixed(2), Math.round((st.numMult-1)*100));
     showScreen('puzzle-end');
   }
 
@@ -8660,7 +9548,7 @@ const Puzzle = (() => {
     const el = $('puzzle-log');
     el.innerHTML = '';
     if (!st.log.length) {
-      el.innerHTML = '<div class="puzzle-log-empty">発動した役がここに表示されます</div>';
+      el.innerHTML = '<div class="puzzle-log-empty">'+escapeHtml(t('puzzle.logEmpty'))+'</div>';
       return;
     }
     const recent = st.log.slice(-14).reverse();
@@ -8669,7 +9557,8 @@ const Puzzle = (() => {
       const row = document.createElement('div');
       row.className = 'puzzle-log-entry' + (i===0 ? ' recent' : '');
       row.style.setProperty('--role-cat-color', CAT_COLOR[e.cat] || '#888');
-      row.innerHTML = '<span class="pl-name">'+escapeHtml(e.name)+'</span>'+
+      const eName = e.roleKey ? t('puzzle.role.'+e.roleKey) : (e.name || '');
+      row.innerHTML = '<span class="pl-name">'+escapeHtml(eName)+'</span>'+
                       '<span class="pl-pts">+'+e.pts+'</span>';
       el.appendChild(row);
     }
@@ -8678,12 +9567,12 @@ const Puzzle = (() => {
   function onCellTap(x, y) {
     if (st.ended) return;
     if (st.selected == null) {
-      showMsg('まず手札のカードを選択してください');
+      showMsg(t('puzzle.selectFirst'));
       return;
     }
     const card = st.hand.find(c => c.id === st.selected);
     if (!isLegalPlacement(x, y, card)) {
-      showMsg('そのマスには配置できません（同スート・同数字・±1ランクのカードに隣接する必要があります）');
+      showMsg(t('puzzle.cantPlace'));
       return;
     }
     showMsg('');
@@ -8751,7 +9640,7 @@ const Puzzle = (() => {
           pop.style.setProperty('--role-color', color);
           pop.style.left = (sx/n) + 'px';
           pop.style.top  = (sy/n) + 'px';
-          pop.innerHTML = '<span class="role-name">'+escapeHtml(r.role.name)+'</span><span class="role-pts">+'+r.pts+'</span>';
+          pop.innerHTML = '<span class="role-name">'+escapeHtml(t('puzzle.role.'+r.role.key))+'</span><span class="role-pts">+'+r.pts+'</span>';
           fx.appendChild(pop);
           setTimeout(() => pop.remove(), 1050);
         }
@@ -8814,7 +9703,7 @@ const Puzzle = (() => {
       if (block && numEl && rankEl) {
         if (best > 0) {
           numEl.textContent = best.toLocaleString();
-          rankEl.textContent = 'RANK: ' + rankFor(best);
+          rankEl.textContent = t('puzzle.rank', rankFor(best));
           block.style.display = '';
         } else {
           block.style.display = 'none';
@@ -8832,7 +9721,7 @@ const Puzzle = (() => {
       render();
       attachResizeObs();
       requestAnimationFrame(() => { fit(); });
-      showMsg('カードを選んで盤面の青枠マスをタップ');
+      showMsg(t('puzzle.startHint'));
     },
     restart() {
       if (!st) { this.open(); return; }
@@ -8840,7 +9729,7 @@ const Puzzle = (() => {
       showScreen('puzzle');
       render();
       requestAnimationFrame(() => { fit(); });
-      showMsg('カードを選んで盤面の青枠マスをタップ');
+      showMsg(t('puzzle.startHint'));
     },
     quit() {
       st = null;
