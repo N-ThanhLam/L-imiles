@@ -913,7 +913,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
         <div class="setup-row" style="background:var(--panel-2); border-radius:6px; padding:6px 10px; margin-bottom:12px;">
           <label style="min-width:auto;">あなたのレート</label>
           <span id="my-rating-host" class="rate-badge" style="font-size:13px; padding:3px 10px;">R0</span>
-          <span style="font-size:11px; color:var(--text-dim);">直近100戦 最大200</span>
+          <span style="font-size:11px; color:var(--text-dim);">直近100戦からカウント</span>
         </div>
         <div class="setup-row">
           <label>合言葉</label>
@@ -950,7 +950,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
         <div class="setup-row" style="background:var(--panel-2); border-radius:6px; padding:6px 10px; margin-bottom:12px;">
           <label style="min-width:auto;">あなたのレート</label>
           <span id="my-rating-join" class="rate-badge" style="font-size:13px; padding:3px 10px;">R0</span>
-          <span style="font-size:11px; color:var(--text-dim);">直近100戦 最大200</span>
+          <span style="font-size:11px; color:var(--text-dim);">直近100戦からカウント</span>
         </div>
         <div class="setup-row">
           <label>合言葉</label>
@@ -971,7 +971,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
         <div class="setup-row" style="background:var(--panel-2); border-radius:6px; padding:6px 10px; margin-bottom:12px;">
           <label style="min-width:auto;">あなたのレート</label>
           <span id="my-rating-auto" class="rate-badge" style="font-size:13px; padding:3px 10px;">R0</span>
-          <span style="font-size:11px; color:var(--text-dim);">合言葉不要・自動マッチ</span>
+          <span style="font-size:11px; color:var(--text-dim);">サーバーなしなのでおまけ機能です</span>
         </div>
         <div class="setup-row">
           <label>あなたの名前</label>
@@ -1011,7 +1011,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
         </div>
         <div style="margin-top:14px; border-top:1px solid var(--panel-2); padding-top:10px;">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-            <strong style="font-size:13px;">公開ルーム一覧 (最大10)</strong>
+            <strong style="font-size:13px;">公開ルーム一覧 (最大50)</strong>
             <button data-action="online-rooms-refresh" style="font-size:11px; padding:3px 10px;">更新</button>
           </div>
           <div id="online-room-list" style="font-size:12px; color:var(--text-dim);">未取得</div>
@@ -1172,7 +1172,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
       <h2>パズルスコア モード</h2>
       <div style="color:var(--text-dim); font-size:13px; line-height:1.6; margin-bottom:16px;">
         山札が尽きるまでカードを配置し、役を作って高スコアを目指す。<br>
-        配置カード 3枚 / 手持ち 3枚
+        配置カード 2枚 / 手持ち 3枚
       </div>
       <div id="puzzle-setup-hiscore-block" style="margin-bottom:16px; display:none;">
         <div style="font-size:11px; color:var(--text-dim); letter-spacing:0.1em; font-weight:700;">BEST SCORE</div>
@@ -1212,7 +1212,7 @@ html.lowspec .result-row.winner-anim { animation: none; }
       <div style="font-size:12px; line-height:1.7;">
         <h3 style="color:#ff9933;">数字系（同じ数字が隣接）</h3>
         <p>ペアリンク（同2枚）+50 / トリプルノード（同3枚NW）+150 / フォースポット（同4枚NW）+400</p>
-        <h3 style="color:#ffd34d;">連番系（数字±1のパス・部分列も全カウント）</h3>
+        <h3 style="color:#ffd34d;">連番系（数字±1のパス）</h3>
         <p>ランチェーン（3連）+80 / ストリート（5連）+250 / ロングロード（7連）+600 / パーフェクトライン（A→K 全13連）+5000</p>
         <h3 style="color:#7ec8ff;">スート系（同スートの繋がり）</h3>
         <p>カラーウェブ（4枚）+200 / スートストーム（7枚）+500 / モノクローム（10枚）+1500</p>
@@ -2124,7 +2124,7 @@ function placeCard(card, x, y, isJammer) {
   // 演出用: 配置前の接続数 + 最大NW線数を記録
   const isLive = state.mode !== 'sim';
   const connsBefore = isLive ? state.players.map(p => computeConnections(state, p.idx).length) : null;
-  const myMaxBefore = isLive ? computeLargestNetworkScore(state, playerIdx).edges : 0;
+  const myMaxBefore = (isLive || state.mode === 'replay') ? computeLargestNetworkScore(state, playerIdx).edges : 0;
 
   card.owner = playerIdx;
   card.isJammer = !!isJammer;
@@ -2149,19 +2149,23 @@ function placeCard(card, x, y, isJammer) {
   recordReplayAction({type:isJammer?'jammer':'place', player:playerIdx, card:{suit:card.suit, rank:card.rank, id:card.id}, x, y});
   logEntry({type:'place', player:playerIdx, card:cardLogId(card), x, y, isJammer:!!isJammer});
 
-  // 演出 & 自己ベスト最大NW更新検出
-  if (isLive) {
-    const connsAfter = state.players.map(p => computeConnections(state, p.idx).length);
-    const newConnTotal = connsAfter.reduce((s, v, i) => s + (v - connsBefore[i]), 0);
+  // 自己ベスト最大NW更新検出 (リプレイ含む全モードで集計)
+  if (player.stats) {
     const myMaxAfter = computeLargestNetworkScore(state, playerIdx).edges;
     if (myMaxAfter > myMaxBefore) {
       player.stats.maxNetUpdates++;
       if (myMaxAfter > (player.stats.bestEdges || 0)) player.stats.bestEdges = myMaxAfter;
-      const delta = myMaxAfter - myMaxBefore;
-      // 非同期で「NETWORK EXPANDED」演出
-      requestAnimationFrame(() => triggerNetworkExpanded(playerIdx, delta, myMaxAfter));
+      // NETWORK EXPANDED 演出 (liveのみ)
+      if (isLive) {
+        const delta = myMaxAfter - myMaxBefore;
+        requestAnimationFrame(() => triggerNetworkExpanded(playerIdx, delta, myMaxAfter));
+      }
     }
-    // 非同期で演出キック（renderAll後に要素が存在する）
+  }
+  // 配置エフェクト (liveのみ)
+  if (isLive) {
+    const connsAfter = state.players.map(p => computeConnections(state, p.idx).length);
+    const newConnTotal = connsAfter.reduce((s, v, i) => s + (v - connsBefore[i]), 0);
     requestAnimationFrame(() => triggerPlaceEffect(x, y, newConnTotal > 0));
   }
 }
@@ -2238,15 +2242,10 @@ function endRound() {
 
 function markActionUnable(playerIdx, opts) {
   const p = state.players[playerIdx];
-  // 降参時は手札を山札へ戻さない
   const surrender = opts && opts.surrender;
-  if (!surrender) {
-    for (const c of p.hand) state.deck.push(c);
-    p.hand = [];
-  } else {
-    p.surrendered = true;
-    // 手札はそのまま保持 (公開しないが state には残る)
-  }
+  for (const c of p.hand) state.deck.push(c);
+  p.hand = [];
+  if (surrender) p.surrendered = true;
   p.alive = false;
   p.exhausted = true;
   updatePublicDraw();
@@ -2254,7 +2253,7 @@ function markActionUnable(playerIdx, opts) {
   logEntry({type:'action-unable', player:playerIdx, surrender:!!surrender});
 }
 
-// 降参: 即座にexhausted。手札は山札へ戻さず保持。
+// 降参: 即座にexhausted。手札は山札へ返却。
 function surrenderPlayer(playerIdx) {
   if (!state || state.phase === 'end') return;
   const p = state.players[playerIdx];
@@ -4475,6 +4474,9 @@ function handleClientMessage(msg) {
       }
     }
     Net._lastStateVersion = incomingVer;
+    // diff 適用前の lastPlaced を記録 (クライアント側エフェクト発火用)
+    const _prevLastPlaced = state.lastPlaced ? {...state.lastPlaced} : null;
+    const _prevConnCounts = state.players.map(p => computeConnections(state, p.idx).length);
     // diff を適用
     applyStateDiff(msg);
     state.mode = 'online-client';
@@ -4528,6 +4530,18 @@ function handleClientMessage(msg) {
     }
     if (state.phase === 'end') { stopTurnTimer(); showResult(); return; }
     renderAll();
+    // クライアント側エフェクト: lastPlaced が新しくなった場合のみ発火
+    if (state.lastPlaced && (
+      !_prevLastPlaced ||
+      _prevLastPlaced.x !== state.lastPlaced.x ||
+      _prevLastPlaced.y !== state.lastPlaced.y ||
+      _prevLastPlaced.owner !== state.lastPlaced.owner
+    )) {
+      const _lp = state.lastPlaced;
+      const _connsAfter = state.players.map(p => computeConnections(state, p.idx).length);
+      const _newConn = _connsAfter.reduce((s, v, i) => s + (v - (_prevConnCounts[i] || 0)), 0) > 0;
+      requestAnimationFrame(() => triggerPlaceEffect(_lp.x, _lp.y, _newConn));
+    }
     maybeStartTimerForLocalTurn();
     renderSyncDebug();
   } else if (msg.type === 'action-ack') {
@@ -6398,6 +6412,8 @@ function updateActionButtons() {
     canSurrender = isMyTurn && state.players[localIdx].alive;
   }
   $('btn-surrender').classList.toggle('hidden', !canSurrender);
+  // 残り1人（自分のみ）なら「終局」、それ以外は「降参」
+  $('btn-surrender').textContent = aliveCount() <= 1 ? '終局' : '降参';
 
   let msg = '';
   if (!isMyTurn) {
@@ -6601,7 +6617,11 @@ function giveUpTurn() {
 function surrenderAction() {
   const localIdx = localPlayerIdx();
   if (localIdx < 0) return;
-  if (!confirm('本当に降参しますか?\n手札は保持されますが行動不能となります。')) return;
+  const isLast = aliveCount() <= 1;
+  const confirmMsg = isLast
+    ? '終局しますか?\nゲームを終了して結果を表示します。'
+    : '本当に降参しますか?\n手札は山札へ返却され行動不能となります。';
+  if (!confirm(confirmMsg)) return;
   stopTurnTimer();
   if (state.mode === 'online-client') {
     clientSendAction({type:'surrender'});
