@@ -74,6 +74,9 @@ self.addEventListener('fetch', event => {
   // HTTP(S) 以外は無視
   if (!event.request.url.startsWith('http')) return;
 
+  // Cache API は GET のみサポート。POST 等はそのまま素通し
+  if (event.request.method !== 'GET') return;
+
   const url = new URL(event.request.url);
 
   // ==========================================================
@@ -127,10 +130,11 @@ self.addEventListener('fetch', event => {
 
           .then(response => {
 
-            // 正常レスポンスだけ保存
+            // 正常レスポンスかつ GET のみ保存（POST 等は Cache API 非対応）
             if (
               response &&
-              response.status === 200
+              response.status === 200 &&
+              event.request.method === 'GET'
             ) {
 
               const clone = response.clone();
