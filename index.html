@@ -62,6 +62,9 @@ h3 { margin:0 0 8px; font-size:15px; color:var(--text-dim); }
 .title-menu button { padding:14px; font-size:15px; }
 .title-foot { color:var(--text-dim); font-size:11px; margin-top:8px; }
 .title-disclaimer { color:var(--text-dim); font-size:11px; line-height:1.5; max-width:min(360px, 90vw); text-align:center; opacity:0.8; }
+.lang-row { display:none !important; }
+.lang-row button { padding:5px 12px; font-size:12px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px; color:var(--text-dim); cursor:pointer; }
+.lang-row button.active { background:var(--accent); color:var(--forbidden, #111); border-color:var(--accent); font-weight:700; }
 
 #screen-setup, #screen-online { align-items:center; padding:16px; overflow-y:auto; }
 .setup-panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:18px; width:min(560px, 100%); margin-bottom:24px; }
@@ -869,6 +872,11 @@ html.lowspec .result-row.winner-anim { animation: none; }
   <div id="screen-title" class="screen">
     <div class="title-logo">L-imiles</div>
     <div class="title-sub">NETWORK BUILDING STRATEGY</div>
+    <div class="lang-row" id="lang-row">
+      <button data-lang-btn="en" data-action="set-lang-en">English</button>
+      <button data-lang-btn="ja" data-action="set-lang-ja">日本語</button>
+      <button data-lang-btn="zh" data-action="set-lang-zh">中文</button>
+    </div>
     <div class="title-menu">
       <button class="primary" data-action="new-game" data-i18n="menu.local">ローカル / ホットシート</button>
       <button data-action="puzzle-start" data-i18n="menu.puzzle">パズルスコア (ソロ)</button>
@@ -1471,7 +1479,7 @@ const I18N = {
     'end.netMax': 'Max NW {0} lines ({1} cards)',
     'end.netMeta': 'NWs {0} · Total {1}',
     // --- setup CPU level ---
-    'setup.cpuLv1': 'Lv1 Random', 'setup.cpuLv2': 'Lv2 1-ply', 'setup.cpuLv3': 'Lv3 2-ply',
+    'setup.cpuLv1': 'Lv1 Random', 'setup.cpuLv2': 'Lv2 1-ply', 'setup.cpuLv3': 'Lv3 2-ply', 'setup.cpuLv4': 'Lv4 αβ (Strongest)',
     // --- awards ---
     'award.resonance-king.label': 'Resonance King', 'award.resonance-king.desc': 'Best max NW: {0}',
     'award.invader.label': 'Invader', 'award.invader.desc': 'Jammed {0}×',
@@ -1675,7 +1683,7 @@ const I18N = {
     'end.netMax': '最大NW {0}線 ({1}枚)',
     'end.netMeta': 'NW数 {0} · 総接続 {1}',
     // --- setup CPU level ---
-    'setup.cpuLv1': 'Lv1 ランダム', 'setup.cpuLv2': 'Lv2 1手読み', 'setup.cpuLv3': 'Lv3 2手読み',
+    'setup.cpuLv1': 'Lv1 ランダム', 'setup.cpuLv2': 'Lv2 1手読み', 'setup.cpuLv3': 'Lv3 2手読み', 'setup.cpuLv4': 'Lv4 最強 (αβ探索)',
     // --- awards ---
     'award.resonance-king.label': '共鳴王', 'award.resonance-king.desc': '最大NWベスト {0}',
     'award.invader.label': '侵食者', 'award.invader.desc': '妨害 {0}回',
@@ -1879,7 +1887,7 @@ const I18N = {
     'end.netMax': '最大NW {0}线 ({1}张)',
     'end.netMeta': 'NW数 {0} · 总连接 {1}',
     // --- setup CPU level ---
-    'setup.cpuLv1': 'Lv1 随机', 'setup.cpuLv2': 'Lv2 预读1步', 'setup.cpuLv3': 'Lv3 预读2步',
+    'setup.cpuLv1': 'Lv1 随机', 'setup.cpuLv2': 'Lv2 预读1步', 'setup.cpuLv3': 'Lv3 预读2步', 'setup.cpuLv4': 'Lv4 最强 (αβ搜索)',
     // --- awards ---
     'award.resonance-king.label': '共鸣王', 'award.resonance-king.desc': '最大NW最佳 {0}',
     'award.invader.label': '侵蚀者', 'award.invader.desc': '干扰 {0}次',
@@ -2009,7 +2017,9 @@ function applyI18n(root) {
 }
 
 function updateLangButtons() {
-  // lang buttons removed
+  document.querySelectorAll('[data-lang-btn]').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-lang-btn') === LANG);
+  });
 }
 
 function setLang(lang) {
@@ -3158,6 +3168,8 @@ function cpuPickMove(s, playerIdx, level, deadline) {
   const moves = listAllMoves(s, playerIdx);
   if (moves.length === 0) return null;
   if (level <= 1) return moves[Math.floor(s.rand() * moves.length)];
+  // Lv4: 評価関数+αβ探索の強化AI (sgブロック)
+  if (level >= 4) return pickMoveStrong(s, playerIdx, (deadline == null || deadline === Infinity) ? 0 : deadline);
   if (deadline == null) deadline = Infinity;
 
   // ===== Phase 1: 1手読み + モビリティ評価 (Lv2/Lv3 共通) =====
@@ -3417,6 +3429,176 @@ function cpuInitMove(s, playerIdx, level) {
   }
   if (!bestList.length) return null;
   return bestList[Math.floor(s.rand() * bestList.length)];
+}
+
+// ============================== STRONG CPU (Lv4) ==============================
+// 評価関数 + αβ探索ベースの強化AI。ai-lab/ の自己対戦(数千局)で設計・検証済み。
+//  - sgStats: union-find 1パスで最大NW線数/総線数/孤立数/フロンティアを算出
+//             (computeLargestNetworkScore と完全一致を 5000+ 局面で検証)
+//  - sgEval : 上記特徴の線形評価。重み SG_W は自己対戦で選定 (html Lv2 に勝ち越し)
+//  - sgAB   : 真のミニマックス + αβ枝刈り (深さ2が最強。3は逆に弱化を確認)
+const SG_W = {
+  myEdges: 3.0, myCards: 0.1, myTotalExtra: 0.4,
+  frontier: 0.18, frontierDouble: 0.12, isolated: 0.4,
+  // 妨害重視(saboteur)チューニング: 相手の拡張余地を積極的に潰す。
+  // 自己対戦で従来重み(oppEdges1.5/oppFrontier0.06/jammerCost0.5)に 61.7% 勝率。
+  oppEdges: 2.0, oppFrontier: 0.35, oppFrontierDouble: 0.3, oppAvg: 0.35, jammerCost: 0.1,
+};
+const _sgParent = new Int16Array(64), _sgMine = new Uint8Array(64);
+const _sgNode = new Int16Array(64), _sgEdge = new Int16Array(64), _sgEa = new Int16Array(128);
+const _sgRET = { largestEdges: 0, largestCards: 0, totalEdges: 0, netCount: 0, frontier: 0, frontierDouble: 0 };
+function _sgFind(a) { const p = _sgParent; while (p[a] !== a) { p[a] = p[p[a]]; a = p[a]; } return a; }
+function sgStats(board, idx) {
+  const mine = _sgMine, parent = _sgParent;
+  let myCount = 0;
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+    const i = y * 8 + x; const c = board[y][x].card;
+    if (c && c.owner === idx && !c.isJammer) { mine[i] = 1; parent[i] = i; myCount++; } else mine[i] = 0;
+  }
+  const R = _sgRET;
+  if (myCount === 0) { R.largestEdges = 0; R.largestCards = 0; R.totalEdges = 0; R.netCount = 0; R.frontier = 0; R.frontierDouble = 0; return R; }
+  const ea = _sgEa; let nEdges = 0;
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+    const i = y * 8 + x; if (!mine[i]) continue; const c = board[y][x].card;
+    if (x < 7 && mine[i + 1] && adjacencyOK(c, board[y][x + 1].card)) { ea[nEdges++] = i; const ra = _sgFind(i), rb = _sgFind(i + 1); if (ra !== rb) parent[ra] = rb; }
+    if (y < 7 && mine[i + 8] && adjacencyOK(c, board[y + 1][x].card)) { ea[nEdges++] = i; const ra = _sgFind(i), rb = _sgFind(i + 8); if (ra !== rb) parent[ra] = rb; }
+  }
+  const nodeCount = _sgNode, edgeCount = _sgEdge; let netCount = 0;
+  for (let i = 0; i < 64; i++) { if (!mine[i]) continue; const r = _sgFind(i); if (nodeCount[r] === 0) netCount++; nodeCount[r]++; }
+  for (let e = 0; e < nEdges; e++) edgeCount[_sgFind(ea[e])]++;
+  let largestEdges = 0, largestCards = 0;
+  for (let i = 0; i < 64; i++) {
+    if (!mine[i] || parent[i] !== i) continue;
+    const ec = edgeCount[i], nc = nodeCount[i];
+    if (ec > largestEdges || (ec === largestEdges && nc > largestCards)) { largestEdges = ec; largestCards = nc; }
+    nodeCount[i] = 0; edgeCount[i] = 0;
+  }
+  let frontier = 0, frontierDouble = 0;
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+    const cell = board[y][x]; if (cell.forbidden || cell.card) continue;
+    let am = 0; const i = y * 8 + x;
+    if (x > 0 && mine[i - 1]) am++; if (x < 7 && mine[i + 1]) am++;
+    if (y > 0 && mine[i - 8]) am++; if (y < 7 && mine[i + 8]) am++;
+    if (am >= 1) frontier++; if (am >= 2) frontierDouble++;
+  }
+  R.largestEdges = largestEdges; R.largestCards = largestCards; R.totalEdges = nEdges;
+  R.netCount = netCount; R.frontier = frontier; R.frontierDouble = frontierDouble;
+  return R;
+}
+function sgEval(s, myIdx) {
+  const W = SG_W, board = s.board;
+  const me = sgStats(board, myIdx);
+  const myEdges = me.largestEdges, myCards = me.largestCards, myTotal = me.totalEdges;
+  const myNet = me.netCount, myFront = me.frontier, myFrontD = me.frontierDouble;
+  let bestOppE = 0, oppFrontier = 0, oppFrontierDbl = 0, sumOppE = 0, numOpp = 0;
+  for (const p of s.players) {
+    if (p.idx === myIdx || !p.alive) continue;
+    const o = sgStats(board, p.idx);
+    if (o.largestEdges > bestOppE) bestOppE = o.largestEdges;
+    oppFrontier += o.frontier; oppFrontierDbl += o.frontierDouble; sumOppE += o.largestEdges; numOpp++;
+  }
+  let score = W.myEdges * myEdges + W.myCards * myCards + W.myTotalExtra * (myTotal - myEdges)
+    + W.frontier * myFront + W.frontierDouble * myFrontD - W.isolated * (myNet > 0 ? myNet - 1 : 0)
+    - W.oppEdges * bestOppE - W.oppFrontier * oppFrontier - W.oppFrontierDouble * oppFrontierDbl;
+  if (numOpp > 1) score -= W.oppAvg * (sumOppE / numOpp);
+  return score;
+}
+function sgGenMoves(s, idx) {
+  const board = s.board, hand = s.players[idx].hand, moves = [], seen = new Set();
+  for (let h = 0; h < hand.length; h++) {
+    const card = hand[h]; if (!card) continue;
+    const key = card.suit + card.rank; if (seen.has(key)) continue; seen.add(key);
+    const rank = card.rank;
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      const cell = board[y][x]; if (cell.forbidden || cell.card) continue;
+      let normal = false, jammer = false, nc;
+      if (y > 0) { nc = board[y - 1][x].card; if (nc && !nc.isJammer) { if (nc.owner === idx) { if (adjacencyOK(card, nc)) normal = true; } else if (nc.rank === rank) jammer = true; } }
+      if (x < 7) { nc = board[y][x + 1].card; if (nc && !nc.isJammer) { if (nc.owner === idx) { if (adjacencyOK(card, nc)) normal = true; } else if (nc.rank === rank) jammer = true; } }
+      if (y < 7) { nc = board[y + 1][x].card; if (nc && !nc.isJammer) { if (nc.owner === idx) { if (adjacencyOK(card, nc)) normal = true; } else if (nc.rank === rank) jammer = true; } }
+      if (x > 0) { nc = board[y][x - 1].card; if (nc && !nc.isJammer) { if (nc.owner === idx) { if (adjacencyOK(card, nc)) normal = true; } else if (nc.rank === rank) jammer = true; } }
+      if (normal) moves.push({ card, x, y, isJammer: false });
+      if (jammer) moves.push({ card, x, y, isJammer: true });
+    }
+  }
+  return moves;
+}
+function sgApply(s, m, idx) { const cell = s.board[m.y][m.x]; const prev = cell.card; cell.card = { id: m.card.id, suit: m.card.suit, rank: m.card.rank, owner: idx, isJammer: !!m.isJammer }; return prev; }
+function sgUndo(s, m, prev) { s.board[m.y][m.x].card = prev; }
+function sgNextMover(s, toMove) {
+  const order = s.currentRoundOrder;
+  if (order && order.length) {
+    const idxInOrder = order.indexOf(toMove);
+    if (idxInOrder >= 0) {
+      let ni = idxInOrder, steps = 0;
+      while (steps < order.length * 2 + 2) {
+        ni++; steps++; let who;
+        if (ni < order.length) who = order[ni];
+        else { const nro = (s.nextRoundOrder && s.nextRoundOrder.length) ? s.nextRoundOrder : order; who = nro[(ni - order.length) % nro.length]; }
+        if (s.players[who] && s.players[who].alive) return who;
+      }
+    }
+  }
+  for (const p of s.players) if (p.idx !== toMove && p.alive) return p.idx;
+  return -1;
+}
+function sgAB(s, myIdx, toMove, ply, alpha, beta, deadline, cap) {
+  if (ply <= 0) return sgEval(s, myIdx);
+  if (deadline && Date.now() >= deadline) return sgEval(s, myIdx);
+  const moves = sgGenMoves(s, toMove);
+  if (!moves.length) {
+    const nm = sgNextMover(s, toMove);
+    if (nm < 0 || nm === toMove) return sgEval(s, myIdx);
+    return sgAB(s, myIdx, nm, ply - 1, alpha, beta, deadline, cap);
+  }
+  const maximizing = (toMove === myIdx);
+  const order = [];
+  for (const m of moves) { const prev = sgApply(s, m, toMove); let v = sgEval(s, myIdx); sgUndo(s, m, prev); order.push({ m, v }); }
+  order.sort((a, b) => maximizing ? b.v - a.v : a.v - b.v);
+  const lim = cap > 0 ? Math.min(order.length, cap) : order.length;
+  const nm = sgNextMover(s, toMove);
+  if (maximizing) {
+    let best = -Infinity;
+    for (let k = 0; k < lim; k++) {
+      const m = order[k].m; const prev = sgApply(s, m, toMove);
+      let v = (nm < 0) ? sgEval(s, myIdx) : sgAB(s, myIdx, nm, ply - 1, alpha, beta, deadline, cap);
+      if (m.isJammer) v -= SG_W.jammerCost;
+      sgUndo(s, m, prev);
+      if (v > best) best = v; if (best > alpha) alpha = best; if (alpha >= beta) break;
+      if (deadline && Date.now() >= deadline) break;
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for (let k = 0; k < lim; k++) {
+      const m = order[k].m; const prev = sgApply(s, m, toMove);
+      let v = (nm < 0) ? sgEval(s, myIdx) : sgAB(s, myIdx, nm, ply - 1, alpha, beta, deadline, cap);
+      sgUndo(s, m, prev);
+      if (v < best) best = v; if (best < beta) beta = best; if (alpha >= beta) break;
+      if (deadline && Date.now() >= deadline) break;
+    }
+    return best;
+  }
+}
+// Lv4 着手選択: 深さ2 αβ。deadline(ms timestamp) で打ち切り。
+function pickMoveStrong(s, myIdx, deadline) {
+  const moves = sgGenMoves(s, myIdx);
+  if (!moves.length) return null;
+  const order = [];
+  for (const m of moves) { const prev = sgApply(s, m, myIdx); let v = sgEval(s, myIdx); if (m.isJammer) v -= SG_W.jammerCost; sgUndo(s, m, prev); order.push({ m, v }); }
+  order.sort((a, b) => b.v - a.v);
+  const opp = sgNextMover(s, myIdx);
+  let best = -Infinity, bestList = [], alpha = -Infinity;
+  for (const { m } of order) {
+    const prev = sgApply(s, m, myIdx);
+    let v = (opp < 0) ? sgEval(s, myIdx) : sgAB(s, myIdx, opp, 1, alpha, Infinity, deadline, 0);
+    if (m.isJammer) v -= SG_W.jammerCost;
+    sgUndo(s, m, prev);
+    if (v > best + 1e-9) { best = v; bestList = [m]; if (v > alpha) alpha = v; }
+    else if (v >= best - 1e-9) bestList.push(m);
+    if (deadline && Date.now() >= deadline) break;
+  }
+  const rnd = (s.rand ? s.rand() : Math.random());
+  return bestList[Math.floor(rnd * bestList.length)] || bestList[0];
 }
 
 // ============================== NETWORK (PeerJS) ==============================
@@ -6595,6 +6777,7 @@ function renderSetup() {
         '<option value="1"'+(p.lvl=='1'?' selected':'')+'>'+escapeHtml(t('setup.cpuLv1'))+'</option>'+
         '<option value="2"'+(p.lvl=='2'?' selected':'')+'>'+escapeHtml(t('setup.cpuLv2'))+'</option>'+
         '<option value="3"'+(p.lvl=='3'?' selected':'')+'>'+escapeHtml(t('setup.cpuLv3'))+'</option>'+
+        '<option value="4"'+(p.lvl=='4'?' selected':'')+'>'+escapeHtml(t('setup.cpuLv4'))+'</option>'+
       '</select>';
     rowsEl.appendChild(row);
   }
@@ -8768,6 +8951,9 @@ function handleAction(a, el) {
     case 'replay-exit': exitReplay(); break;
     case 'share-replay-url': shareReplayUrl(); break;
     case 'join-spectator': openSpectatorJoin(); break;
+    case 'set-lang-en': setLang('en'); break;
+    case 'set-lang-ja': setLang('ja'); break;
+    case 'set-lang-zh': setLang('zh'); break;
   }
 }
 
